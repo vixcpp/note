@@ -32,7 +32,7 @@ namespace vix::note
   /**
    * @brief Minor version number.
    */
-  inline constexpr int VIX_NOTE_VERSION_MINOR = 1;
+  inline constexpr int VIX_NOTE_VERSION_MINOR = 2;
 
   /**
    * @brief Patch version number.
@@ -42,7 +42,7 @@ namespace vix::note
   /**
    * @brief Full semantic version string.
    */
-  inline constexpr std::string_view VIX_NOTE_VERSION = "0.1.0";
+  inline constexpr std::string_view VIX_NOTE_VERSION = "0.2.0";
 
   /**
    * @brief Module name.

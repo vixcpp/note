@@ -20,15 +20,259 @@
 #include <vix/note/web/NoteServer.hpp>
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <string_view>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+#pragma comment(lib, "ws2_32.lib")
+#else
+#include <netdb.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 namespace
 {
+#ifdef _WIN32
+  using TestSocket = SOCKET;
+
+  constexpr TestSocket invalid_test_socket = INVALID_SOCKET;
+
+  void close_test_socket(TestSocket socket)
+  {
+    if (socket != invalid_test_socket)
+    {
+      closesocket(socket);
+    }
+  }
+#else
+  using TestSocket = int;
+
+  constexpr TestSocket invalid_test_socket = -1;
+
+  void close_test_socket(TestSocket socket)
+  {
+    if (socket != invalid_test_socket)
+    {
+      close(socket);
+    }
+  }
+#endif
+
   bool contains(const std::string &text, std::string_view needle)
   {
     return text.find(std::string(needle)) != std::string::npos;
+  }
+
+  std::uint16_t next_test_port()
+  {
+    static std::uint16_t port = 55179;
+    return port++;
+  }
+
+  vix::note::NoteServerOptions make_server_options()
+  {
+    vix::note::NoteServerOptions options;
+    options.host = "127.0.0.1";
+    options.port = next_test_port();
+    return options;
+  }
+
+  bool send_all(TestSocket socket, const std::string &payload)
+  {
+    std::size_t sent = 0;
+
+    while (sent < payload.size())
+    {
+      const char *data = payload.data() + sent;
+      const std::size_t remaining = payload.size() - sent;
+
+#ifdef _WIN32
+      const int n =
+          send(
+              socket,
+              data,
+              static_cast<int>(remaining),
+              0);
+#else
+#ifdef MSG_NOSIGNAL
+      constexpr int flags = MSG_NOSIGNAL;
+#else
+      constexpr int flags = 0;
+#endif
+
+      const ssize_t n =
+          send(
+              socket,
+              data,
+              remaining,
+              flags);
+#endif
+
+      if (n <= 0)
+      {
+        return false;
+      }
+
+      sent += static_cast<std::size_t>(n);
+    }
+
+    return true;
+  }
+
+  std::string read_all(TestSocket socket)
+  {
+    std::string response;
+    char buffer[4096];
+
+    while (true)
+    {
+#ifdef _WIN32
+      const int n =
+          recv(
+              socket,
+              buffer,
+              static_cast<int>(sizeof(buffer)),
+              0);
+#else
+      const ssize_t n =
+          recv(
+              socket,
+              buffer,
+              sizeof(buffer),
+              0);
+#endif
+
+      if (n <= 0)
+      {
+        break;
+      }
+
+      response.append(buffer, static_cast<std::size_t>(n));
+    }
+
+    return response;
+  }
+
+  std::string http_request(
+      std::string_view host,
+      std::uint16_t port,
+      const std::string &request)
+  {
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    addrinfo *addresses = nullptr;
+
+    const std::string hostString(host);
+    const std::string service = std::to_string(port);
+
+    const int rc =
+        getaddrinfo(
+            hostString.c_str(),
+            service.c_str(),
+            &hints,
+            &addresses);
+
+    assert(rc == 0);
+    assert(addresses != nullptr);
+
+    TestSocket socket = invalid_test_socket;
+
+    for (addrinfo *address = addresses;
+         address != nullptr;
+         address = address->ai_next)
+    {
+      TestSocket candidate =
+          ::socket(
+              address->ai_family,
+              address->ai_socktype,
+              address->ai_protocol);
+
+      if (candidate == invalid_test_socket)
+      {
+        continue;
+      }
+
+      if (connect(candidate, address->ai_addr, static_cast<int>(address->ai_addrlen)) == 0)
+      {
+        socket = candidate;
+        break;
+      }
+
+      close_test_socket(candidate);
+    }
+
+    freeaddrinfo(addresses);
+
+    assert(socket != invalid_test_socket);
+    assert(send_all(socket, request));
+
+    const std::string response = read_all(socket);
+
+    close_test_socket(socket);
+
+    return response;
+  }
+
+  std::string http_get(
+      std::string_view host,
+      std::uint16_t port,
+      std::string_view path)
+  {
+    std::ostringstream request;
+
+    request << "GET "
+            << path
+            << " HTTP/1.1\r\n";
+
+    request << "Host: "
+            << host
+            << "\r\n";
+
+    request << "Connection: close\r\n";
+    request << "\r\n";
+
+    return http_request(host, port, request.str());
+  }
+
+  std::string http_post(
+      std::string_view host,
+      std::uint16_t port,
+      std::string_view path,
+      const std::string &body = {})
+  {
+    std::ostringstream request;
+
+    request << "POST "
+            << path
+            << " HTTP/1.1\r\n";
+
+    request << "Host: "
+            << host
+            << "\r\n";
+
+    request << "Content-Type: application/json\r\n";
+    request << "Content-Length: "
+            << body.size()
+            << "\r\n";
+
+    request << "Connection: close\r\n";
+    request << "\r\n";
+    request << body;
+
+    return http_request(host, port, request.str());
   }
 }
 
@@ -137,7 +381,9 @@ int main()
   }
 
   {
-    vix::note::NoteServer server;
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteServer server(options);
 
     vix::note::NoteResult started =
         server.start();
@@ -146,18 +392,16 @@ int main()
     assert(started.message() == "note server started");
     assert(started.has_outputs());
     assert(started.outputs()[0].kind == vix::note::NoteOutputKind::Text);
-    assert(started.outputs()[0].content == "http://127.0.0.1:5179/");
+    assert(started.outputs()[0].content == server.url());
 
     assert(server.running());
     assert(!server.stopped());
     assert(server.state() == vix::note::NoteServerState::Running);
 
-    vix::note::NoteServerOptions options;
-    options.host = "localhost";
-    options.port = 9001;
+    vix::note::NoteServerOptions changedOptions = make_server_options();
 
     vix::note::NoteResult changed =
-        server.set_options(options);
+        server.set_options(changedOptions);
 
     assert(changed.failed());
     assert(changed.message() == "cannot change server options while running");
@@ -166,7 +410,9 @@ int main()
   }
 
   {
-    vix::note::NoteServer server;
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteServer server(options);
 
     assert(server.start().ok());
 
@@ -176,13 +422,14 @@ int main()
     assert(startedAgain.ok());
     assert(startedAgain.message() == "note server already running");
     assert(startedAgain.has_outputs());
-    assert(startedAgain.outputs()[0].content == "http://127.0.0.1:5179/");
+    assert(startedAgain.outputs()[0].content == server.url());
     assert(server.running());
   }
 
   {
     vix::note::NoteServerOptions options;
     options.host.clear();
+    options.port = next_test_port();
 
     vix::note::NoteServer server(options);
 
@@ -213,7 +460,9 @@ int main()
   }
 
   {
-    vix::note::NoteServer server;
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteServer server(options);
 
     assert(server.start().ok());
     assert(server.running());
@@ -242,6 +491,19 @@ int main()
 
   {
     vix::note::NoteServer server;
+
+    vix::note::NoteResult waitResult =
+        server.wait();
+
+    assert(waitResult.ok());
+    assert(waitResult.message() == "note server already stopped");
+    assert(server.stopped());
+  }
+
+  {
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteServer server(options);
 
     vix::note::NoteResult restarted =
         server.restart();
@@ -346,9 +608,12 @@ int main()
     assert(contains(response.body, "\"title\":\"API Server Doc\""));
     assert(contains(response.body, "\"path\":\"examples/server.vixnote\""));
     assert(contains(response.body, "\"cellCount\":2"));
+    assert(contains(response.body, "\"index\":0"));
+    assert(contains(response.body, "\"index\":1"));
     assert(contains(response.body, "\"id\":\"intro\""));
     assert(contains(response.body, "\"id\":\"reply\""));
     assert(contains(response.body, "\"executable\":true"));
+    assert(contains(response.body, "\"outputs\":[]"));
   }
 
   {
@@ -383,8 +648,12 @@ int main()
     assert(response.status == 200);
     assert(response.contentType == "application/json; charset=utf-8");
 
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "\"result\":{"));
+    assert(contains(response.body, "\"cell\":{"));
     assert(contains(response.body, "\"status\":\"skipped\""));
     assert(contains(response.body, "\"message\":\"Reply cell execution is not available yet\""));
+    assert(contains(response.body, "\"executionCount\":1"));
 
     assert(server.document().cells()[0].execution_count() == 1);
     assert(server.routes().kernel().session().has_records());
@@ -409,6 +678,8 @@ int main()
     assert(contains(response.body, "\"visited\":2"));
     assert(contains(response.body, "\"executed\":1"));
     assert(contains(response.body, "\"status\":\"skipped\""));
+    assert(contains(response.body, "\"document\":{"));
+    assert(contains(response.body, "\"cellCount\":2"));
 
     assert(server.document().cells()[0].execution_count() == 0);
     assert(server.document().cells()[1].execution_count() == 1);
@@ -438,6 +709,113 @@ int main()
     assert(response.status == 404);
     assert(!response.ok());
     assert(response.body == "not found");
+  }
+
+  {
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteDocument doc("Network Server Doc");
+    doc.set_path("examples/network.vixnote");
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "intro",
+            vix::note::NoteCellKind::Markdown,
+            "# Network Server Doc"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "reply",
+            vix::note::NoteCellKind::Reply,
+            "println(\"hello\")"));
+
+    vix::note::NoteServer server(doc, options);
+
+    vix::note::NoteResult started =
+        server.start();
+
+    assert(started.ok());
+    assert(server.running());
+
+    const std::string indexResponse =
+        http_get(options.host, options.port, "/");
+
+    assert(contains(indexResponse, "HTTP/1.1 200 OK"));
+    assert(contains(indexResponse, "Content-Type: text/html; charset=utf-8"));
+    assert(contains(indexResponse, "Vix Note"));
+
+    const std::string cssResponse =
+        http_get(options.host, options.port, "/assets/note.css");
+
+    assert(contains(cssResponse, "HTTP/1.1 200 OK"));
+    assert(contains(cssResponse, "Content-Type: text/css; charset=utf-8"));
+    assert(contains(cssResponse, ".note-shell"));
+
+    const std::string documentResponse =
+        http_get(options.host, options.port, "/api/document");
+
+    assert(contains(documentResponse, "HTTP/1.1 200 OK"));
+    assert(contains(documentResponse, "Content-Type: application/json; charset=utf-8"));
+    assert(contains(documentResponse, "\"ok\":true"));
+    assert(contains(documentResponse, "\"title\":\"Network Server Doc\""));
+    assert(contains(documentResponse, "\"path\":\"examples/network.vixnote\""));
+    assert(contains(documentResponse, "\"cellCount\":2"));
+    assert(contains(documentResponse, "\"id\":\"intro\""));
+    assert(contains(documentResponse, "\"id\":\"reply\""));
+    assert(contains(documentResponse, "\"outputs\":[]"));
+
+    vix::note::NoteResult stopped =
+        server.stop();
+
+    assert(stopped.ok());
+    assert(server.stopped());
+  }
+
+  {
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteDocument doc("Network Run All");
+
+    doc.add_markdown("# Network Run All");
+    doc.add_reply("println(\"hello\")");
+
+    vix::note::NoteServer server(doc, options);
+
+    assert(server.start().ok());
+
+    const std::string runAllResponse =
+        http_post(options.host, options.port, "/api/run-all");
+
+    assert(contains(runAllResponse, "HTTP/1.1 200 OK"));
+    assert(contains(runAllResponse, "Content-Type: application/json; charset=utf-8"));
+    assert(contains(runAllResponse, "\"ok\":true"));
+    assert(contains(runAllResponse, "\"visited\":2"));
+    assert(contains(runAllResponse, "\"executed\":1"));
+    assert(contains(runAllResponse, "\"status\":\"skipped\""));
+    assert(contains(runAllResponse, "\"document\":{"));
+    assert(contains(runAllResponse, "\"cellCount\":2"));
+    assert(contains(runAllResponse, "\"executionCount\":1"));
+
+    assert(server.document().cells()[0].execution_count() == 0);
+    assert(server.document().cells()[1].execution_count() == 1);
+
+    assert(server.stop().ok());
+  }
+
+  {
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteServer server(options);
+
+    assert(server.start().ok());
+
+    const std::string missingResponse =
+        http_get(options.host, options.port, "/missing");
+
+    assert(contains(missingResponse, "HTTP/1.1 404 Not Found"));
+    assert(contains(missingResponse, "not found"));
+
+    assert(server.stop().ok());
   }
 
   return 0;

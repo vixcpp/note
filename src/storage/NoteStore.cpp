@@ -184,7 +184,7 @@ namespace vix::note
   NoteStore::NoteStore() = default;
 
   NoteStore::NoteStore(NoteStoreOptions options)
-      : options_(options)
+      : options_(std::move(options))
   {
   }
 
@@ -195,12 +195,19 @@ namespace vix::note
 
   void NoteStore::set_options(NoteStoreOptions options) noexcept
   {
-    options_ = options;
+    options_ = std::move(options);
   }
 
   NoteLoadResult NoteStore::load(const std::filesystem::path &path) const
   {
     NoteLoadResult result;
+
+    if (path.empty())
+    {
+      result.ok = false;
+      result.error = "empty note path";
+      return result;
+    }
 
     std::string source;
     std::string err;

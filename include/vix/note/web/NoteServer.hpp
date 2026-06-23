@@ -24,11 +24,20 @@
 #include <vix/note/web/NoteRoutes.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 
 namespace vix::note
 {
+  /**
+   * @brief Internal runtime used by the concrete local HTTP server.
+   *
+   * The implementation is hidden from the public header so platform sockets,
+   * threads, and low-level server details stay inside NoteServer.cpp.
+   */
+  class NoteServerRuntime;
+
   /**
    * @brief Runtime state of the Vix Note local server.
    */
@@ -48,9 +57,9 @@ namespace vix::note
   /**
    * @brief Options used by the Vix Note local server.
    *
-   * The first version is intentionally a server facade. It owns routes and
-   * lifecycle state, but does not bind a network socket yet. A later adapter
-   * can attach this facade to the Vix HTTP server.
+   * The server listens on a local HTTP address, serves embedded note assets,
+   * and forwards API requests to NoteRoutes. The low-level networking backend
+   * is kept private to NoteServer.cpp.
    */
   struct NoteServerOptions
   {
@@ -76,11 +85,12 @@ namespace vix::note
   };
 
   /**
-   * @brief Local UI server facade for Vix Note.
+   * @brief Local UI server for Vix Note.
    *
-   * NoteServer coordinates NoteRoutes and exposes a stable lifecycle API for
-   * the future UI command. It avoids depending on a concrete HTTP backend in
-   * this first version, so tests and integrations can use the same route layer.
+   * NoteServer owns the route resolver and starts a small local HTTP server
+   * for the browser UI. It keeps the public API independent from the concrete
+   * socket implementation so tests can still call handle(), get(), and post()
+   * directly without opening a network port.
    */
   class NoteServer
   {
@@ -111,6 +121,31 @@ namespace vix::note
      * @param options  Server options.
      */
     NoteServer(NoteDocument document, NoteServerOptions options);
+
+    /**
+     * @brief Stops the server and releases internal runtime resources.
+     */
+    ~NoteServer();
+
+    /**
+     * @brief NoteServer owns a runtime and cannot be copied.
+     */
+    NoteServer(const NoteServer &) = delete;
+
+    /**
+     * @brief NoteServer owns a runtime and cannot be copied.
+     */
+    NoteServer &operator=(const NoteServer &) = delete;
+
+    /**
+     * @brief Moves a note server.
+     */
+    NoteServer(NoteServer &&other) noexcept;
+
+    /**
+     * @brief Moves a note server.
+     */
+    NoteServer &operator=(NoteServer &&other) noexcept;
 
     /**
      * @brief Returns the current server options.
@@ -151,21 +186,34 @@ namespace vix::note
     bool stopped() const noexcept;
 
     /**
-     * @brief Starts the local server facade.
+     * @brief Starts the local HTTP server.
+     *
+     * The server begins listening on options().host and options().port.
+     * Use wait() when the caller wants to keep the process alive until the
+     * server is stopped.
      *
      * @return Start result.
      */
     NoteResult start();
 
     /**
-     * @brief Stops the local server facade.
+     * @brief Blocks until the local server stops.
+     *
+     * This is mainly used by the CLI command after start() succeeds.
+     *
+     * @return Wait result.
+     */
+    NoteResult wait();
+
+    /**
+     * @brief Stops the local HTTP server.
      *
      * @return Stop result.
      */
     NoteResult stop();
 
     /**
-     * @brief Restarts the local server facade.
+     * @brief Restarts the local HTTP server.
      *
      * @return Restart result.
      */
@@ -248,6 +296,11 @@ namespace vix::note
      * @brief Current server state.
      */
     NoteServerState state_{NoteServerState::Stopped};
+
+    /**
+     * @brief Concrete local HTTP runtime.
+     */
+    std::unique_ptr<NoteServerRuntime> runtime_;
   };
 
   /**

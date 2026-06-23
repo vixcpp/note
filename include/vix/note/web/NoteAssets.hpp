@@ -20,6 +20,7 @@
 #define VIX_NOTE_WEB_NOTE_ASSETS_HPP
 
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -63,11 +64,30 @@ namespace vix::note
   };
 
   /**
-   * @brief Registry for built-in Vix Note web assets.
+   * @brief Options used when loading UI assets from a directory.
+   */
+  struct NoteAssetDirectoryOptions
+  {
+    /**
+     * @brief Clears currently registered assets before loading from disk.
+     */
+    bool clearBeforeLoad = false;
+
+    /**
+     * @brief Keeps embedded assets when a file is missing from disk.
+     *
+     * When true, loading a directory can override only the files that exist
+     * while keeping the built-in fallback for missing assets.
+     */
+    bool keepEmbeddedFallback = true;
+  };
+
+  /**
+   * @brief Registry for built-in and local Vix Note web assets.
    *
-   * The first version keeps assets embedded in C++ so the UI can start without
-   * requiring an external asset pipeline. Later versions can replace this with
-   * generated assets or a packaged resource system.
+   * Vix Note keeps embedded assets as a fallback so the UI can start without
+   * requiring an external asset pipeline. During development or installation,
+   * the registry can also load known UI files from an asset directory.
    */
   class NoteAssets
   {
@@ -76,6 +96,13 @@ namespace vix::note
      * @brief Creates an asset registry with default assets.
      */
     NoteAssets();
+
+    /**
+     * @brief Creates an asset registry with custom assets.
+     *
+     * @param assets Assets to register.
+     */
+    explicit NoteAssets(std::vector<NoteAsset> assets);
 
     /**
      * @brief Returns all registered assets.
@@ -122,6 +149,40 @@ namespace vix::note
     void add_or_replace(NoteAsset asset);
 
     /**
+     * @brief Loads known Vix Note UI assets from a directory.
+     *
+     * Expected layout:
+     * - `index.html`
+     * - `css/note.css`
+     * - `js/note.js`
+     *
+     * Loaded files replace matching embedded assets. Missing files are allowed
+     * when keepEmbeddedFallback is true.
+     *
+     * @param directory Asset root directory.
+     * @param options   Directory loading options.
+     * @param error     Human-readable error when loading fails.
+     * @return True when loading completed, false on failure.
+     */
+    bool load_from_directory(
+        const std::filesystem::path &directory,
+        NoteAssetDirectoryOptions options,
+        std::string &error);
+
+    /**
+     * @brief Loads known Vix Note UI assets from a directory.
+     *
+     * Uses default directory loading options.
+     *
+     * @param directory Asset root directory.
+     * @param error     Human-readable error when loading fails.
+     * @return True when loading completed, false on failure.
+     */
+    bool load_from_directory(
+        const std::filesystem::path &directory,
+        std::string &error);
+
+    /**
      * @brief Removes an asset by path.
      *
      * @param path Asset path to remove.
@@ -140,6 +201,22 @@ namespace vix::note
      * @return Default assets.
      */
     static std::vector<NoteAsset> defaults();
+
+    /**
+     * @brief Creates assets from a Vix Note UI directory.
+     *
+     * Expected layout:
+     * - `index.html`
+     * - `css/note.css`
+     * - `js/note.js`
+     *
+     * @param directory Asset root directory.
+     * @param error     Human-readable error when loading fails.
+     * @return Loaded assets.
+     */
+    static std::vector<NoteAsset> from_directory(
+        const std::filesystem::path &directory,
+        std::string &error);
 
     /**
      * @brief Returns the default HTML page.
@@ -168,6 +245,32 @@ namespace vix::note
      */
     std::vector<NoteAsset> assets_;
   };
+
+  /**
+   * @brief Reads a text asset file from disk.
+   *
+   * @param path Asset file path.
+   * @param out  Loaded content.
+   * @param err  Human-readable error when reading fails.
+   * @return True when the file was read.
+   */
+  bool read_note_asset_file(
+      const std::filesystem::path &path,
+      std::string &out,
+      std::string &err);
+
+  /**
+   * @brief Maps an asset source path to its public UI route.
+   *
+   * Examples:
+   * - `index.html` becomes `/`
+   * - `css/note.css` becomes `/assets/note.css`
+   * - `js/note.js` becomes `/assets/note.js`
+   *
+   * @param path Relative asset path.
+   * @return Public asset path.
+   */
+  std::string note_asset_public_path(const std::filesystem::path &path);
 
   /**
    * @brief Returns a content type from an asset path.

@@ -84,6 +84,10 @@ namespace vix::note
    * NoteStore is responsible for file I/O only. Parsing is delegated to
    * NoteParser, while serialization writes a markdown-compatible `.vixnote`
    * document. Runtime outputs are not persisted in the first storage format.
+   *
+   * For the local UI, NoteStore is used before NoteServer starts: the CLI loads
+   * a `.vixnote` file from disk, then passes the resulting NoteDocument to the
+   * server route layer.
    */
   class NoteStore
   {
@@ -117,6 +121,9 @@ namespace vix::note
     /**
      * @brief Loads a note document from disk.
      *
+     * The loaded document receives the source path through NoteDocument::path()
+     * so the UI and API can show where the note came from.
+     *
      * @param path Path to the `.vixnote` file.
      * @return Load result.
      */
@@ -144,6 +151,9 @@ namespace vix::note
 
     /**
      * @brief Saves a note document to a specific path.
+     *
+     * Runtime outputs are intentionally not serialized in the first storage
+     * format. Only the readable `.vixnote` source is written.
      *
      * @param document Document to save.
      * @param path     Target file path.
@@ -176,6 +186,10 @@ namespace vix::note
 
     /**
      * @brief Serializes a note document to `.vixnote` text.
+     *
+     * The serialized format stays markdown-compatible: markdown cells are
+     * written as normal markdown, while executable cells are written as fenced
+     * blocks.
      *
      * @param document Document to serialize.
      * @return Serialized document text.

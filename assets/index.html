@@ -12,11 +12,11 @@
 
     <title>Vix Note</title>
 
-    <link rel="stylesheet" href="./css/note.css" />
+    <link rel="stylesheet" href="/assets/note.css" />
   </head>
 
   <body>
-    <div class="note-app">
+    <div class="note-app" data-note-app>
       <aside class="note-sidebar" aria-label="Notebook sidebar">
         <div class="note-brand">
           <div class="note-brand__mark" aria-hidden="true">V</div>
@@ -32,9 +32,9 @@
             Workspace
           </a>
 
-          <a class="note-nav__item" href="#cells"> Cells </a>
+          <a class="note-nav__item" href="#cells">Cells</a>
 
-          <a class="note-nav__item" href="#outputs"> Outputs </a>
+          <a class="note-nav__item" href="#outputs">Outputs</a>
         </nav>
 
         <div class="note-sidebar__footer">
@@ -47,8 +47,8 @@
           <div>
             <p class="note-header__eyebrow">Learning workspace</p>
 
-            <h2 class="note-header__title">
-              Write, run, and understand C++ step by step.
+            <h2 class="note-header__title" data-note-title>
+              Loading Vix Note...
             </h2>
 
             <p class="note-header__description">
@@ -62,6 +62,7 @@
               class="note-button note-button--ghost"
               type="button"
               data-action="save"
+              title="Save will be available in Vix Note v0.3.0"
             >
               Save
             </button>
@@ -79,67 +80,37 @@
         <section class="note-status" aria-label="Notebook status">
           <article class="note-status__card">
             <span class="note-status__label">Document</span>
-            <strong class="note-status__value">Untitled note</strong>
+            <strong class="note-status__value" data-note-document>
+              Untitled note
+            </strong>
           </article>
 
           <article class="note-status__card">
             <span class="note-status__label">Cells</span>
-            <strong class="note-status__value">2</strong>
+            <strong class="note-status__value" data-note-cell-count>0</strong>
           </article>
 
           <article class="note-status__card">
             <span class="note-status__label">Kernel</span>
-            <strong class="note-status__value">Idle</strong>
+            <strong class="note-status__value" data-note-kernel>Idle</strong>
           </article>
         </section>
 
-        <section class="note-workspace" id="cells">
-          <article class="note-cell note-cell--markdown">
-            <div class="note-cell__bar">
-              <span class="note-cell__kind">Markdown</span>
-              <span class="note-cell__meta">Explanation</span>
-            </div>
+        <section
+          class="note-message"
+          data-note-message
+          hidden
+          aria-live="polite"
+        ></section>
 
-            <div class="note-cell__body">
-              <h3>Welcome to Vix Note</h3>
-
-              <p>
-                This space is for learning C++ visually. You can write an
-                explanation, place a C++ cell below it, run the code, and keep
-                the output attached to the lesson.
-              </p>
-            </div>
-          </article>
-
-          <article class="note-cell note-cell--cpp">
-            <div class="note-cell__bar">
-              <span class="note-cell__kind">C++</span>
-
-              <button
-                class="note-cell__run"
-                type="button"
-                data-action="run-cell"
-              >
-                Run
-              </button>
-            </div>
-
-            <pre class="note-code"><code>#include &lt;iostream&gt;
-
-int main()
-{
-  std::cout &lt;&lt; "Hello from Vix Note\n";
-  return 0;
-}</code></pre>
-
-            <div class="note-output" id="outputs" hidden>
-              Execution will appear here.
-            </div>
+        <section class="note-workspace" id="cells" data-note-cells>
+          <article class="note-empty">
+            <p>Loading note document...</p>
           </article>
         </section>
       </main>
     </div>
 
-    <script src="./js/note.js"></script>
+    <script src="/assets/note.js"></script>
   </body>
 </html>

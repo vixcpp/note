@@ -294,22 +294,68 @@ namespace vix::note
     std::optional<NoteRouteResponse> handle_api(const NoteRouteRequest &request);
 
     /**
-     * @brief Serializes the current document into a small JSON object.
+     * @brief Serializes the current document into a JSON object.
      *
-     * @return JSON document summary.
+     * The returned document includes metadata, cells, execution counts, and
+     * cell outputs so the browser UI can render the full note state.
+     *
+     * @return JSON document response.
      */
     std::string document_json() const;
 
     /**
-     * @brief Serializes a NoteResult into a small JSON object.
+     * @brief Serializes one note cell into JSON.
+     *
+     * @param cell  Cell to serialize.
+     * @param index Zero-based cell index.
+     * @return JSON cell object.
+     */
+    std::string cell_json(
+        const NoteCell &cell,
+        std::size_t index) const;
+
+    /**
+     * @brief Serializes one note output into JSON.
+     *
+     * @param output Output to serialize.
+     * @return JSON output object.
+     */
+    std::string output_json(const NoteOutput &output) const;
+
+    /**
+     * @brief Serializes a note output list into JSON.
+     *
+     * @param outputs Outputs to serialize.
+     * @return JSON output array.
+     */
+    std::string outputs_json(const std::vector<NoteOutput> &outputs) const;
+
+    /**
+     * @brief Serializes a NoteResult into JSON.
      *
      * @param result Result to serialize.
-     * @return JSON response.
+     * @return JSON result object.
      */
     std::string result_json(const NoteResult &result) const;
 
     /**
+     * @brief Serializes the response returned after running one cell.
+     *
+     * The response includes the execution result and the updated cell state.
+     *
+     * @param index  Cell index that was requested.
+     * @param result Execution result.
+     * @return JSON response.
+     */
+    std::string cell_run_json(
+        std::size_t index,
+        const NoteResult &result) const;
+
+    /**
      * @brief Serializes a multi-cell kernel run result.
+     *
+     * The response includes the run summary, individual results, and the
+     * updated document state.
      *
      * @param result Run result to serialize.
      * @return JSON response.

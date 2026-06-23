@@ -18,7 +18,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
+#include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -42,6 +45,11 @@ namespace vix::note
 
   NoteAssets::NoteAssets()
       : assets_(defaults())
+  {
+  }
+
+  NoteAssets::NoteAssets(std::vector<NoteAsset> assets)
+      : assets_(std::move(assets))
   {
   }
 
@@ -114,6 +122,53 @@ namespace vix::note
     *it = std::move(asset);
   }
 
+  bool NoteAssets::load_from_directory(
+      const std::filesystem::path &directory,
+      NoteAssetDirectoryOptions options,
+      std::string &error)
+  {
+    error.clear();
+
+    std::vector<NoteAsset> loaded =
+        from_directory(directory, error);
+
+    if (!error.empty())
+    {
+      return false;
+    }
+
+    if (!options.keepEmbeddedFallback && loaded.size() < 4)
+    {
+      error =
+          "asset directory is missing required Vix Note UI assets: " +
+          directory.string();
+
+      return false;
+    }
+
+    if (options.clearBeforeLoad || !options.keepEmbeddedFallback)
+    {
+      clear();
+    }
+
+    for (NoteAsset &asset : loaded)
+    {
+      add_or_replace(std::move(asset));
+    }
+
+    return true;
+  }
+
+  bool NoteAssets::load_from_directory(
+      const std::filesystem::path &directory,
+      std::string &error)
+  {
+    return load_from_directory(
+        directory,
+        NoteAssetDirectoryOptions{},
+        error);
+  }
+
   bool NoteAssets::remove(std::string_view path)
   {
     const std::string normalized =
@@ -166,6 +221,82 @@ namespace vix::note
             "/assets/note.js",
             "application/javascript; charset=utf-8",
             default_js()});
+
+    return assets;
+  }
+
+  std::vector<NoteAsset> NoteAssets::from_directory(
+      const std::filesystem::path &directory,
+      std::string &error)
+  {
+    error.clear();
+
+    std::vector<NoteAsset> assets;
+
+    if (directory.empty())
+    {
+      error = "empty note asset directory";
+      return assets;
+    }
+
+    std::error_code ec;
+
+    if (!std::filesystem::exists(directory, ec) ||
+        !std::filesystem::is_directory(directory, ec))
+    {
+      error = "note asset directory does not exist: " + directory.string();
+      return assets;
+    }
+
+    const std::vector<std::filesystem::path> files{
+        std::filesystem::path("index.html"),
+        std::filesystem::path("css") / "note.css",
+        std::filesystem::path("js") / "note.js"};
+
+    for (const std::filesystem::path &relative : files)
+    {
+      const std::filesystem::path file = directory / relative;
+
+      if (!std::filesystem::exists(file, ec))
+      {
+        continue;
+      }
+
+      std::string content;
+      std::string err;
+
+      if (!read_note_asset_file(file, content, err))
+      {
+        error = err;
+        return {};
+      }
+
+      const std::string publicPath =
+          note_asset_public_path(relative);
+
+      if (relative == std::filesystem::path("index.html"))
+      {
+        assets.push_back(
+            NoteAsset{
+                "/",
+                "text/html; charset=utf-8",
+                content});
+
+        assets.push_back(
+            NoteAsset{
+                "/index.html",
+                "text/html; charset=utf-8",
+                content});
+
+        continue;
+      }
+
+      assets.push_back(
+          NoteAsset{
+              publicPath,
+              note_asset_content_type(publicPath),
+              std::move(content)});
+    }
 
     return assets;
   }
@@ -421,6 +552,71 @@ button:hover {
   });
 })();
 )";
+  }
+
+  bool read_note_asset_file(
+      const std::filesystem::path &path,
+      std::string &out,
+      std::string &err)
+  {
+    out.clear();
+    err.clear();
+
+    std::ifstream in(path, std::ios::binary);
+
+    if (!in.is_open())
+    {
+      err = "cannot open note asset file: " + path.string();
+      return false;
+    }
+
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+
+    if (in.bad())
+    {
+      err = "cannot read note asset file: " + path.string();
+      return false;
+    }
+
+    out = buffer.str();
+    return true;
+  }
+
+  std::string note_asset_public_path(const std::filesystem::path &path)
+  {
+    const std::filesystem::path normalized =
+        path.lexically_normal();
+
+    const std::string value =
+        normalized.generic_string();
+
+    if (value == "." || value.empty())
+    {
+      return "/";
+    }
+
+    if (value == "index.html")
+    {
+      return "/";
+    }
+
+    if (value == "css/note.css")
+    {
+      return "/assets/note.css";
+    }
+
+    if (value == "js/note.js")
+    {
+      return "/assets/note.js";
+    }
+
+    if (!value.empty() && value.front() == '/')
+    {
+      return normalize_note_asset_path(value);
+    }
+
+    return normalize_note_asset_path("/assets/" + value);
   }
 
   std::string note_asset_content_type(std::string_view path)

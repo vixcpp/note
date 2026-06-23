@@ -12,6 +12,8 @@
 
 cmake_minimum_required(VERSION 3.20)
 
+set(VIX_NOTE_MODULE_VERSION 0.2.0)
+
 # ============================================================================
 # Re-entry guard
 # Prevent the note module from being configured/exported twice
@@ -25,7 +27,7 @@ set_property(GLOBAL PROPERTY VIX_NOTE_MODULE_ALREADY_INCLUDED TRUE)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   project(vix_note
-    VERSION 0.1.0
+    VERSION ${VIX_NOTE_MODULE_VERSION}
     DESCRIPTION "Visual executable notes for learning C++ and Vix.cpp faster"
     LANGUAGES CXX
   )
@@ -102,7 +104,7 @@ target_compile_features(vix_note PUBLIC cxx_std_20)
 
 set_target_properties(vix_note PROPERTIES
   OUTPUT_NAME vix_note
-  VERSION ${PROJECT_VERSION}
+  VERSION ${VIX_NOTE_MODULE_VERSION}
   SOVERSION 0
   EXPORT_NAME note
 )
@@ -148,6 +150,9 @@ elseif(DEFINED ENV{VIX_NOTE_VERSION} AND NOT "$ENV{VIX_NOTE_VERSION}" STREQUAL "
 
 elseif(DEFINED VIX_UMBRELLA_VERSION AND NOT "${VIX_UMBRELLA_VERSION}" STREQUAL "")
   set(_VIX_NOTE_VERSION "${VIX_UMBRELLA_VERSION}")
+
+elseif(DEFINED VIX_NOTE_MODULE_VERSION AND NOT "${VIX_NOTE_MODULE_VERSION}" STREQUAL "")
+  set(_VIX_NOTE_VERSION "v${VIX_NOTE_MODULE_VERSION}")
 
 elseif(DEFINED PROJECT_VERSION AND NOT "${PROJECT_VERSION}" STREQUAL "")
   set(_VIX_NOTE_VERSION "v${PROJECT_VERSION}")
@@ -281,14 +286,21 @@ if(VIX_NOTE_INSTALL AND NOT (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD))
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vix_note
   )
 
+  configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/vix_noteConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/vix_noteConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vix_note
+  )
+
   write_basic_package_version_file(
     ${CMAKE_CURRENT_BINARY_DIR}/vix_noteConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
+    VERSION ${VIX_NOTE_MODULE_VERSION}
     COMPATIBILITY SameMajorVersion
   )
 
   install(
     FILES
+      ${CMAKE_CURRENT_BINARY_DIR}/vix_noteConfig.cmake
       ${CMAKE_CURRENT_BINARY_DIR}/vix_noteConfigVersion.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vix_note
   )

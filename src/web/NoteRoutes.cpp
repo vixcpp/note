@@ -22,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace vix::note
 {
@@ -308,7 +309,7 @@ namespace vix::note
 
         return NoteRouteResponse::json(
             result.ok() || result.was_skipped() ? 200 : 500,
-            result_json(result));
+            cell_run_json(*index, result));
       }
     }
 
@@ -333,26 +334,70 @@ namespace vix::note
 
     for (std::size_t i = 0; i < doc.cells().size(); ++i)
     {
-      const NoteCell &cell = doc.cells()[i];
-
       if (i > 0)
       {
         out << ",";
       }
 
-      out << "{";
-      out << "\"id\":\"" << json_escape(cell.id()) << "\",";
-      out << "\"kind\":\"" << to_string(cell.kind()) << "\",";
-      out << "\"title\":\"" << json_escape(cell.title()) << "\",";
-      out << "\"source\":\"" << json_escape(cell.source()) << "\",";
-      out << "\"executionCount\":" << cell.execution_count() << ",";
-      out << "\"executable\":" << (cell.executable() ? "true" : "false") << ",";
-      out << "\"outputCount\":" << cell.outputs().size();
-      out << "}";
+      out << cell_json(doc.cells()[i], i);
     }
 
     out << "]";
     out << "}";
+
+    return out.str();
+  }
+
+  std::string NoteRoutes::cell_json(
+      const NoteCell &cell,
+      std::size_t index) const
+  {
+    std::ostringstream out;
+
+    out << "{";
+    out << "\"index\":" << index << ",";
+    out << "\"id\":\"" << json_escape(cell.id()) << "\",";
+    out << "\"kind\":\"" << to_string(cell.kind()) << "\",";
+    out << "\"title\":\"" << json_escape(cell.title()) << "\",";
+    out << "\"source\":\"" << json_escape(cell.source()) << "\",";
+    out << "\"executionCount\":" << cell.execution_count() << ",";
+    out << "\"executable\":" << (cell.executable() ? "true" : "false") << ",";
+    out << "\"outputCount\":" << cell.outputs().size() << ",";
+    out << "\"outputs\":" << outputs_json(cell.outputs());
+    out << "}";
+
+    return out.str();
+  }
+
+  std::string NoteRoutes::output_json(const NoteOutput &output) const
+  {
+    std::ostringstream out;
+
+    out << "{";
+    out << "\"kind\":\"" << to_string(output.kind) << "\",";
+    out << "\"content\":\"" << json_escape(output.content) << "\"";
+    out << "}";
+
+    return out.str();
+  }
+
+  std::string NoteRoutes::outputs_json(const std::vector<NoteOutput> &outputs) const
+  {
+    std::ostringstream out;
+
+    out << "[";
+
+    for (std::size_t i = 0; i < outputs.size(); ++i)
+    {
+      if (i > 0)
+      {
+        out << ",";
+      }
+
+      out << output_json(outputs[i]);
+    }
+
+    out << "]";
 
     return out.str();
   }
@@ -364,26 +409,38 @@ namespace vix::note
     out << "{";
     out << "\"ok\":" << (result.ok() ? "true" : "false") << ",";
     out << "\"status\":\"" << to_string(result.status()) << "\",";
-    out << "\"exitCode\":" << result.exit_code() << ",";
     out << "\"message\":\"" << json_escape(result.message()) << "\",";
-    out << "\"outputs\":[";
+    out << "\"exitCode\":" << result.exit_code() << ",";
+    out << "\"outputCount\":" << result.outputs().size() << ",";
+    out << "\"outputs\":" << outputs_json(result.outputs());
+    out << "}";
 
-    for (std::size_t i = 0; i < result.outputs().size(); ++i)
+    return out.str();
+  }
+
+  std::string NoteRoutes::cell_run_json(
+      std::size_t index,
+      const NoteResult &result) const
+  {
+    const NoteDocument &doc = kernel_.document();
+    const NoteCell *cell = doc.cell_at(index);
+
+    std::ostringstream out;
+
+    out << "{";
+    out << "\"ok\":" << (result.ok() ? "true" : "false") << ",";
+    out << "\"result\":" << result_json(result) << ",";
+    out << "\"cell\":";
+
+    if (cell == nullptr)
     {
-      const NoteOutput &output = result.outputs()[i];
-
-      if (i > 0)
-      {
-        out << ",";
-      }
-
-      out << "{";
-      out << "\"kind\":\"" << to_string(output.kind) << "\",";
-      out << "\"content\":\"" << json_escape(output.content) << "\"";
-      out << "}";
+      out << "null";
+    }
+    else
+    {
+      out << cell_json(*cell, index);
     }
 
-    out << "]";
     out << "}";
 
     return out.str();
@@ -410,12 +467,12 @@ namespace vix::note
       out << result_json(result.results[i]);
     }
 
-    out << "]";
+    out << "],";
+    out << "\"document\":" << document_json();
     out << "}";
 
     return out.str();
   }
-
   std::string_view to_string(NoteRouteMethod method) noexcept
   {
     switch (method)

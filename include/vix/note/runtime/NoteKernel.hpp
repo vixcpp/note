@@ -52,7 +52,10 @@ namespace vix::note
     bool stopOnFirstFailure = false;
 
     /**
-     * @brief Treats markdown and HTML cells as skipped during run_all().
+     * @brief Includes markdown and HTML cells as skipped results during run_all().
+     *
+     * When false, non-executable cells are only counted as visited and do not
+     * produce NoteResult entries.
      */
     bool includeNonExecutableAsSkipped = false;
   };
@@ -270,6 +273,10 @@ namespace vix::note
   private:
     /**
      * @brief Runs a Reply cell.
+     *
+     * Reply execution is intentionally not implemented in v0.2.0. Reply cells
+     * are recognized by the kernel but currently return a skipped result until
+     * the Reply runtime integration is added in a later version.
      *
      * @param cell Cell to run.
      * @return Execution result.

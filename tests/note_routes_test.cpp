@@ -326,6 +326,11 @@ int main()
     assert(contains(response.body, "\"id\":\"run\""));
     assert(contains(response.body, "\"kind\":\"reply\""));
     assert(contains(response.body, "\"executable\":true"));
+    assert(contains(response.body, "\"index\":0"));
+    assert(contains(response.body, "\"index\":1"));
+    assert(contains(response.body, "\"executionCount\":0"));
+    assert(contains(response.body, "\"outputCount\":0"));
+    assert(contains(response.body, "\"outputs\":[]"));
   }
 
   {
@@ -361,6 +366,40 @@ int main()
   }
 
   {
+    vix::note::NoteDocument doc("Output Doc");
+
+    vix::note::NoteCell cell(
+        "cpp-output",
+        vix::note::NoteCellKind::Cpp,
+        "int main() { return 0; }");
+
+    cell.set_execution_count(3);
+    cell.add_output(
+        vix::note::NoteOutput::stdout_text("hello from document\n"));
+
+    doc.add_cell(cell);
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/api/document");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(response.contentType == "application/json; charset=utf-8");
+
+    assert(contains(response.body, "\"title\":\"Output Doc\""));
+    assert(contains(response.body, "\"id\":\"cpp-output\""));
+    assert(contains(response.body, "\"kind\":\"cpp\""));
+    assert(contains(response.body, "\"index\":0"));
+    assert(contains(response.body, "\"executionCount\":3"));
+    assert(contains(response.body, "\"outputCount\":1"));
+    assert(contains(response.body, "\"outputs\":["));
+    assert(contains(response.body, "\"kind\":\"stdout\""));
+    assert(contains(response.body, "hello from document"));
+  }
+
+  {
     vix::note::NoteDocument doc;
 
     doc.add_cell(
@@ -381,6 +420,13 @@ int main()
     assert(contains(response.body, "\"ok\":false"));
     assert(contains(response.body, "\"status\":\"skipped\""));
     assert(contains(response.body, "\"message\":\"Reply cell execution is not available yet\""));
+
+    assert(contains(response.body, "\"result\":{"));
+    assert(contains(response.body, "\"cell\":{"));
+    assert(contains(response.body, "\"index\":0"));
+    assert(contains(response.body, "\"id\":\"reply\""));
+    assert(contains(response.body, "\"executionCount\":1"));
+    assert(contains(response.body, "\"outputs\":[]"));
 
     assert(routes.document().cells()[0].execution_count() == 1);
     assert(routes.kernel().session().has_records());
@@ -419,6 +465,14 @@ int main()
     assert(contains(response.body, "\"status\":\"success\""));
     assert(contains(response.body, "\"message\":\"C++ cell executed\""));
     assert(contains(response.body, "routes cpp ok"));
+    assert(contains(response.body, "\"result\":{"));
+    assert(contains(response.body, "\"cell\":{"));
+    assert(contains(response.body, "\"index\":0"));
+    assert(contains(response.body, "\"id\":\"cpp\""));
+    assert(contains(response.body, "\"executionCount\":1"));
+    assert(contains(response.body, "\"outputCount\":1"));
+    assert(contains(response.body, "\"outputs\":["));
+    assert(contains(response.body, "\"kind\":\"stdout\""));
 
     assert(routes.document().cells()[0].execution_count() == 1);
     assert(routes.document().cells()[0].has_outputs());
@@ -454,6 +508,13 @@ int main()
     assert(contains(response.body, "\"status\":\"failure\""));
     assert(contains(response.body, "\"exitCode\":7"));
     assert(contains(response.body, "simulated routes failure"));
+    assert(contains(response.body, "\"result\":{"));
+    assert(contains(response.body, "\"cell\":{"));
+    assert(contains(response.body, "\"index\":0"));
+    assert(contains(response.body, "\"id\":\"cpp\""));
+    assert(contains(response.body, "\"executionCount\":1"));
+    assert(contains(response.body, "\"outputCount\":1"));
+    assert(contains(response.body, "\"kind\":\"error\""));
 
     assert(routes.document().cells()[0].execution_count() == 1);
     assert(routes.kernel().session().records().size() == 1);
@@ -479,6 +540,12 @@ int main()
     assert(contains(response.body, "\"visited\":2"));
     assert(contains(response.body, "\"executed\":1"));
     assert(contains(response.body, "\"status\":\"skipped\""));
+    assert(contains(response.body, "\"results\":["));
+    assert(contains(response.body, "\"document\":{"));
+    assert(contains(response.body, "\"cellCount\":2"));
+    assert(contains(response.body, "\"index\":0"));
+    assert(contains(response.body, "\"index\":1"));
+    assert(contains(response.body, "\"executionCount\":1"));
 
     assert(routes.document().cells()[0].execution_count() == 0);
     assert(routes.document().cells()[1].execution_count() == 1);
@@ -536,7 +603,13 @@ int main()
 
     assert(response.status == 500);
     assert(!response.ok());
+    assert(response.contentType == "application/json; charset=utf-8");
+
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "\"result\":{"));
+    assert(contains(response.body, "\"status\":\"failure\""));
     assert(contains(response.body, "\"message\":\"cell index out of range\""));
+    assert(contains(response.body, "\"cell\":null"));
   }
 
   {
