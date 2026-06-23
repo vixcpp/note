@@ -1,0 +1,17 @@
+# Hello Vix Note
+
+This is the smallest Vix Note example.
+
+It shows how a note can mix explanation and executable C++ code.
+
+```cpp
+#include <iostream>
+
+int main()
+{
+  std::cout << "Hello from Vix Note" << std::endl;
+  return 0;
+}
+```
+
+The output stays attached to the cell, so the reader can understand the code and the result together.

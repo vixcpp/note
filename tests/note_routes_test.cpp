@@ -1,0 +1,573 @@
+/**
+ *
+ *  @file note_routes_test.cpp
+ *  @author Gaspard Kirira
+ *
+ *  Copyright 2026, Gaspard Kirira.
+ *  All rights reserved.
+ *  https://github.com/vixcpp/note
+ *
+ *  Use of this source code is governed by a MIT license
+ *  that can be found in the LICENSE file.
+ *
+ *  Vix Note
+ *
+ */
+
+#include <vix/note/core/NoteCell.hpp>
+#include <vix/note/core/NoteDocument.hpp>
+#include <vix/note/runtime/NoteKernel.hpp>
+#include <vix/note/web/NoteRoutes.hpp>
+
+#include <cassert>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <string>
+#include <string_view>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
+namespace
+{
+  std::filesystem::path make_test_root()
+  {
+    const auto now =
+        std::chrono::steady_clock::now().time_since_epoch().count();
+
+    return std::filesystem::temp_directory_path() /
+           ("vix-note-routes-test-" + std::to_string(now));
+  }
+
+  void write_file(const std::filesystem::path &path, const std::string &content)
+  {
+    std::filesystem::create_directories(path.parent_path());
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << content;
+  }
+
+  std::filesystem::path make_fake_vix_command(const std::filesystem::path &root)
+  {
+#ifdef _WIN32
+    const std::filesystem::path command = root / "fake-vix.bat";
+
+    write_file(
+        command,
+        "@echo off\n"
+        "if \"%3\"==\"--fail\" (\n"
+        "  echo simulated routes failure\n"
+        "  exit /b 7\n"
+        ")\n"
+        "echo fake vix run\n"
+        "echo mode:%1\n"
+        "type \"%2\"\n"
+        "exit /b 0\n");
+
+    return command;
+#else
+    const std::filesystem::path command = root / "fake-vix";
+
+    write_file(
+        command,
+        "#!/bin/sh\n"
+        "if [ \"$3\" = \"--fail\" ]; then\n"
+        "  echo simulated routes failure\n"
+        "  exit 7\n"
+        "fi\n"
+        "echo fake vix run\n"
+        "echo mode:$1\n"
+        "cat \"$2\"\n"
+        "exit 0\n");
+
+    chmod(command.string().c_str(), 0755);
+
+    return command;
+#endif
+  }
+
+  vix::note::NoteKernelOptions make_kernel_options(
+      const std::filesystem::path &fakeVix,
+      const std::filesystem::path &tempDir)
+  {
+    vix::note::NoteKernelOptions options;
+    options.cppOptions.vixCommand = fakeVix.string();
+    options.cppOptions.temporaryDirectory = tempDir;
+    return options;
+  }
+
+  bool contains(const std::string &text, std::string_view needle)
+  {
+    return text.find(std::string(needle)) != std::string::npos;
+  }
+}
+
+int main()
+{
+  const std::filesystem::path root = make_test_root();
+
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  const std::filesystem::path fakeVix =
+      make_fake_vix_command(root);
+
+  {
+    assert(vix::note::to_string(vix::note::NoteRouteMethod::Unknown) == "unknown");
+    assert(vix::note::to_string(vix::note::NoteRouteMethod::Get) == "GET");
+    assert(vix::note::to_string(vix::note::NoteRouteMethod::Post) == "POST");
+    assert(vix::note::to_string(vix::note::NoteRouteMethod::Put) == "PUT");
+    assert(vix::note::to_string(vix::note::NoteRouteMethod::Delete) == "DELETE");
+
+    assert(vix::note::note_route_method_from_string("GET") == vix::note::NoteRouteMethod::Get);
+    assert(vix::note::note_route_method_from_string("post") == vix::note::NoteRouteMethod::Post);
+    assert(vix::note::note_route_method_from_string("Put") == vix::note::NoteRouteMethod::Put);
+    assert(vix::note::note_route_method_from_string("DELETE") == vix::note::NoteRouteMethod::Delete);
+    assert(vix::note::note_route_method_from_string("PATCH") == vix::note::NoteRouteMethod::Unknown);
+
+    assert(vix::note::is_note_api_path("/api/document"));
+    assert(vix::note::is_note_api_path("/api/run-all"));
+    assert(!vix::note::is_note_api_path("/assets/note.css"));
+    assert(!vix::note::is_note_api_path("/"));
+  }
+
+  {
+    vix::note::NoteRouteResponse response =
+        vix::note::NoteRouteResponse::text(201, "created");
+
+    assert(response.status == 201);
+    assert(response.ok());
+    assert(response.contentType == "text/plain; charset=utf-8");
+    assert(response.body == "created");
+  }
+
+  {
+    vix::note::NoteRouteResponse response =
+        vix::note::NoteRouteResponse::json(400, "{\"ok\":false}");
+
+    assert(response.status == 400);
+    assert(!response.ok());
+    assert(response.contentType == "application/json; charset=utf-8");
+    assert(response.body == "{\"ok\":false}");
+  }
+
+  {
+    vix::note::NoteAsset asset{
+        "/custom.txt",
+        "text/plain; charset=utf-8",
+        "hello"};
+
+    vix::note::NoteRouteResponse response =
+        vix::note::NoteRouteResponse::asset(asset);
+
+    assert(response.status == 200);
+    assert(response.ok());
+    assert(response.contentType == "text/plain; charset=utf-8");
+    assert(response.body == "hello");
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    assert(routes.options().enableApi);
+    assert(routes.options().enableAssets);
+    assert(routes.assets().contains("/"));
+    assert(routes.document().empty());
+    assert(routes.kernel().cell_count() == 0);
+  }
+
+  {
+    vix::note::NoteDocument doc("Routes Doc");
+    doc.add_markdown("# Routes Doc");
+    doc.add_reply("println(\"hello\")");
+
+    vix::note::NoteRoutes routes(doc);
+
+    assert(routes.document().title() == "Routes Doc");
+    assert(routes.document().cell_count() == 2);
+  }
+
+  {
+    vix::note::NoteRoutesOptions options;
+    options.enableApi = false;
+    options.enableAssets = false;
+
+    vix::note::NoteRoutes routes(options);
+
+    assert(!routes.options().enableApi);
+    assert(!routes.options().enableAssets);
+
+    options.enableApi = true;
+    routes.set_options(options);
+
+    assert(routes.options().enableApi);
+    assert(!routes.options().enableAssets);
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(response.contentType == "text/html; charset=utf-8");
+    assert(contains(response.body, "Vix Note"));
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/index.html");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(response.contentType == "text/html; charset=utf-8");
+    assert(contains(response.body, "<!doctype html>"));
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse css =
+        routes.get("/assets/note.css");
+
+    assert(css.ok());
+    assert(css.contentType == "text/css; charset=utf-8");
+    assert(contains(css.body, ".note-shell"));
+
+    vix::note::NoteRouteResponse js =
+        routes.get("/assets/note.js");
+
+    assert(js.ok());
+    assert(js.contentType == "application/javascript; charset=utf-8");
+    assert(contains(js.body, "run-cell"));
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    routes.assets().add_or_replace(
+        vix::note::NoteAsset{
+            "/custom.json",
+            "",
+            "{\"hello\":true}"});
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/custom.json");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(response.contentType == "application/json; charset=utf-8");
+    assert(response.body == "{\"hello\":true}");
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/missing.txt");
+
+    assert(response.status == 404);
+    assert(!response.ok());
+    assert(response.body == "not found");
+  }
+
+  {
+    vix::note::NoteRoutesOptions options;
+    options.enableAssets = false;
+
+    vix::note::NoteRoutes routes(options);
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/");
+
+    assert(response.status == 404);
+    assert(!response.ok());
+    assert(response.body == "not found");
+  }
+
+  {
+    vix::note::NoteDocument doc("API Doc");
+    doc.set_path("examples/api.vixnote");
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "intro",
+            vix::note::NoteCellKind::Markdown,
+            "# API Doc"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "run",
+            vix::note::NoteCellKind::Reply,
+            "println(\"hello\")"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/api/document");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(response.contentType == "application/json; charset=utf-8");
+
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"title\":\"API Doc\""));
+    assert(contains(response.body, "\"path\":\"examples/api.vixnote\""));
+    assert(contains(response.body, "\"cellCount\":2"));
+    assert(contains(response.body, "\"id\":\"intro\""));
+    assert(contains(response.body, "\"kind\":\"markdown\""));
+    assert(contains(response.body, "\"id\":\"run\""));
+    assert(contains(response.body, "\"kind\":\"reply\""));
+    assert(contains(response.body, "\"executable\":true"));
+  }
+
+  {
+    vix::note::NoteDocument doc("Escaped Doc");
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "quote",
+            vix::note::NoteCellKind::Markdown,
+            "# Title \"quoted\"\nline two"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/api/document");
+
+    assert(response.ok());
+    assert(contains(response.body, "# Title \\\"quoted\\\"\\nline two"));
+  }
+
+  {
+    vix::note::NoteRoutesOptions options;
+    options.enableApi = false;
+
+    vix::note::NoteRoutes routes(options);
+
+    vix::note::NoteRouteResponse response =
+        routes.get("/api/document");
+
+    assert(response.status == 404);
+    assert(!response.ok());
+    assert(response.body == "not found");
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "reply",
+            vix::note::NoteCellKind::Reply,
+            "println(\"hello\")"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/cells/0/run");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(response.contentType == "application/json; charset=utf-8");
+
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "\"status\":\"skipped\""));
+    assert(contains(response.body, "\"message\":\"Reply cell execution is not available yet\""));
+
+    assert(routes.document().cells()[0].execution_count() == 1);
+    assert(routes.kernel().session().has_records());
+    assert(routes.kernel().session().records().size() == 1);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "cpp",
+            vix::note::NoteCellKind::Cpp,
+            "#include <iostream>\n"
+            "int main()\n"
+            "{\n"
+            "  std::cout << \"routes cpp ok\" << std::endl;\n"
+            "  return 0;\n"
+            "}\n"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteKernelOptions options =
+        make_kernel_options(fakeVix, root / "tmp-routes-cpp");
+
+    routes.kernel().set_options(options);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/cells/0/run");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(response.contentType == "application/json; charset=utf-8");
+
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"status\":\"success\""));
+    assert(contains(response.body, "\"message\":\"C++ cell executed\""));
+    assert(contains(response.body, "routes cpp ok"));
+
+    assert(routes.document().cells()[0].execution_count() == 1);
+    assert(routes.document().cells()[0].has_outputs());
+    assert(routes.document().cells()[0].outputs()[0].content.find("routes cpp ok") != std::string::npos);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "cpp",
+            vix::note::NoteCellKind::Cpp,
+            "int main() { return 0; }\n"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteKernelOptions options =
+        make_kernel_options(fakeVix, root / "tmp-routes-cpp-fail");
+
+    options.cppOptions.runArgs.push_back("--fail");
+
+    routes.kernel().set_options(options);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/cells/0/run");
+
+    assert(response.status == 500);
+    assert(!response.ok());
+    assert(response.contentType == "application/json; charset=utf-8");
+
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "\"status\":\"failure\""));
+    assert(contains(response.body, "\"exitCode\":7"));
+    assert(contains(response.body, "simulated routes failure"));
+
+    assert(routes.document().cells()[0].execution_count() == 1);
+    assert(routes.kernel().session().records().size() == 1);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_markdown("# Intro");
+    doc.add_reply("println(\"hello\")");
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/run-all");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(response.contentType == "application/json; charset=utf-8");
+
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"stopped\":false"));
+    assert(contains(response.body, "\"visited\":2"));
+    assert(contains(response.body, "\"executed\":1"));
+    assert(contains(response.body, "\"status\":\"skipped\""));
+
+    assert(routes.document().cells()[0].execution_count() == 0);
+    assert(routes.document().cells()[1].execution_count() == 1);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cpp("int main() { return 0; }\n");
+    doc.add_cpp("int main() { return 0; }\n");
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteKernelOptions options =
+        make_kernel_options(fakeVix, root / "tmp-routes-run-all-fail");
+
+    options.stopOnFirstFailure = true;
+    options.cppOptions.runArgs.push_back("--fail");
+
+    routes.kernel().set_options(options);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/run-all");
+
+    assert(response.status == 500);
+    assert(!response.ok());
+
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "\"stopped\":true"));
+    assert(contains(response.body, "\"visited\":1"));
+    assert(contains(response.body, "\"executed\":1"));
+    assert(contains(response.body, "simulated routes failure"));
+
+    assert(routes.document().cells()[0].execution_count() == 1);
+    assert(routes.document().cells()[1].execution_count() == 0);
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/cells/abc/run");
+
+    assert(response.status == 404);
+    assert(!response.ok());
+    assert(response.contentType == "application/json; charset=utf-8");
+    assert(response.body == "{\"ok\":false,\"error\":\"api route not found\"}");
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/cells/99/run");
+
+    assert(response.status == 500);
+    assert(!response.ok());
+    assert(contains(response.body, "\"message\":\"cell index out of range\""));
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteRequest request;
+    request.method = vix::note::NoteRouteMethod::Put;
+    request.path = "/api/document";
+
+    vix::note::NoteRouteResponse response =
+        routes.handle(request);
+
+    assert(response.status == 404);
+    assert(!response.ok());
+    assert(response.contentType == "application/json; charset=utf-8");
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteDocument doc("Replaced");
+    doc.add_cpp("int main() { return 0; }");
+
+    routes.set_document(doc);
+
+    assert(routes.document().title() == "Replaced");
+    assert(routes.document().cell_count() == 1);
+    assert(routes.kernel().can_execute_cell(0));
+  }
+
+  std::filesystem::remove_all(root);
+
+  return 0;
+}

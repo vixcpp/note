@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <meta
+      name="description"
+      content="Vix Note is a visual executable note workspace for learning C++ and Vix.cpp faster."
+    />
+
+    <title>Vix Note</title>
+
+    <link rel="stylesheet" href="./css/note.css" />
+  </head>
+
+  <body>
+    <div class="note-app">
+      <aside class="note-sidebar" aria-label="Notebook sidebar">
+        <div class="note-brand">
+          <div class="note-brand__mark" aria-hidden="true">V</div>
+
+          <div>
+            <p class="note-brand__eyebrow">Vix.cpp</p>
+            <h1 class="note-brand__title">Note</h1>
+          </div>
+        </div>
+
+        <nav class="note-nav" aria-label="Notebook sections">
+          <a class="note-nav__item note-nav__item--active" href="#workspace">
+            Workspace
+          </a>
+
+          <a class="note-nav__item" href="#cells"> Cells </a>
+
+          <a class="note-nav__item" href="#outputs"> Outputs </a>
+        </nav>
+
+        <div class="note-sidebar__footer">
+          <p>Visual executable notes for learning C++ and Vix.cpp faster.</p>
+        </div>
+      </aside>
+
+      <main class="note-main" id="workspace">
+        <header class="note-header">
+          <div>
+            <p class="note-header__eyebrow">Learning workspace</p>
+
+            <h2 class="note-header__title">
+              Write, run, and understand C++ step by step.
+            </h2>
+
+            <p class="note-header__description">
+              Vix Note keeps explanations, code cells, and outputs together so
+              learning C++ feels visual instead of hidden inside a terminal.
+            </p>
+          </div>
+
+          <div class="note-actions" aria-label="Notebook actions">
+            <button
+              class="note-button note-button--ghost"
+              type="button"
+              data-action="save"
+            >
+              Save
+            </button>
+
+            <button
+              class="note-button note-button--primary"
+              type="button"
+              data-action="run-all"
+            >
+              Run all
+            </button>
+          </div>
+        </header>
+
+        <section class="note-status" aria-label="Notebook status">
+          <article class="note-status__card">
+            <span class="note-status__label">Document</span>
+            <strong class="note-status__value">Untitled note</strong>
+          </article>
+
+          <article class="note-status__card">
+            <span class="note-status__label">Cells</span>
+            <strong class="note-status__value">2</strong>
+          </article>
+
+          <article class="note-status__card">
+            <span class="note-status__label">Kernel</span>
+            <strong class="note-status__value">Idle</strong>
+          </article>
+        </section>
+
+        <section class="note-workspace" id="cells">
+          <article class="note-cell note-cell--markdown">
+            <div class="note-cell__bar">
+              <span class="note-cell__kind">Markdown</span>
+              <span class="note-cell__meta">Explanation</span>
+            </div>
+
+            <div class="note-cell__body">
+              <h3>Welcome to Vix Note</h3>
+
+              <p>
+                This space is for learning C++ visually. You can write an
+                explanation, place a C++ cell below it, run the code, and keep
+                the output attached to the lesson.
+              </p>
+            </div>
+          </article>
+
+          <article class="note-cell note-cell--cpp">
+            <div class="note-cell__bar">
+              <span class="note-cell__kind">C++</span>
+
+              <button
+                class="note-cell__run"
+                type="button"
+                data-action="run-cell"
+              >
+                Run
+              </button>
+            </div>
+
+            <pre class="note-code"><code>#include &lt;iostream&gt;
+
+int main()
+{
+  std::cout &lt;&lt; "Hello from Vix Note\n";
+  return 0;
+}</code></pre>
+
+            <div class="note-output" id="outputs" hidden>
+              Execution will appear here.
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="./js/note.js"></script>
+  </body>
+</html>

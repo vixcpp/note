@@ -1,0 +1,67 @@
+# Vix UI Note
+
+This note shows the direction of Vix Note as a visual workspace.
+
+The notebook UI itself can later be served by Vix and opened locally.
+
+## Why UI first?
+
+`vix repl` is already the terminal experience.
+
+Vix Note should be different.
+
+It should help learners see:
+
+- explanations;
+- code cells;
+- outputs;
+- errors;
+- progress;
+- exported lessons.
+
+## Simple C++ cell
+
+```cpp
+#include <iostream>
+#include <string>
+
+int main()
+{
+  std::string module = "Vix Note";
+
+  std::cout << module << " is a visual learning workspace." << std::endl;
+
+  return 0;
+}
+```
+
+## Raw HTML cell
+
+```html
+<section>
+  <h2>Visual learning</h2>
+  <p>
+    Vix Note keeps code and explanation together.
+  </p>
+</section>
+```
+
+## Future direction
+
+Later, this note can be opened through a local UI:
+
+```reply
+Vix.note.open("examples/vix_ui_note.vixnote")
+```
+
+The first version keeps the architecture simple:
+
+- document model;
+- parser;
+- storage;
+- kernel;
+- routes;
+- server facade;
+- HTML export.
+
+After that, Vix Note can connect to the real Vix server layer.
