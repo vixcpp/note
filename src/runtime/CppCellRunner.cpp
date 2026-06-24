@@ -126,6 +126,53 @@ namespace vix::note
       return value;
     }
 
+    std::string strip_ansi_codes(const std::string &text)
+    {
+      std::string out;
+      out.reserve(text.size());
+
+      for (std::size_t i = 0; i < text.size(); ++i)
+      {
+        const unsigned char c =
+            static_cast<unsigned char>(text[i]);
+
+        if (c != 0x1B)
+        {
+          out.push_back(static_cast<char>(c));
+          continue;
+        }
+
+        if (i + 1 >= text.size())
+        {
+          break;
+        }
+
+        if (text[i + 1] == '[')
+        {
+          i += 2;
+
+          while (i < text.size())
+          {
+            const unsigned char code =
+                static_cast<unsigned char>(text[i]);
+
+            if (code >= 0x40 && code <= 0x7E)
+            {
+              break;
+            }
+
+            ++i;
+          }
+
+          continue;
+        }
+
+        ++i;
+      }
+
+      return out;
+    }
+
     std::filesystem::path make_temp_cpp_file(
         const CppCellRunnerOptions &options,
         std::string &err)
@@ -250,6 +297,8 @@ namespace vix::note
             << shell_quote(options.workingDirectory.string())
             << " && ";
       }
+
+      cmd << "set VIX_COLOR=never && ";
 #else
       if (!options.workingDirectory.empty())
       {
@@ -257,6 +306,8 @@ namespace vix::note
             << shell_quote(options.workingDirectory.string())
             << " && ";
       }
+
+      cmd << "VIX_COLOR=never ";
 #endif
 
       cmd << shell_quote(options.vixCommand)
@@ -428,12 +479,22 @@ namespace vix::note
     {
       const std::string lower = lower_copy(text);
 
-      return contains_text(lower, "error:") ||
-             contains_text(lower, "fatal error:") ||
+      if (contains_text(lower, "runtime error:") ||
+          contains_text(lower, "runtime log:") ||
+          contains_text(lower, "segmentation fault") ||
+          contains_text(lower, "aborted") ||
+          contains_text(lower, "floating point exception") ||
+          contains_text(lower, "core dumped"))
+      {
+        return false;
+      }
+
+      return contains_text(lower, "fatal error:") ||
              contains_text(lower, "undefined reference") ||
              contains_text(lower, "not declared in this scope") ||
-             contains_text(lower, "expected") ||
-             contains_text(lower, "no such file or directory");
+             contains_text(lower, "no such file or directory") ||
+             contains_text(lower, ": error:") ||
+             contains_text(lower, " error:");
     }
 
     bool looks_like_runtime_error(
@@ -531,28 +592,23 @@ namespace vix::note
         result.add_stdout(process.stdoutText);
       }
 
-      if (!process.stderrText.empty())
+      if (errorText.empty())
       {
-        result.add_stderr(process.stderrText);
+        result.add_error("C++ cell failed with exit code " + std::to_string(process.exitCode));
+        return;
       }
 
-      if (!errorText.empty())
+      if (looks_like_runtime_error(errorText, process.exitCode))
       {
-        result.add_error(errorText);
+        result.add_runtime_error(errorText);
       }
-
-      if (!errorText.empty() && looks_like_compiler_error(errorText))
+      else if (looks_like_compiler_error(errorText))
       {
         result.add_compiler_error(errorText);
       }
-      else if (!errorText.empty() &&
-               looks_like_runtime_error(errorText, process.exitCode))
+      else
       {
-        result.add_runtime_error(errorText);
-      }
-      else if (!errorText.empty())
-      {
-        result.add_runtime_error(errorText);
+        result.add_error(errorText);
       }
 
       if (options.enableErrorHints)
@@ -563,7 +619,7 @@ namespace vix::note
         }
       }
 
-      if (options.includeRawLog && !process.mergedText.empty())
+      if (options.debugMode && options.includeRawLog && !process.mergedText.empty())
       {
         result.add_raw_log(process.mergedText);
       }
@@ -667,6 +723,10 @@ namespace vix::note
       process =
           run_command_capture_merged(command);
     }
+
+    process.stdoutText = strip_ansi_codes(process.stdoutText);
+    process.stderrText = strip_ansi_codes(process.stderrText);
+    process.mergedText = strip_ansi_codes(process.mergedText);
 
     const auto end =
         std::chrono::steady_clock::now();

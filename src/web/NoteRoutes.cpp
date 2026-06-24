@@ -93,7 +93,9 @@ namespace vix::note
       std::string out;
       out.reserve(value.size() + 8);
 
-      for (char c : value)
+      const char hex[] = "0123456789abcdef";
+
+      for (unsigned char c : value)
       {
         switch (c)
         {
@@ -117,8 +119,26 @@ namespace vix::note
           out += "\\t";
           break;
 
+        case '\b':
+          out += "\\b";
+          break;
+
+        case '\f':
+          out += "\\f";
+          break;
+
         default:
-          out.push_back(c);
+          if (c < 0x20)
+          {
+            out += "\\u00";
+            out.push_back(hex[(c >> 4) & 0x0F]);
+            out.push_back(hex[c & 0x0F]);
+          }
+          else
+          {
+            out.push_back(static_cast<char>(c));
+          }
+
           break;
         }
       }
@@ -630,7 +650,7 @@ namespace vix::note
           kernel_.run_all();
 
       return NoteRouteResponse::json(
-          result.ok ? 200 : 500,
+          200,
           run_result_json(result));
     }
 

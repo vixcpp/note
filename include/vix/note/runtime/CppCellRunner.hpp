@@ -102,7 +102,7 @@ namespace vix::note
      * Raw logs are useful when the beginner-friendly output hides too much
      * detail or when a user wants to inspect the exact command output.
      */
-    bool includeRawLog = true;
+    bool includeRawLog = false;
 
     /**
      * @brief Adds simple beginner-friendly hints for common C++ errors.
