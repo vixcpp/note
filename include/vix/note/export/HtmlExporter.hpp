@@ -56,6 +56,26 @@ namespace vix::note
     bool includeExecutionCounts = true;
 
     /**
+     * @brief Includes document metadata in standalone exports.
+     */
+    bool includeDocumentMetadata = true;
+
+    /**
+     * @brief Includes a simple table of contents when headings are found.
+     */
+    bool includeTableOfContents = true;
+
+    /**
+     * @brief Includes visible labels above cell outputs.
+     */
+    bool includeOutputLabels = true;
+
+    /**
+     * @brief Adds print-friendly CSS rules to standalone exports.
+     */
+    bool printableLayout = true;
+
+    /**
      * @brief Default page title used when the document has no title.
      */
     std::string defaultTitle = "Vix Note";
@@ -152,6 +172,22 @@ namespace vix::note
     std::string render_body(const NoteDocument &document) const;
 
     /**
+     * @brief Renders document metadata.
+     *
+     * @param document Document to render metadata for.
+     * @return Rendered metadata markup.
+     */
+    std::string render_document_metadata(const NoteDocument &document) const;
+
+    /**
+     * @brief Renders a simple table of contents.
+     *
+     * @param document Document used to build the table of contents.
+     * @return Rendered table of contents markup.
+     */
+    std::string render_table_of_contents(const NoteDocument &document) const;
+
+    /**
      * @brief Renders a single note cell.
      *
      * @param cell  Cell to render.
@@ -161,6 +197,14 @@ namespace vix::note
     std::string render_cell(
         const NoteCell &cell,
         std::size_t index) const;
+
+    /**
+     * @brief Renders a single output.
+     *
+     * @param output Output to render.
+     * @return Rendered output markup.
+     */
+    std::string render_output(const NoteOutput &output) const;
 
     /**
      * @brief Renders cell outputs.

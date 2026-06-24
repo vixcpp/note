@@ -149,6 +149,76 @@ namespace vix::note
         return "Unknown";
       }
     }
+
+    std::string output_kind_class(NoteOutputKind kind)
+    {
+      return std::string(to_string(kind));
+    }
+
+    std::string output_kind_label(NoteOutputKind kind)
+    {
+      switch (kind)
+      {
+      case NoteOutputKind::Text:
+        return "Text";
+
+      case NoteOutputKind::Stdout:
+        return "Output";
+
+      case NoteOutputKind::Stderr:
+        return "Error stream";
+
+      case NoteOutputKind::Html:
+        return "HTML output";
+
+      case NoteOutputKind::Error:
+        return "Error";
+
+      case NoteOutputKind::CompilerError:
+        return "Compiler error";
+
+      case NoteOutputKind::RuntimeError:
+        return "Runtime error";
+
+      case NoteOutputKind::Debug:
+        return "Debug";
+
+      case NoteOutputKind::Hint:
+        return "Hint";
+
+      case NoteOutputKind::RawLog:
+        return "Raw log";
+      }
+
+      return "Output";
+    }
+
+    std::string code_language_class(NoteCellKind kind)
+    {
+      switch (kind)
+      {
+      case NoteCellKind::Cpp:
+        return "language-cpp";
+
+      case NoteCellKind::Reply:
+        return "language-reply";
+
+      case NoteCellKind::Html:
+        return "language-html";
+
+      case NoteCellKind::Markdown:
+        return "language-markdown";
+
+      case NoteCellKind::Unknown:
+      default:
+        return "language-text";
+      }
+    }
+
+    std::string heading_id(std::size_t index)
+    {
+      return "section-" + std::to_string(index + 1);
+    }
   }
 
   HtmlExporter::HtmlExporter() = default;
@@ -381,6 +451,106 @@ namespace vix::note
       background: var(--note-error-bg);
     }
 
+    .vix-note-export__meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin: 14px 0 0;
+      color: var(--note-muted);
+      font-size: 0.95rem;
+    }
+
+    .vix-note-toc {
+      margin: 0 0 24px;
+      padding: 18px 20px;
+      border: 1px solid var(--note-border);
+      border-radius: 18px;
+      background: var(--note-panel);
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.04);
+    }
+
+    .vix-note-toc h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+
+    .vix-note-toc ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .vix-note-toc a {
+      color: var(--note-accent);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .vix-note-toc a:hover {
+      text-decoration: underline;
+    }
+
+    .vix-note-code code {
+      font-family:
+        "JetBrains Mono",
+        "SFMono-Regular",
+        Consolas,
+        monospace;
+    }
+
+    .vix-note-output-wrap {
+      display: grid;
+      gap: 6px;
+    }
+
+    .vix-note-output__label {
+      margin: 0;
+      color: var(--note-muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .vix-note-output--compiler_error,
+    .vix-note-output--runtime_error,
+    .vix-note-output--error,
+    .vix-note-output--stderr {
+      background: var(--note-error-bg);
+      color: #7f1d1d;
+    }
+
+    .vix-note-output--hint {
+      background: #ecfdf5;
+      color: #065f46;
+    }
+
+    .vix-note-output--debug,
+    .vix-note-output--raw_log {
+      background: #eef2ff;
+      color: #312e81;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+
+      .vix-note-export {
+        width: 100%;
+        padding: 0;
+      }
+
+      .vix-note-cell,
+      .vix-note-toc {
+        break-inside: avoid;
+        box-shadow: none;
+      }
+
+      .vix-note-code {
+        white-space: pre-wrap;
+      }
+    }
+
     @media (max-width: 720px) {
       .vix-note-export {
         width: min(100% - 20px, 1040px);
@@ -402,17 +572,19 @@ namespace vix::note
     out << "    <h1 class=\"vix-note-export__title\">"
         << html_escape(title)
         << "</h1>\n";
-    out << "    <p class=\"vix-note-export__meta\">"
-        << document.cell_count()
-        << " cell";
 
-    if (document.cell_count() != 1)
+    if (options_.includeDocumentMetadata)
     {
-      out << "s";
+      out << render_document_metadata(document);
     }
 
-    out << "</p>\n";
     out << "  </header>\n";
+
+    if (options_.includeTableOfContents)
+    {
+      out << render_table_of_contents(document);
+    }
+
     out << "  <section class=\"vix-note-export__cells\">\n";
 
     for (std::size_t i = 0; i < document.cells().size(); ++i)
@@ -426,13 +598,102 @@ namespace vix::note
     return out.str();
   }
 
+  std::string HtmlExporter::render_document_metadata(const NoteDocument &document) const
+  {
+    std::ostringstream out;
+
+    out << "    <div class=\"vix-note-export__meta\">\n";
+    out << "      <span>"
+        << document.cell_count()
+        << " cell";
+
+    if (document.cell_count() != 1)
+    {
+      out << "s";
+    }
+
+    out << "</span>\n";
+
+    if (!document.path().empty())
+    {
+      out << "      <span>"
+          << html_escape(document.path())
+          << "</span>\n";
+    }
+
+    out << "      <span>execution count: "
+        << document.execution_count()
+        << "</span>\n";
+
+    out << "    </div>\n";
+
+    return out.str();
+  }
+
+  std::string HtmlExporter::render_table_of_contents(const NoteDocument &document) const
+  {
+    std::ostringstream items;
+
+    std::size_t count = 0;
+
+    for (std::size_t i = 0; i < document.cells().size(); ++i)
+    {
+      const NoteCell &cell = document.cells()[i];
+
+      if (cell.kind() != NoteCellKind::Markdown)
+      {
+        continue;
+      }
+
+      std::istringstream in(cell.source());
+      std::string line;
+
+      while (std::getline(in, line))
+      {
+        const std::string trimmed = trim_copy(line);
+
+        if (!starts_with(trimmed, "# "))
+        {
+          continue;
+        }
+
+        items << "      <li><a href=\"#"
+              << heading_id(i)
+              << "\">"
+              << html_escape(trim_copy(std::string_view(trimmed).substr(2)))
+              << "</a></li>\n";
+
+        ++count;
+        break;
+      }
+    }
+
+    if (count == 0)
+    {
+      return {};
+    }
+
+    std::ostringstream out;
+
+    out << "  <nav class=\"vix-note-toc\" aria-label=\"Table of contents\">\n";
+    out << "    <h2>Contents</h2>\n";
+    out << "    <ol>\n";
+    out << items.str();
+    out << "    </ol>\n";
+    out << "  </nav>\n";
+
+    return out.str();
+  }
+
   std::string HtmlExporter::render_cell(
       const NoteCell &cell,
       std::size_t index) const
   {
     std::ostringstream out;
 
-    out << "    <article class=\"vix-note-cell vix-note-cell--"
+    out << "    <article id=\""
+        << heading_id(index)
+        << "\" class=\"vix-note-cell vix-note-cell--"
         << cell_kind_class(cell.kind())
         << "\">\n";
 
@@ -479,9 +740,12 @@ namespace vix::note
     case NoteCellKind::Cpp:
     case NoteCellKind::Unknown:
     default:
-      out << "      <pre class=\"vix-note-code\"><code>"
+      out << "      <pre class=\"vix-note-code\"><code class=\""
+          << code_language_class(cell.kind())
+          << "\">"
           << html_escape(cell.source())
           << "</code></pre>\n";
+      ;
       break;
     }
 
@@ -503,14 +767,46 @@ namespace vix::note
 
     for (const NoteOutput &output : cell.outputs())
     {
-      out << "        <pre class=\"vix-note-output vix-note-output--"
-          << to_string(output.kind)
+      out << render_output(output);
+    }
+
+    out << "      </div>\n";
+
+    return out.str();
+  }
+
+  std::string HtmlExporter::render_output(const NoteOutput &output) const
+  {
+    std::ostringstream out;
+
+    out << "        <section class=\"vix-note-output-wrap vix-note-output-wrap--"
+        << output_kind_class(output.kind)
+        << "\">\n";
+
+    if (options_.includeOutputLabels)
+    {
+      out << "          <p class=\"vix-note-output__label\">"
+          << html_escape(output_kind_label(output.kind))
+          << "</p>\n";
+    }
+
+    if (output.kind == NoteOutputKind::Html)
+    {
+      out << "          <div class=\"vix-note-output vix-note-output--html\">\n";
+      out << output.content;
+      out << "\n";
+      out << "          </div>\n";
+    }
+    else
+    {
+      out << "          <pre class=\"vix-note-output vix-note-output--"
+          << output_kind_class(output.kind)
           << "\">"
           << html_escape(output.content)
           << "</pre>\n";
     }
 
-    out << "      </div>\n";
+    out << "        </section>\n";
 
     return out.str();
   }
