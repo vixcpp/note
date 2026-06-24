@@ -157,46 +157,40 @@ function(vix_note_append_if_exists out_var path_value)
 endfunction()
 
 # ============================================================================
-# Reply module
-# - ReplyCellRunner depends on vix::reply.
-# - Same style as CLI:
-#   1) use target already created by umbrella
-#   2) use local sibling module ../reply
-#   3) fallback to installed package
+# Reply runtime implementation
+# - Reply is used internally by Note's ReplyCellRunner.
+# - It is not part of the Vix umbrella export.
+# - Therefore we embed Reply sources into vix_note instead of exporting a
+#   vix::reply dependency through VixTargets.
 # ============================================================================
 
 get_filename_component(_VIX_NOTE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 set(_VIX_REPLY_DIR "${_VIX_NOTE_MODULES_DIR}/reply")
 
-if(NOT TARGET vix::reply AND NOT TARGET vix::vix_reply)
-  if(EXISTS "${_VIX_REPLY_DIR}/CMakeLists.txt")
-    message(STATUS "[note] Building inside Vix repo -> resolving local reply module")
+if(EXISTS "${_VIX_REPLY_DIR}/CMakeLists.txt")
+  message(STATUS "[note] Embedding local reply runtime from ${_VIX_REPLY_DIR}")
 
-    set(VIX_REPLY_BUILD_TESTS OFF CACHE BOOL "Build Vix Reply tests" FORCE)
-    set(VIX_REPLY_BUILD_EXAMPLES OFF CACHE BOOL "Build Vix Reply examples" FORCE)
+  file(GLOB_RECURSE VIX_NOTE_REPLY_SOURCES
+    CONFIGURE_DEPENDS
+    "${_VIX_REPLY_DIR}/src/*.cpp"
+  )
 
-    add_subdirectory("${_VIX_REPLY_DIR}" "${CMAKE_BINARY_DIR}/_vix_reply")
-  else()
-    message(STATUS "[note] Local reply module not found -> trying installed package")
+  target_sources(vix_note PRIVATE ${VIX_NOTE_REPLY_SOURCES})
 
-    find_package(vix_reply CONFIG QUIET)
-  endif()
-endif()
+  target_include_directories(vix_note
+    PRIVATE
+      "${_VIX_REPLY_DIR}/include"
+  )
 
-if(TARGET vix::reply)
-  message(STATUS "[note] Reply runtime enabled")
-  target_link_libraries(vix_note PUBLIC vix::reply)
-elseif(TARGET vix::vix_reply)
-  message(STATUS "[note] Reply runtime enabled")
-  target_link_libraries(vix_note PUBLIC vix::vix_reply)
+  target_compile_definitions(vix_note
+    PRIVATE
+      VIX_NOTE_HAS_REPLY=1
+  )
 else()
   message(FATAL_ERROR
     "Missing dependency for vix_note.\n"
-    "Expected one of:\n"
-    "  - umbrella target vix::reply\n"
-    "  - local sibling module in ../reply\n"
-    "  - installed package providing vix::reply or vix::vix_reply"
+    "Expected local sibling module in ../reply because Note uses ReplyCellRunner."
   )
 endif()
 
