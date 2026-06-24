@@ -79,6 +79,11 @@ namespace vix::note
     bool openBrowser = false;
 
     /**
+     * @brief Prints simple local server request logs to stderr.
+     */
+    bool logRequests = false;
+
+    /**
      * @brief Route behavior used by the server.
      */
     NoteRoutesOptions routeOptions;

@@ -26,6 +26,7 @@
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <iostream>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -570,7 +571,8 @@ namespace vix::note
     NoteResult start(
         NoteRoutes &routes,
         std::string_view host,
-        std::uint16_t port)
+        std::uint16_t port,
+        bool logRequests)
     {
       if (running())
       {
@@ -596,6 +598,7 @@ namespace vix::note
       routes_ = &routes;
       serverSocket_ = socket;
       running_.store(true);
+      logRequests_ = logRequests;
 
       worker_ =
           std::thread(
@@ -709,6 +712,18 @@ namespace vix::note
         }
       }
 
+      if (logRequests_)
+      {
+        std::cerr
+            << "[vix note] "
+            << to_string(request.method)
+            << " "
+            << (request.path.empty() ? "<bad-request>" : request.path)
+            << " -> "
+            << response.status
+            << '\n';
+      }
+
       const std::string payload =
           make_http_response(response);
 
@@ -718,6 +733,7 @@ namespace vix::note
     std::atomic<bool> running_{false};
     NoteSocket serverSocket_{invalid_socket_value};
     NoteRoutes *routes_{nullptr};
+    bool logRequests_ = false;
     std::thread worker_;
   };
 
@@ -853,7 +869,8 @@ namespace vix::note
         runtime_->start(
             routes_,
             options_.host,
-            options_.port);
+            options_.port,
+            options_.logRequests);
 
     if (!runtimeResult.ok())
     {

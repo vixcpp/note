@@ -299,6 +299,30 @@
     return `<div class="note-outputs" id="outputs">${rendered}</div>`;
   }
 
+  function renderRunningOutput(cellElement, message = "Running cell...") {
+    if (!cellElement) {
+      return;
+    }
+
+    const html = `
+    <div class="note-outputs" id="outputs">
+      <section class="note-output note-output--running">
+        <span class="note-output__kind">running</span>
+        <pre>${escapeHtml(message)}</pre>
+      </section>
+    </div>
+  `;
+
+    const existing = $(".note-outputs", cellElement);
+
+    if (existing) {
+      existing.outerHTML = html;
+      return;
+    }
+
+    cellElement.insertAdjacentHTML("beforeend", html);
+  }
+
   function renderCellBody(cell) {
     const kind = normalizeKind(cell.kind);
     const source = String(cell.source ?? "");
@@ -521,15 +545,21 @@
     return cell;
   }
 
-  async function syncCell(cellElement) {
-    if (!cellElement || cellElement.dataset.dirty !== "true") {
-      return;
+  async function syncCell(cellElement, options = {}) {
+    const force = Boolean(options.force);
+
+    if (!cellElement) {
+      return null;
+    }
+
+    if (!force && cellElement.dataset.dirty !== "true") {
+      return null;
     }
 
     const cell = updateLocalCell(cellElement);
 
     if (!cell) {
-      return;
+      return null;
     }
 
     const key = cellRouteKey(cellElement);
@@ -548,6 +578,8 @@
 
     cellElement.dataset.dirty = "false";
     setDirty(hasDirtyCells());
+
+    return result;
   }
 
   async function syncDirtyCells() {
@@ -555,6 +587,14 @@
 
     for (const cellElement of dirtyCells) {
       await syncCell(cellElement);
+    }
+  }
+
+  async function syncVisibleCells() {
+    const cells = $all(".note-cell");
+
+    for (const cellElement of cells) {
+      await syncCell(cellElement, { force: true });
     }
   }
 
@@ -633,13 +673,14 @@
     const key = cellRouteKey(cellElement);
 
     cellElement.classList.add("note-cell--running");
+    renderRunningOutput(cellElement, "Running this cell...");
 
     setMessage("");
     setKernelStatus("Running");
     setButtonBusy(button, true, "Running...");
 
     try {
-      await syncCell(cellElement);
+      await syncCell(cellElement, { force: true });
 
       const result = await api(
         `/api/cells/${key}/run`,
@@ -687,8 +728,16 @@
     setBusy(true);
     setButtonBusy(button, true, "Running...");
 
+    for (const cellElement of $all(".note-cell")) {
+      const runButton = $('[data-action="run-cell"]', cellElement);
+
+      if (runButton) {
+        renderRunningOutput(cellElement, "Waiting for run-all...");
+      }
+    }
+
     try {
-      await syncDirtyCells();
+      await syncVisibleCells();
 
       const result = await api(
         "/api/run-all",

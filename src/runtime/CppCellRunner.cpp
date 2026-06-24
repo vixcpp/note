@@ -630,17 +630,26 @@ namespace vix::note
         const CppCellRunnerOptions &options,
         const ProcessOutput &process)
     {
+      bool hasVisibleOutput = false;
+
       if (!process.stdoutText.empty())
       {
         result.add_stdout(process.stdoutText);
+        hasVisibleOutput = true;
       }
 
       if (!process.stderrText.empty())
       {
         result.add_stderr(process.stderrText);
+        hasVisibleOutput = true;
       }
 
-      if (options.includeRawLog && !process.mergedText.empty())
+      if (!hasVisibleOutput && options.showEmptySuccessOutput)
+      {
+        result.add_text("Program finished successfully.\nExit code: 0\nNo output.");
+      }
+
+      if (options.debugMode && options.includeRawLog && !process.mergedText.empty())
       {
         result.add_raw_log(process.mergedText);
       }

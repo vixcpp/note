@@ -105,6 +105,14 @@ namespace vix::note
     bool includeRawLog = false;
 
     /**
+     * @brief Adds a visible success output when the program exits with no output.
+     *
+     * This avoids empty notebook cells after successful executions that do not
+     * write to stdout or stderr.
+     */
+    bool showEmptySuccessOutput = true;
+
+    /**
      * @brief Adds simple beginner-friendly hints for common C++ errors.
      *
      * The hints are intentionally small and heuristic-based. They do not
