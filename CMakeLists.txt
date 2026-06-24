@@ -20,10 +20,16 @@ set(VIX_NOTE_MODULE_VERSION 0.2.0)
 # ============================================================================
 
 get_property(_VIX_NOTE_MODULE_ALREADY_INCLUDED GLOBAL PROPERTY VIX_NOTE_MODULE_ALREADY_INCLUDED)
+
 if(_VIX_NOTE_MODULE_ALREADY_INCLUDED)
   return()
 endif()
+
 set_property(GLOBAL PROPERTY VIX_NOTE_MODULE_ALREADY_INCLUDED TRUE)
+
+# ============================================================================
+# Standalone vs Umbrella
+# ============================================================================
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   project(vix_note
@@ -74,6 +80,7 @@ set(VIX_NOTE_SOURCES
   src/storage/NoteStore.cpp
 
   src/runtime/CppCellRunner.cpp
+  src/runtime/ReplyCellRunner.cpp
   src/runtime/NoteSession.cpp
   src/runtime/NoteKernel.cpp
 
@@ -134,6 +141,60 @@ else()
   vix_note_add_flag_if_supported(vix_note -Wconversion)
   vix_note_add_flag_if_supported(vix_note -Wformat=2)
   vix_note_add_flag_if_supported(vix_note -Wpedantic)
+endif()
+
+# ============================================================================
+# Dependency resolution helpers
+# ============================================================================
+
+function(vix_note_append_if_exists out_var path_value)
+  if(EXISTS "${path_value}")
+    set(${out_var} "${${out_var}};${path_value}" PARENT_SCOPE)
+  endif()
+endfunction()
+
+# ============================================================================
+# Reply module
+# - ReplyCellRunner depends on vix::reply.
+# - Same style as CLI:
+#   1) use target already created by umbrella
+#   2) use local sibling module ../reply
+#   3) fallback to installed package
+# ============================================================================
+
+get_filename_component(_VIX_NOTE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+
+set(_VIX_REPLY_DIR "${_VIX_NOTE_MODULES_DIR}/reply")
+
+if(NOT TARGET vix::reply AND NOT TARGET vix::vix_reply)
+  if(EXISTS "${_VIX_REPLY_DIR}/CMakeLists.txt")
+    message(STATUS "[note] Building inside Vix repo -> resolving local reply module")
+
+    set(VIX_REPLY_BUILD_TESTS OFF CACHE BOOL "Build Vix Reply tests" FORCE)
+    set(VIX_REPLY_BUILD_EXAMPLES OFF CACHE BOOL "Build Vix Reply examples" FORCE)
+
+    add_subdirectory("${_VIX_REPLY_DIR}" "${CMAKE_BINARY_DIR}/_vix_reply")
+  else()
+    message(STATUS "[note] Local reply module not found -> trying installed package")
+
+    find_package(vix_reply CONFIG QUIET)
+  endif()
+endif()
+
+if(TARGET vix::reply)
+  message(STATUS "[note] Reply runtime enabled")
+  target_link_libraries(vix_note PUBLIC vix::reply)
+elseif(TARGET vix::vix_reply)
+  message(STATUS "[note] Reply runtime enabled")
+  target_link_libraries(vix_note PUBLIC vix::vix_reply)
+else()
+  message(FATAL_ERROR
+    "Missing dependency for vix_note.\n"
+    "Expected one of:\n"
+    "  - umbrella target vix::reply\n"
+    "  - local sibling module in ../reply\n"
+    "  - installed package providing vix::reply or vix::vix_reply"
+  )
 endif()
 
 # ============================================================================

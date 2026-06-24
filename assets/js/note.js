@@ -22,6 +22,7 @@
     save: '[data-action="save"]',
     addMarkdown: '[data-action="add-markdown"]',
     addCpp: '[data-action="add-cpp"]',
+    addReply: '[data-action="add-reply"]',
   };
 
   function $(selector, root = document) {
@@ -565,10 +566,16 @@
     setKernelStatus("Editing");
     setBusy(true);
 
-    const source =
-      normalizeKind(kind) === "cpp"
-        ? '#include <iostream>\n\nint main()\n{\n  std::cout << "Hello from Vix Note\\n";\n  return 0;\n}\n'
-        : "Write your explanation here.";
+    let source = "Write your explanation here.";
+
+    if (normalizeKind(kind) === "cpp") {
+      source =
+        '#include <iostream>\n\nint main()\n{\n  std::cout << "Hello from Vix Note\\n";\n  return 0;\n}\n';
+    }
+
+    if (normalizeKind(kind) === "reply") {
+      source = 'x = 1 + 2 * 3\nprintln("x =", x)\n';
+    }
 
     try {
       await syncDirtyCells();
@@ -616,7 +623,7 @@
       await syncCell(cellElement);
 
       const result = await api(
-        "/api/run-all",
+        `/api/cells/${key}/run`,
         {
           method: "POST",
         },
@@ -624,6 +631,7 @@
           allowErrorResponse: true,
         },
       );
+
       if (result.document) {
         renderDocument(result.document);
       } else if (result.cell) {
@@ -855,6 +863,11 @@
 
       if (action === "add-cpp") {
         addCell("cpp");
+        return;
+      }
+
+      if (action === "add-reply") {
+        addCell("reply");
         return;
       }
 

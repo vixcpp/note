@@ -827,7 +827,7 @@ namespace vix::note
             index.value_or(kernel_.cell_count());
 
         return NoteRouteResponse::json(
-            result.ok() || result.was_skipped() ? 200 : 500,
+            200,
             cell_run_json(responseIndex, result));
       }
     }

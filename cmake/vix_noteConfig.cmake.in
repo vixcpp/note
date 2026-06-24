@@ -2,6 +2,13 @@
 
 include(CMakeFindDependencyMacro)
 
+find_dependency(vix_reply CONFIG)
+
+if(NOT TARGET vix::reply AND TARGET vix::vix_reply)
+  add_library(vix::reply INTERFACE IMPORTED)
+  target_link_libraries(vix::reply INTERFACE vix::vix_reply)
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/vix_noteTargets.cmake")
 
 check_required_components(vix_note)

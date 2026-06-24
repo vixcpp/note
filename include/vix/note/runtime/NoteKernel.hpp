@@ -23,6 +23,7 @@
 #include <vix/note/core/NoteResult.hpp>
 #include <vix/note/runtime/CppCellRunner.hpp>
 #include <vix/note/runtime/NoteSession.hpp>
+#include <vix/note/runtime/ReplyCellRunner.hpp>
 
 #include <cstddef>
 #include <optional>
@@ -45,6 +46,11 @@ namespace vix::note
      * @brief C++ runner options used for C++ cells.
      */
     CppCellRunnerOptions cppOptions;
+
+    /**
+     * @brief Reply runner options used for Reply cells.
+     */
+    ReplyCellRunnerOptions replyOptions;
 
     /**
      * @brief Stops run_all() after the first failed executable cell.
@@ -299,10 +305,6 @@ namespace vix::note
     /**
      * @brief Runs a Reply cell.
      *
-     * Reply execution is intentionally not implemented yet. Reply cells are
-     * recognized by the kernel but currently return a skipped result until the
-     * Reply runtime integration is added in a later version.
-     *
      * @param cell Cell to run.
      * @return Execution result.
      */
@@ -335,6 +337,11 @@ namespace vix::note
      * @brief C++ cell runner.
      */
     CppCellRunner cppRunner_;
+
+    /**
+     * @brief Reply cell runner.
+     */
+    ReplyCellRunner replyRunner_;
   };
 
   /**

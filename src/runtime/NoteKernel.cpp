@@ -337,9 +337,7 @@ namespace vix::note
 
   NoteResult NoteKernel::run_reply_cell(const NoteCell &cell)
   {
-    (void)cell;
-
-    return NoteResult::skipped("Reply cell execution is not available yet");
+    return replyRunner_.run_cell(cell);
   }
 
   NoteResult NoteKernel::run_cpp_cell_internal(const NoteCell &cell)
@@ -353,6 +351,7 @@ namespace vix::note
 
     session_.set_options(options_.sessionOptions);
     cppRunner_.set_options(options_.cppOptions);
+    replyRunner_.set_options(options_.replyOptions);
   }
 
   NoteKernelRunResult run_note(NoteDocument document)
