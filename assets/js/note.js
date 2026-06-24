@@ -14,6 +14,7 @@
     cells: "[data-note-cells]",
     title: "[data-note-title]",
     document: "[data-note-document]",
+    project: "[data-note-project]",
     cellCount: "[data-note-cell-count]",
     kernel: "[data-note-kernel]",
     noteState: "[data-note-state]",
@@ -69,6 +70,22 @@
       default:
         return "Unknown";
     }
+  }
+
+  function projectLabel(project) {
+    if (!project || !project.enabled) {
+      return "No project";
+    }
+
+    if (project.projectName) {
+      return project.projectName;
+    }
+
+    if (project.projectRoot) {
+      return project.projectRoot;
+    }
+
+    return "Project detected";
   }
 
   function setText(selector, value) {
@@ -422,9 +439,11 @@
     const title = documentData.title || "Untitled note";
     const cellCount = Number(documentData.cellCount || 0);
     const cells = Array.isArray(documentData.cells) ? documentData.cells : [];
+    const project = documentData.project || null;
 
     setText(selectors.title, title);
     setText(selectors.document, title);
+    setText(selectors.project, projectLabel(project));
     setText(selectors.cellCount, String(cellCount));
 
     document.title = `${title} · Vix Note`;

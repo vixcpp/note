@@ -35,6 +35,9 @@
 
 #include <vix/note/parser/NoteParser.hpp>
 
+#include <vix/note/project/ProjectContext.hpp>
+#include <vix/note/project/ProjectDetector.hpp>
+
 #include <vix/note/storage/NoteStore.hpp>
 
 #include <vix/note/runtime/CppCellRunner.hpp>

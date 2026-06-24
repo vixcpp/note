@@ -21,6 +21,7 @@
 
 #include <vix/note/core/NoteCell.hpp>
 #include <vix/note/core/NoteResult.hpp>
+#include <vix/note/project/ProjectContext.hpp>
 
 #include <filesystem>
 #include <string>
@@ -51,6 +52,14 @@ namespace vix::note
      * When empty, the current process directory is used.
      */
     std::filesystem::path workingDirectory;
+
+    /**
+     * @brief Optional project context used when running C++ cells.
+     *
+     * When enabled, the runner uses the project working directory and include
+     * paths detected from the project root.
+     */
+    ProjectContext projectContext;
 
     /**
      * @brief Optional temporary root directory.

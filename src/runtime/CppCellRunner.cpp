@@ -159,6 +159,33 @@ namespace vix::note
       return root / ("cell-" + std::to_string(stamp) + ".cpp");
     }
 
+    CppCellRunnerOptions effective_options(CppCellRunnerOptions options)
+    {
+      const ProjectContext &context = options.projectContext;
+
+      if (!context.enabled)
+      {
+        return options;
+      }
+
+      if (options.workingDirectory.empty())
+      {
+        options.workingDirectory = context.effective_working_directory();
+      }
+
+      for (const auto &includePath : context.includePaths)
+      {
+        if (includePath.empty())
+        {
+          continue;
+        }
+
+        options.runArgs.push_back("-I" + includePath.string());
+      }
+
+      return options;
+    }
+
     bool write_text_file(
         const std::filesystem::path &path,
         const std::string &content,
@@ -480,6 +507,13 @@ namespace vix::note
       result.add_debug("source_path=" + sourceFile.string());
       result.add_debug("duration_ms=" + std::to_string(durationMs));
       result.add_debug("exit_code=" + std::to_string(exitCode));
+
+      if (options.projectContext.enabled)
+      {
+        result.add_debug("project_name=" + options.projectContext.projectName);
+        result.add_debug("project_root=" + options.projectContext.projectRoot.string());
+        result.add_debug("working_directory=" + options.workingDirectory.string());
+      }
     }
 
     void add_failure_outputs(
@@ -582,9 +616,12 @@ namespace vix::note
           .add_error("empty C++ cell");
     }
 
+    const CppCellRunnerOptions runOptions =
+        effective_options(options_);
+
     std::string err;
     const std::filesystem::path file =
-        make_temp_cpp_file(options_, err);
+        make_temp_cpp_file(runOptions, err);
 
     if (file.empty())
     {
@@ -607,11 +644,11 @@ namespace vix::note
 
     ProcessOutput process;
 
-    if (options_.separateStreams)
+    if (runOptions.separateStreams)
     {
       const std::string command =
           make_separated_run_command(
-              options_,
+              runOptions,
               file,
               stdoutFile,
               stderrFile);
@@ -625,7 +662,7 @@ namespace vix::note
     else
     {
       const std::string command =
-          make_merged_run_command(options_, file);
+          make_merged_run_command(runOptions, file);
 
       process =
           run_command_capture_merged(command);
@@ -644,21 +681,21 @@ namespace vix::note
 
     if (process.exitCode == 0)
     {
-      add_success_outputs(result, options_, process);
+      add_success_outputs(result, runOptions, process);
     }
     else
     {
-      add_failure_outputs(result, options_, process);
+      add_failure_outputs(result, runOptions, process);
     }
 
     add_debug_outputs(
         result,
-        options_,
+        runOptions,
         file,
         durationMs,
         process.exitCode);
 
-    if (!options_.keepTemporaryFile)
+    if (!runOptions.keepTemporaryFile)
     {
       std::error_code ec;
       std::filesystem::remove(file, ec);

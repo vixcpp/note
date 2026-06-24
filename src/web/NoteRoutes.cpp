@@ -478,13 +478,14 @@ namespace vix::note
   }
 
   NoteRoutes::NoteRoutes(NoteRoutesOptions options)
-      : options_(options)
+      : options_(options),
+        kernel_(options.kernelOptions)
   {
   }
 
   NoteRoutes::NoteRoutes(NoteDocument document, NoteRoutesOptions options)
       : options_(options),
-        kernel_(std::move(document))
+        kernel_(std::move(document), options.kernelOptions)
   {
   }
 
@@ -496,6 +497,7 @@ namespace vix::note
   void NoteRoutes::set_options(NoteRoutesOptions options) noexcept
   {
     options_ = options;
+    kernel_.set_options(options_.kernelOptions);
   }
 
   const NoteAssets &NoteRoutes::assets() const noexcept
@@ -847,6 +849,7 @@ namespace vix::note
     out << "\"ok\":true,";
     out << "\"title\":\"" << json_escape(doc.title()) << "\",";
     out << "\"path\":\"" << json_escape(doc.path()) << "\",";
+    out << "\"project\":" << project_context_json() << ",";
     out << "\"cellCount\":" << doc.cell_count() << ",";
     out << "\"executionCount\":" << doc.execution_count() << ",";
     out << "\"cells\":[";
@@ -859,6 +862,41 @@ namespace vix::note
       }
 
       out << cell_json(doc.cells()[i], i);
+    }
+
+    out << "]";
+    out << "}";
+
+    return out.str();
+  }
+
+  std::string NoteRoutes::project_context_json() const
+  {
+    const ProjectContext &context =
+        kernel_.project_context();
+
+    std::ostringstream out;
+
+    out << "{";
+    out << "\"enabled\":" << (context.enabled ? "true" : "false") << ",";
+    out << "\"projectName\":\"" << json_escape(context.projectName) << "\",";
+    out << "\"notePath\":\"" << json_escape(context.notePath.string()) << "\",";
+    out << "\"projectRoot\":\"" << json_escape(context.projectRoot.string()) << "\",";
+    out << "\"workingDirectory\":\"" << json_escape(context.effective_working_directory().string()) << "\",";
+    out << "\"manifestPath\":\"" << json_escape(context.manifestPath.string()) << "\",";
+    out << "\"depsDirectory\":\"" << json_escape(context.depsDirectory.string()) << "\",";
+    out << "\"includePaths\":[";
+
+    for (std::size_t i = 0; i < context.includePaths.size(); ++i)
+    {
+      if (i > 0)
+      {
+        out << ",";
+      }
+
+      out << "\""
+          << json_escape(context.includePaths[i].string())
+          << "\"";
     }
 
     out << "]";

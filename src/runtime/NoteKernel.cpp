@@ -100,6 +100,17 @@ namespace vix::note
     sync_options();
   }
 
+  const ProjectContext &NoteKernel::project_context() const noexcept
+  {
+    return options_.projectContext;
+  }
+
+  void NoteKernel::set_project_context(ProjectContext context)
+  {
+    options_.projectContext = std::move(context);
+    sync_options();
+  }
+
   const NoteSession &NoteKernel::session() const noexcept
   {
     return session_;
@@ -348,6 +359,7 @@ namespace vix::note
   void NoteKernel::sync_options()
   {
     options_.sessionOptions.stopOnFirstFailure = options_.stopOnFirstFailure;
+    options_.cppOptions.projectContext = options_.projectContext;
 
     session_.set_options(options_.sessionOptions);
     cppRunner_.set_options(options_.cppOptions);

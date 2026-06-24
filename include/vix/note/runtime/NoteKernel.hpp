@@ -24,6 +24,7 @@
 #include <vix/note/runtime/CppCellRunner.hpp>
 #include <vix/note/runtime/NoteSession.hpp>
 #include <vix/note/runtime/ReplyCellRunner.hpp>
+#include <vix/note/project/ProjectContext.hpp>
 
 #include <cstddef>
 #include <optional>
@@ -51,6 +52,11 @@ namespace vix::note
      * @brief Reply runner options used for Reply cells.
      */
     ReplyCellRunnerOptions replyOptions;
+
+    /**
+     * @brief Project context used for project-aware cell execution.
+     */
+    ProjectContext projectContext;
 
     /**
      * @brief Stops run_all() after the first failed executable cell.
@@ -178,6 +184,20 @@ namespace vix::note
      * @param options New kernel options.
      */
     void set_options(NoteKernelOptions options);
+
+    /**
+     * @brief Returns the current project context.
+     *
+     * @return Project context.
+     */
+    const ProjectContext &project_context() const noexcept;
+
+    /**
+     * @brief Replaces the current project context.
+     *
+     * @param context New project context.
+     */
+    void set_project_context(ProjectContext context);
 
     /**
      * @brief Returns the runtime session.

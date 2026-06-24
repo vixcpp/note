@@ -169,6 +169,11 @@ namespace vix::note
      * Saving only works when the document has a non-empty path.
      */
     bool enableSave = true;
+
+    /**
+     * @brief Kernel options used by route execution.
+     */
+    NoteKernelOptions kernelOptions;
   };
 
   /**
@@ -346,6 +351,13 @@ namespace vix::note
      * @return JSON document response.
      */
     std::string document_json() const;
+
+    /**
+     * @brief Serializes the current project context into JSON.
+     *
+     * @return JSON project context object.
+     */
+    std::string project_context_json() const;
 
     /**
      * @brief Serializes one note cell into JSON.

@@ -77,6 +77,9 @@ set(VIX_NOTE_SOURCES
 
   src/parser/NoteParser.cpp
 
+  src/project/ProjectContext.cpp
+  src/project/ProjectDetector.cpp
+
   src/storage/NoteStore.cpp
 
   src/runtime/CppCellRunner.cpp
