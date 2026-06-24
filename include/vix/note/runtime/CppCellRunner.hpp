@@ -33,6 +33,10 @@ namespace vix::note
    *
    * CppCellRunner delegates actual C++ execution to the Vix CLI by writing
    * the cell source to a temporary `.cpp` file and running `vix run <file>`.
+   *
+   * The runner stays intentionally small. It does not implement a compiler
+   * pipeline. It only improves how Vix Note captures and classifies execution
+   * output for the local notebook UI.
    */
   struct CppCellRunnerOptions
   {
@@ -62,8 +66,42 @@ namespace vix::note
 
     /**
      * @brief Keeps the generated temporary C++ file after execution.
+     *
+     * This is useful when debugging generated cell sources.
      */
     bool keepTemporaryFile = false;
+
+    /**
+     * @brief Enables debug metadata outputs.
+     *
+     * When enabled, the runner adds debug outputs such as the generated source
+     * file path and execution duration.
+     */
+    bool debugMode = false;
+
+    /**
+     * @brief Captures stdout and stderr into separate outputs when possible.
+     *
+     * This helps the UI render normal program output separately from compiler
+     * diagnostics and runtime errors.
+     */
+    bool separateStreams = true;
+
+    /**
+     * @brief Includes raw process logs in the result outputs.
+     *
+     * Raw logs are useful when the beginner-friendly output hides too much
+     * detail or when a user wants to inspect the exact command output.
+     */
+    bool includeRawLog = true;
+
+    /**
+     * @brief Adds simple beginner-friendly hints for common C++ errors.
+     *
+     * The hints are intentionally small and heuristic-based. They do not
+     * replace compiler diagnostics.
+     */
+    bool enableErrorHints = true;
   };
 
   /**

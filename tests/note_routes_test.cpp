@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -48,6 +49,14 @@ namespace
 
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     out << content;
+  }
+
+  std::string read_file(const std::filesystem::path &path)
+  {
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
   }
 
   std::filesystem::path make_fake_vix_command(const std::filesystem::path &root)
@@ -174,9 +183,12 @@ int main()
 
     assert(routes.options().enableApi);
     assert(routes.options().enableAssets);
+    assert(routes.options().enableEditing);
+    assert(routes.options().enableSave);
     assert(routes.assets().contains("/"));
     assert(routes.document().empty());
     assert(routes.kernel().cell_count() == 0);
+    assert(routes.store().options().atomicWrite);
   }
 
   {
@@ -194,17 +206,26 @@ int main()
     vix::note::NoteRoutesOptions options;
     options.enableApi = false;
     options.enableAssets = false;
+    options.enableEditing = false;
+    options.enableSave = false;
 
     vix::note::NoteRoutes routes(options);
 
     assert(!routes.options().enableApi);
     assert(!routes.options().enableAssets);
+    assert(!routes.options().enableEditing);
+    assert(!routes.options().enableSave);
 
     options.enableApi = true;
+    options.enableEditing = true;
+    options.enableSave = true;
+
     routes.set_options(options);
 
     assert(routes.options().enableApi);
     assert(!routes.options().enableAssets);
+    assert(routes.options().enableEditing);
+    assert(routes.options().enableSave);
   }
 
   {
@@ -470,9 +491,10 @@ int main()
     assert(contains(response.body, "\"index\":0"));
     assert(contains(response.body, "\"id\":\"cpp\""));
     assert(contains(response.body, "\"executionCount\":1"));
-    assert(contains(response.body, "\"outputCount\":1"));
+    assert(contains(response.body, "\"outputCount\":2"));
     assert(contains(response.body, "\"outputs\":["));
     assert(contains(response.body, "\"kind\":\"stdout\""));
+    assert(contains(response.body, "\"kind\":\"raw_log\""));
 
     assert(routes.document().cells()[0].execution_count() == 1);
     assert(routes.document().cells()[0].has_outputs());
@@ -513,8 +535,10 @@ int main()
     assert(contains(response.body, "\"index\":0"));
     assert(contains(response.body, "\"id\":\"cpp\""));
     assert(contains(response.body, "\"executionCount\":1"));
-    assert(contains(response.body, "\"outputCount\":1"));
+    assert(contains(response.body, "\"kind\":\"stdout\""));
     assert(contains(response.body, "\"kind\":\"error\""));
+    assert(contains(response.body, "\"kind\":\"runtime_error\""));
+    assert(contains(response.body, "\"kind\":\"raw_log\""));
 
     assert(routes.document().cells()[0].execution_count() == 1);
     assert(routes.kernel().session().records().size() == 1);
@@ -539,6 +563,8 @@ int main()
     assert(contains(response.body, "\"stopped\":false"));
     assert(contains(response.body, "\"visited\":2"));
     assert(contains(response.body, "\"executed\":1"));
+    assert(contains(response.body, "\"skipped\":1"));
+    assert(contains(response.body, "\"failed\":0"));
     assert(contains(response.body, "\"status\":\"skipped\""));
     assert(contains(response.body, "\"results\":["));
     assert(contains(response.body, "\"document\":{"));
@@ -577,6 +603,8 @@ int main()
     assert(contains(response.body, "\"stopped\":true"));
     assert(contains(response.body, "\"visited\":1"));
     assert(contains(response.body, "\"executed\":1"));
+    assert(contains(response.body, "\"skipped\":0"));
+    assert(contains(response.body, "\"failed\":1"));
     assert(contains(response.body, "simulated routes failure"));
 
     assert(routes.document().cells()[0].execution_count() == 1);
@@ -589,10 +617,15 @@ int main()
     vix::note::NoteRouteResponse response =
         routes.post("/api/cells/abc/run");
 
-    assert(response.status == 404);
+    assert(response.status == 500);
     assert(!response.ok());
     assert(response.contentType == "application/json; charset=utf-8");
-    assert(response.body == "{\"ok\":false,\"error\":\"api route not found\"}");
+
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "\"result\":{"));
+    assert(contains(response.body, "\"status\":\"failure\""));
+    assert(contains(response.body, "\"message\":\"cell not found: abc\""));
+    assert(contains(response.body, "\"cell\":null"));
   }
 
   {
@@ -613,6 +646,282 @@ int main()
   }
 
   {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "cpp-id",
+            vix::note::NoteCellKind::Cpp,
+            "#include <iostream>\n"
+            "int main()\n"
+            "{\n"
+            "  std::cout << \"run by id\" << std::endl;\n"
+            "  return 0;\n"
+            "}\n"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteKernelOptions options =
+        make_kernel_options(fakeVix, root / "tmp-routes-run-by-id");
+
+    routes.kernel().set_options(options);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/cells/cpp-id/run");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"id\":\"cpp-id\""));
+    assert(contains(response.body, "run by id"));
+
+    assert(routes.document().cells()[0].execution_count() == 1);
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse response =
+        routes.post(
+            "/api/cells",
+            "{\"id\":\"new-md\",\"kind\":\"markdown\",\"source\":\"# New Cell\"}");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"message\":\"cell added\""));
+    assert(contains(response.body, "\"cellId\":\"new-md\""));
+    assert(contains(response.body, "\"id\":\"new-md\""));
+    assert(contains(response.body, "\"kind\":\"markdown\""));
+    assert(contains(response.body, "# New Cell"));
+
+    assert(routes.document().cell_count() == 1);
+    assert(routes.document().cells()[0].id() == "new-md");
+    assert(routes.document().cells()[0].kind() == vix::note::NoteCellKind::Markdown);
+    assert(routes.document().cells()[0].source() == "# New Cell");
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse response =
+        routes.post(
+            "/api/cells",
+            "{\"kind\":\"cpp\",\"source\":\"int main() { return 0; }\"}");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"message\":\"cell added\""));
+    assert(contains(response.body, "\"kind\":\"cpp\""));
+
+    assert(routes.document().cell_count() == 1);
+    assert(!routes.document().cells()[0].id().empty());
+    assert(routes.document().cells()[0].kind() == vix::note::NoteCellKind::Cpp);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "a",
+            vix::note::NoteCellKind::Markdown,
+            "A"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.post(
+            "/api/cells",
+            "{\"id\":\"a\",\"kind\":\"markdown\",\"source\":\"Duplicate\"}");
+
+    assert(response.status == 409);
+    assert(!response.ok());
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "cell id already exists"));
+
+    assert(routes.document().cell_count() == 1);
+    assert(routes.document().cells()[0].source() == "A");
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "edit",
+            vix::note::NoteCellKind::Markdown,
+            "Old source"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.put(
+            "/api/cells/edit",
+            "{\"kind\":\"cpp\",\"source\":\"int main() { return 0; }\"}");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"message\":\"cell updated\""));
+    assert(contains(response.body, "\"cellId\":\"edit\""));
+    assert(contains(response.body, "\"kind\":\"cpp\""));
+
+    assert(routes.document().cells()[0].id() == "edit");
+    assert(routes.document().cells()[0].kind() == vix::note::NoteCellKind::Cpp);
+    assert(routes.document().cells()[0].source() == "int main() { return 0; }");
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "move-a",
+            vix::note::NoteCellKind::Markdown,
+            "A"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "move-b",
+            vix::note::NoteCellKind::Markdown,
+            "B"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "move-c",
+            vix::note::NoteCellKind::Markdown,
+            "C"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.post(
+            "/api/cells/move-c/move",
+            "{\"index\":0}");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"message\":\"cell moved\""));
+    assert(contains(response.body, "\"cellId\":\"move-c\""));
+
+    assert(routes.document().cells()[0].id() == "move-c");
+    assert(routes.document().cells()[1].id() == "move-a");
+    assert(routes.document().cells()[2].id() == "move-b");
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "delete-me",
+            vix::note::NoteCellKind::Markdown,
+            "Delete me"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "keep-me",
+            vix::note::NoteCellKind::Markdown,
+            "Keep me"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.delete_request("/api/cells/delete-me");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"message\":\"cell deleted\""));
+    assert(contains(response.body, "\"cellId\":\"delete-me\""));
+
+    assert(routes.document().cell_count() == 1);
+    assert(routes.document().cells()[0].id() == "keep-me");
+  }
+
+  {
+    vix::note::NoteRoutesOptions options;
+    options.enableEditing = false;
+
+    vix::note::NoteRoutes routes(options);
+
+    vix::note::NoteRouteResponse response =
+        routes.post(
+            "/api/cells",
+            "{\"id\":\"blocked\",\"kind\":\"markdown\",\"source\":\"Blocked\"}");
+
+    assert(response.status == 403);
+    assert(!response.ok());
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "editing disabled"));
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    const std::filesystem::path file =
+        root / "save" / "routes-save.vixnote";
+
+    doc.set_path(file.string());
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "save-md",
+            vix::note::NoteCellKind::Markdown,
+            "# Saved From Routes"));
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/document/save");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"status\":\"success\""));
+    assert(contains(response.body, "\"message\":\"note saved\""));
+    assert(std::filesystem::exists(file));
+
+    const std::string saved =
+        read_file(file);
+
+    assert(contains(saved, "# Saved From Routes"));
+  }
+
+  {
+    vix::note::NoteDocument doc;
+    doc.add_markdown("# No Path");
+
+    vix::note::NoteRoutes routes(doc);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/document/save");
+
+    assert(response.status == 500);
+    assert(!response.ok());
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "\"message\":\"note document has no path\""));
+  }
+
+  {
+    vix::note::NoteRoutesOptions options;
+    options.enableSave = false;
+
+    vix::note::NoteRoutes routes(options);
+
+    vix::note::NoteRouteResponse response =
+        routes.post("/api/document/save");
+
+    assert(response.status == 403);
+    assert(!response.ok());
+    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "save disabled"));
+  }
+
+  {
     vix::note::NoteRoutes routes;
 
     vix::note::NoteRouteRequest request;
@@ -621,6 +930,17 @@ int main()
 
     vix::note::NoteRouteResponse response =
         routes.handle(request);
+
+    assert(response.status == 404);
+    assert(!response.ok());
+    assert(response.contentType == "application/json; charset=utf-8");
+  }
+
+  {
+    vix::note::NoteRoutes routes;
+
+    vix::note::NoteRouteResponse response =
+        routes.put("/api/document", "{}");
 
     assert(response.status == 404);
     assert(!response.ok());

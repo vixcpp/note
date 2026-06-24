@@ -97,6 +97,38 @@ namespace
     options.cppOptions.temporaryDirectory = tempDir;
     return options;
   }
+
+  bool has_output_kind(
+      const vix::note::NoteResult &result,
+      vix::note::NoteOutputKind kind)
+  {
+    for (const vix::note::NoteOutput &output : result.outputs())
+    {
+      if (output.kind == kind)
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool output_contains(
+      const vix::note::NoteResult &result,
+      vix::note::NoteOutputKind kind,
+      const std::string &needle)
+  {
+    for (const vix::note::NoteOutput &output : result.outputs())
+    {
+      if (output.kind == kind &&
+          output.content.find(needle) != std::string::npos)
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
 }
 
 int main()
@@ -120,6 +152,7 @@ int main()
 
     assert(!kernel.options().stopOnFirstFailure);
     assert(!kernel.options().includeNonExecutableAsSkipped);
+    assert(!kernel.can_execute_cell("missing"));
   }
 
   {
@@ -218,6 +251,9 @@ int main()
 
     assert(*intro == 0);
     assert(*run == 1);
+    assert(!kernel.can_execute_cell("intro"));
+    assert(kernel.can_execute_cell("run"));
+    assert(!kernel.can_execute_cell("missing"));
   }
 
   {
@@ -319,17 +355,19 @@ int main()
     assert(result.ok());
     assert(result.message() == "C++ cell executed");
     assert(result.has_outputs());
-    assert(result.outputs()[0].kind == vix::note::NoteOutputKind::Stdout);
-    assert(result.outputs()[0].content.find("fake vix run") != std::string::npos);
-    assert(result.outputs()[0].content.find("kernel cpp ok") != std::string::npos);
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
+
+    assert(output_contains(result, vix::note::NoteOutputKind::Stdout, "fake vix run"));
+    assert(output_contains(result, vix::note::NoteOutputKind::Stdout, "kernel cpp ok"));
 
     const vix::note::NoteCell &cell =
         kernel.document().cells()[0];
 
     assert(cell.execution_count() == 1);
     assert(cell.has_outputs());
-    assert(cell.outputs().size() == 1);
-    assert(cell.outputs()[0].content.find("kernel cpp ok") != std::string::npos);
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
+    assert(output_contains(result, vix::note::NoteOutputKind::Stdout, "kernel cpp ok"));
 
     assert(kernel.session().records().size() == 1);
     assert(kernel.session().records()[0].result.ok());
@@ -358,15 +396,19 @@ int main()
     assert(result.exit_code() == 7);
     assert(result.message() == "C++ cell failed");
     assert(result.has_outputs());
-    assert(result.outputs()[0].kind == vix::note::NoteOutputKind::Error);
-    assert(result.outputs()[0].content.find("simulated kernel failure") != std::string::npos);
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Error));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RuntimeError));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
+
+    assert(output_contains(result, vix::note::NoteOutputKind::Error, "simulated kernel failure"));
 
     const vix::note::NoteCell &cell =
         kernel.document().cells()[0];
 
     assert(cell.execution_count() == 1);
     assert(cell.has_outputs());
-    assert(cell.outputs()[0].content.find("simulated kernel failure") != std::string::npos);
+    assert(output_contains(result, vix::note::NoteOutputKind::Error, "simulated kernel failure"));
 
     assert(kernel.session().records().size() == 1);
     assert(kernel.session().records()[0].result.failed());
@@ -398,9 +440,12 @@ int main()
     assert(!result.stopped);
     assert(result.visited == 4);
     assert(result.executed == 2);
+    assert(result.skipped == 1);
+    assert(result.failed == 0);
     assert(result.results.size() == 2);
     assert(result.has_results());
     assert(!result.has_failures());
+    assert(result.has_skipped());
 
     assert(result.results[0].was_skipped());
     assert(result.results[1].ok());
@@ -431,6 +476,10 @@ int main()
     assert(!result.stopped);
     assert(result.visited == 3);
     assert(result.executed == 1);
+    assert(result.skipped == 3);
+    assert(result.failed == 0);
+    assert(result.has_skipped());
+    assert(!result.has_failures());
     assert(result.results.size() == 3);
 
     assert(result.results[0].was_skipped());
@@ -462,6 +511,8 @@ int main()
     assert(result.stopped);
     assert(result.visited == 1);
     assert(result.executed == 1);
+    assert(result.skipped == 0);
+    assert(result.failed == 1);
     assert(result.results.size() == 1);
     assert(result.has_failures());
 
@@ -495,6 +546,10 @@ int main()
     assert(!result.stopped);
     assert(result.visited == 1);
     assert(result.executed == 1);
+    assert(result.skipped == 0);
+    assert(result.failed == 0);
+    assert(!result.has_skipped());
+    assert(!result.has_failures());
     assert(result.results.size() == 1);
     assert(result.results[0].ok());
 
@@ -587,6 +642,40 @@ int main()
 
     assert(result.was_skipped());
     assert(result.message() == "cell is not executable");
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "free-id",
+            vix::note::NoteCellKind::Markdown,
+            "# Free Cell By Id"));
+
+    vix::note::NoteResult result =
+        vix::note::run_note_cell(doc, "free-id");
+
+    assert(result.was_skipped());
+    assert(result.message() == "cell is not executable");
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "missing-test",
+            vix::note::NoteCellKind::Cpp,
+            "int main() { return 0; }\n"));
+
+    vix::note::NoteResult result =
+        vix::note::run_note_cell(doc, "missing");
+
+    assert(result.failed());
+    assert(result.message() == "cell not found: missing");
+    assert(result.has_outputs());
+    assert(result.outputs()[0].kind == vix::note::NoteOutputKind::Error);
   }
 
   std::filesystem::remove_all(root);

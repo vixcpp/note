@@ -274,6 +274,55 @@ namespace
 
     return http_request(host, port, request.str());
   }
+
+  std::string http_put(
+      std::string_view host,
+      std::uint16_t port,
+      std::string_view path,
+      const std::string &body = {})
+  {
+    std::ostringstream request;
+
+    request << "PUT "
+            << path
+            << " HTTP/1.1\r\n";
+
+    request << "Host: "
+            << host
+            << "\r\n";
+
+    request << "Content-Type: application/json\r\n";
+    request << "Content-Length: "
+            << body.size()
+            << "\r\n";
+
+    request << "Connection: close\r\n";
+    request << "\r\n";
+    request << body;
+
+    return http_request(host, port, request.str());
+  }
+
+  std::string http_delete(
+      std::string_view host,
+      std::uint16_t port,
+      std::string_view path)
+  {
+    std::ostringstream request;
+
+    request << "DELETE "
+            << path
+            << " HTTP/1.1\r\n";
+
+    request << "Host: "
+            << host
+            << "\r\n";
+
+    request << "Connection: close\r\n";
+    request << "\r\n";
+
+    return http_request(host, port, request.str());
+  }
 }
 
 int main()
@@ -302,6 +351,8 @@ int main()
     assert(!server.options().openBrowser);
     assert(server.options().routeOptions.enableApi);
     assert(server.options().routeOptions.enableAssets);
+    assert(server.options().routeOptions.enableEditing);
+    assert(server.options().routeOptions.enableSave);
 
     assert(server.url() == "http://127.0.0.1:5179/");
     assert(server.document().empty());
@@ -367,6 +418,8 @@ int main()
     options.port = 3000;
     options.routeOptions.enableApi = false;
     options.routeOptions.enableAssets = false;
+    options.routeOptions.enableEditing = false;
+    options.routeOptions.enableSave = false;
 
     vix::note::NoteResult result =
         server.set_options(options);
@@ -377,6 +430,8 @@ int main()
     assert(server.options().port == 3000);
     assert(!server.routes().options().enableApi);
     assert(!server.routes().options().enableAssets);
+    assert(!server.routes().options().enableEditing);
+    assert(!server.routes().options().enableSave);
     assert(server.url() == "http://localhost:3000/");
   }
 
@@ -677,12 +732,70 @@ int main()
     assert(contains(response.body, "\"ok\":true"));
     assert(contains(response.body, "\"visited\":2"));
     assert(contains(response.body, "\"executed\":1"));
+    assert(contains(response.body, "\"skipped\":1"));
+    assert(contains(response.body, "\"failed\":0"));
     assert(contains(response.body, "\"status\":\"skipped\""));
     assert(contains(response.body, "\"document\":{"));
     assert(contains(response.body, "\"cellCount\":2"));
 
     assert(server.document().cells()[0].execution_count() == 0);
     assert(server.document().cells()[1].execution_count() == 1);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "edit-server",
+            vix::note::NoteCellKind::Markdown,
+            "Old server source"));
+
+    vix::note::NoteServer server(doc);
+
+    vix::note::NoteRouteResponse response =
+        server.put(
+            "/api/cells/edit-server",
+            "{\"kind\":\"cpp\",\"source\":\"int main() { return 0; }\"}");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"message\":\"cell updated\""));
+    assert(contains(response.body, "\"cellId\":\"edit-server\""));
+
+    assert(server.document().cells()[0].kind() == vix::note::NoteCellKind::Cpp);
+    assert(server.document().cells()[0].source() == "int main() { return 0; }");
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "delete-server",
+            vix::note::NoteCellKind::Markdown,
+            "Delete server"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "keep-server",
+            vix::note::NoteCellKind::Markdown,
+            "Keep server"));
+
+    vix::note::NoteServer server(doc);
+
+    vix::note::NoteRouteResponse response =
+        server.delete_request("/api/cells/delete-server");
+
+    assert(response.ok());
+    assert(response.status == 200);
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"message\":\"cell deleted\""));
+    assert(contains(response.body, "\"cellId\":\"delete-server\""));
+
+    assert(server.document().cell_count() == 1);
+    assert(server.document().cells()[0].id() == "keep-server");
   }
 
   {
@@ -791,6 +904,8 @@ int main()
     assert(contains(runAllResponse, "\"ok\":true"));
     assert(contains(runAllResponse, "\"visited\":2"));
     assert(contains(runAllResponse, "\"executed\":1"));
+    assert(contains(runAllResponse, "\"skipped\":1"));
+    assert(contains(runAllResponse, "\"failed\":0"));
     assert(contains(runAllResponse, "\"status\":\"skipped\""));
     assert(contains(runAllResponse, "\"document\":{"));
     assert(contains(runAllResponse, "\"cellCount\":2"));
@@ -798,6 +913,76 @@ int main()
 
     assert(server.document().cells()[0].execution_count() == 0);
     assert(server.document().cells()[1].execution_count() == 1);
+
+    assert(server.stop().ok());
+  }
+
+  {
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteDocument doc("Network Edit");
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "network-edit",
+            vix::note::NoteCellKind::Markdown,
+            "Old network source"));
+
+    vix::note::NoteServer server(doc, options);
+
+    assert(server.start().ok());
+
+    const std::string putResponse =
+        http_put(
+            options.host,
+            options.port,
+            "/api/cells/network-edit",
+            "{\"kind\":\"cpp\",\"source\":\"int main() { return 0; }\"}");
+
+    assert(contains(putResponse, "HTTP/1.1 200 OK"));
+    assert(contains(putResponse, "\"ok\":true"));
+    assert(contains(putResponse, "\"message\":\"cell updated\""));
+    assert(contains(putResponse, "\"cellId\":\"network-edit\""));
+
+    assert(server.document().cells()[0].kind() == vix::note::NoteCellKind::Cpp);
+
+    assert(server.stop().ok());
+  }
+
+  {
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteDocument doc("Network Delete");
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "network-delete",
+            vix::note::NoteCellKind::Markdown,
+            "Delete"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "network-keep",
+            vix::note::NoteCellKind::Markdown,
+            "Keep"));
+
+    vix::note::NoteServer server(doc, options);
+
+    assert(server.start().ok());
+
+    const std::string deleteResponse =
+        http_delete(
+            options.host,
+            options.port,
+            "/api/cells/network-delete");
+
+    assert(contains(deleteResponse, "HTTP/1.1 200 OK"));
+    assert(contains(deleteResponse, "\"ok\":true"));
+    assert(contains(deleteResponse, "\"message\":\"cell deleted\""));
+    assert(contains(deleteResponse, "\"cellId\":\"network-delete\""));
+
+    assert(server.document().cell_count() == 1);
+    assert(server.document().cells()[0].id() == "network-keep");
 
     assert(server.stop().ok());
   }

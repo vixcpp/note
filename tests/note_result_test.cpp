@@ -65,6 +65,46 @@ int main()
 
   {
     vix::note::NoteOutput output =
+        vix::note::NoteOutput::compiler_error("expected ';'");
+
+    assert(output.kind == vix::note::NoteOutputKind::CompilerError);
+    assert(output.content == "expected ';'");
+  }
+
+  {
+    vix::note::NoteOutput output =
+        vix::note::NoteOutput::runtime_error("segmentation fault");
+
+    assert(output.kind == vix::note::NoteOutputKind::RuntimeError);
+    assert(output.content == "segmentation fault");
+  }
+
+  {
+    vix::note::NoteOutput output =
+        vix::note::NoteOutput::debug("duration_ms=12");
+
+    assert(output.kind == vix::note::NoteOutputKind::Debug);
+    assert(output.content == "duration_ms=12");
+  }
+
+  {
+    vix::note::NoteOutput output =
+        vix::note::NoteOutput::hint("Check if you forgot a semicolon.");
+
+    assert(output.kind == vix::note::NoteOutputKind::Hint);
+    assert(output.content == "Check if you forgot a semicolon.");
+  }
+
+  {
+    vix::note::NoteOutput output =
+        vix::note::NoteOutput::raw_log("raw compiler output");
+
+    assert(output.kind == vix::note::NoteOutputKind::RawLog);
+    assert(output.content == "raw compiler output");
+  }
+
+  {
+    vix::note::NoteOutput output =
         vix::note::NoteOutput::text("");
 
     assert(output.empty());
@@ -115,10 +155,15 @@ int main()
         .add_stdout("stdout text")
         .add_stderr("stderr text")
         .add_html("<p>html</p>")
-        .add_error("error text");
+        .add_error("error text")
+        .add_compiler_error("compiler diagnostic")
+        .add_runtime_error("runtime diagnostic")
+        .add_debug("duration_ms=15")
+        .add_hint("Try checking the include path.")
+        .add_raw_log("raw log text");
 
     assert(result.has_outputs());
-    assert(result.outputs().size() == 5);
+    assert(result.outputs().size() == 10);
 
     assert(result.outputs()[0].kind == vix::note::NoteOutputKind::Text);
     assert(result.outputs()[0].content == "plain text");
@@ -134,6 +179,21 @@ int main()
 
     assert(result.outputs()[4].kind == vix::note::NoteOutputKind::Error);
     assert(result.outputs()[4].content == "error text");
+
+    assert(result.outputs()[5].kind == vix::note::NoteOutputKind::CompilerError);
+    assert(result.outputs()[5].content == "compiler diagnostic");
+
+    assert(result.outputs()[6].kind == vix::note::NoteOutputKind::RuntimeError);
+    assert(result.outputs()[6].content == "runtime diagnostic");
+
+    assert(result.outputs()[7].kind == vix::note::NoteOutputKind::Debug);
+    assert(result.outputs()[7].content == "duration_ms=15");
+
+    assert(result.outputs()[8].kind == vix::note::NoteOutputKind::Hint);
+    assert(result.outputs()[8].content == "Try checking the include path.");
+
+    assert(result.outputs()[9].kind == vix::note::NoteOutputKind::RawLog);
+    assert(result.outputs()[9].content == "raw log text");
   }
 
   {
@@ -149,6 +209,41 @@ int main()
   }
 
   {
+    vix::note::NoteResult result =
+        vix::note::NoteResult::failure("compile failed", 1)
+            .add_compiler_error("main.cpp:3:10: error: expected ';'")
+            .add_hint("A C++ statement usually ends with a semicolon.")
+            .add_raw_log("main.cpp:3:10: error: expected ';'\n");
+
+    assert(result.failed());
+    assert(result.exit_code() == 1);
+    assert(result.message() == "compile failed");
+    assert(result.has_outputs());
+    assert(result.outputs().size() == 3);
+
+    assert(result.outputs()[0].kind == vix::note::NoteOutputKind::CompilerError);
+    assert(result.outputs()[1].kind == vix::note::NoteOutputKind::Hint);
+    assert(result.outputs()[2].kind == vix::note::NoteOutputKind::RawLog);
+  }
+
+  {
+    vix::note::NoteResult result =
+        vix::note::NoteResult::failure("runtime failed", 139)
+            .add_runtime_error("segmentation fault")
+            .add_debug("exit_code=139")
+            .add_debug("duration_ms=3");
+
+    assert(result.failed());
+    assert(result.exit_code() == 139);
+    assert(result.has_outputs());
+    assert(result.outputs().size() == 3);
+
+    assert(result.outputs()[0].kind == vix::note::NoteOutputKind::RuntimeError);
+    assert(result.outputs()[1].kind == vix::note::NoteOutputKind::Debug);
+    assert(result.outputs()[2].kind == vix::note::NoteOutputKind::Debug);
+  }
+
+  {
     assert(vix::note::to_string(vix::note::NoteResultStatus::Success) == "success");
     assert(vix::note::to_string(vix::note::NoteResultStatus::Failure) == "failure");
     assert(vix::note::to_string(vix::note::NoteResultStatus::Skipped) == "skipped");
@@ -160,6 +255,11 @@ int main()
     assert(vix::note::to_string(vix::note::NoteOutputKind::Stderr) == "stderr");
     assert(vix::note::to_string(vix::note::NoteOutputKind::Html) == "html");
     assert(vix::note::to_string(vix::note::NoteOutputKind::Error) == "error");
+    assert(vix::note::to_string(vix::note::NoteOutputKind::CompilerError) == "compiler_error");
+    assert(vix::note::to_string(vix::note::NoteOutputKind::RuntimeError) == "runtime_error");
+    assert(vix::note::to_string(vix::note::NoteOutputKind::Debug) == "debug");
+    assert(vix::note::to_string(vix::note::NoteOutputKind::Hint) == "hint");
+    assert(vix::note::to_string(vix::note::NoteOutputKind::RawLog) == "raw_log");
   }
 
   return 0;

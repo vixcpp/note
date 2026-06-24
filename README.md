@@ -299,9 +299,8 @@ int main()
 Standalone:
 
 ```bash
-cmake -S . -B build -DVIX_NOTE_BUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
+vix build -- -DVIX_NOTE_BUILD_TESTS=ON
+vix tests
 ```
 
 Inside the Vix umbrella build, tests and examples are disabled by default.

@@ -170,6 +170,104 @@ namespace vix::note
     return true;
   }
 
+  bool NoteDocument::insert_cell_before(const std::string &id, NoteCell cell)
+  {
+    const std::optional<std::size_t> index =
+        cell_index(id);
+
+    if (!index)
+    {
+      return false;
+    }
+
+    return insert_cell(*index, std::move(cell));
+  }
+
+  bool NoteDocument::insert_cell_after(const std::string &id, NoteCell cell)
+  {
+    const std::optional<std::size_t> index =
+        cell_index(id);
+
+    if (!index)
+    {
+      return false;
+    }
+
+    return insert_cell(*index + 1, std::move(cell));
+  }
+
+  bool NoteDocument::update_cell(
+      const std::string &id,
+      NoteCellKind kind,
+      std::string source)
+  {
+    NoteCell *cell = find_cell(id);
+
+    if (cell == nullptr)
+    {
+      return false;
+    }
+
+    cell->set_kind(kind);
+    cell->set_source(std::move(source));
+
+    return true;
+  }
+
+  bool NoteDocument::update_cell_source(
+      const std::string &id,
+      std::string source)
+  {
+    NoteCell *cell = find_cell(id);
+
+    if (cell == nullptr)
+    {
+      return false;
+    }
+
+    cell->set_source(std::move(source));
+
+    return true;
+  }
+
+  bool NoteDocument::move_cell(std::size_t fromIndex, std::size_t toIndex)
+  {
+    if (fromIndex >= cells_.size() || toIndex >= cells_.size())
+    {
+      return false;
+    }
+
+    if (fromIndex == toIndex)
+    {
+      return true;
+    }
+
+    NoteCell cell =
+        std::move(cells_[fromIndex]);
+
+    cells_.erase(
+        cells_.begin() + static_cast<std::vector<NoteCell>::difference_type>(fromIndex));
+
+    cells_.insert(
+        cells_.begin() + static_cast<std::vector<NoteCell>::difference_type>(toIndex),
+        std::move(cell));
+
+    return true;
+  }
+
+  bool NoteDocument::move_cell(const std::string &id, std::size_t toIndex)
+  {
+    const std::optional<std::size_t> fromIndex =
+        cell_index(id);
+
+    if (!fromIndex)
+    {
+      return false;
+    }
+
+    return move_cell(*fromIndex, toIndex);
+  }
+
   bool NoteDocument::remove_cell(std::size_t index)
   {
     if (index >= cells_.size())

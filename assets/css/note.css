@@ -26,6 +26,9 @@
   --note-error: #b91c1c;
   --note-error-soft: #fef2f2;
 
+  --note-info: #1d4ed8;
+  --note-info-soft: #eff6ff;
+
   --note-code-bg: #111827;
   --note-code-text: #f9fafb;
   --note-output-bg: #fefce8;
@@ -68,6 +71,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -76,9 +80,33 @@ button {
   cursor: pointer;
 }
 
-button:disabled {
+button:disabled,
+select:disabled,
+textarea:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+select {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--note-border);
+  border-radius: 999px;
+  background: var(--note-panel);
+  color: var(--note-text);
+  font-weight: 900;
+}
+
+textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 0;
+  outline: none;
+  padding: 22px;
+  background: transparent;
+  color: inherit;
+  line-height: 1.65;
 }
 
 .note-app {
@@ -212,8 +240,10 @@ button:disabled {
 .note-actions {
   display: flex;
   align-items: flex-start;
+  justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;
+  min-width: min(100%, 430px);
 }
 
 .note-button {
@@ -247,7 +277,7 @@ button:disabled {
 
 .note-status {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 24px;
 }
@@ -272,7 +302,10 @@ button:disabled {
 
 .note-status__value {
   display: block;
+  overflow: hidden;
   font-size: 1.1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .note-message {
@@ -329,6 +362,10 @@ button:disabled {
   box-shadow: var(--note-shadow);
 }
 
+.note-cell[data-dirty="true"] {
+  border-color: rgba(213, 122, 42, 0.72);
+}
+
 .note-cell--running {
   border-color: rgba(213, 122, 42, 0.45);
 }
@@ -348,7 +385,8 @@ button:disabled {
   background: var(--note-panel-muted);
 }
 
-.note-cell__info {
+.note-cell__info,
+.note-cell__meta {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -361,10 +399,18 @@ button:disabled {
   font-weight: 900;
 }
 
+.note-cell__id,
 .note-cell__meta {
+  overflow: hidden;
   color: var(--note-muted);
   font-size: 0.86rem;
   font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-cell__id {
+  max-width: 220px;
 }
 
 .note-cell__count {
@@ -380,6 +426,13 @@ button:disabled {
   font-weight: 900;
 }
 
+.note-cell__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.note-cell__actions button,
 .note-cell__run {
   min-height: 34px;
   padding: 0 13px;
@@ -391,6 +444,7 @@ button:disabled {
   font-weight: 900;
 }
 
+.note-cell__actions button:hover:not(:disabled),
 .note-cell__run:hover:not(:disabled) {
   border-color: var(--note-accent);
   color: var(--note-accent-strong);
@@ -441,6 +495,56 @@ button:disabled {
   font-size: 0.92em;
 }
 
+.note-cell__editor {
+  background: var(--note-panel);
+}
+
+.note-cell--cpp .note-cell__editor,
+.note-cell--reply .note-cell__editor {
+  background: var(--note-code-bg);
+  color: var(--note-code-text);
+}
+
+.note-cell--cpp textarea,
+.note-cell--reply textarea {
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.95rem;
+}
+
+.note-preview {
+  padding: 0 22px 22px;
+}
+
+.note-preview > :first-child {
+  margin-top: 0;
+}
+
+.note-preview > :last-child {
+  margin-bottom: 0;
+}
+
+.note-preview h1,
+.note-preview h2,
+.note-preview h3 {
+  color: var(--note-text);
+}
+
+.note-preview p {
+  color: var(--note-muted);
+  line-height: 1.75;
+}
+
+.note-preview code {
+  padding: 0.12rem 0.32rem;
+  border-radius: 7px;
+  background: var(--note-panel-muted);
+  color: var(--note-accent-strong);
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
+}
+
 .note-code {
   margin: 0;
   padding: 22px;
@@ -457,7 +561,8 @@ button:disabled {
   padding: 22px;
 }
 
-.note-outputs {
+.note-outputs,
+.note-output-list {
   display: grid;
   gap: 10px;
   padding: 16px 22px;
@@ -468,6 +573,7 @@ button:disabled {
 .note-output {
   margin: 0;
   padding: 14px;
+  border: 1px solid transparent;
   border-radius: var(--note-radius-sm);
   background: var(--note-output-bg);
   color: #713f12;
@@ -479,22 +585,62 @@ button:disabled {
   overflow: auto;
 }
 
+.note-output__kind {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: currentColor;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  opacity: 0.74;
+  text-transform: uppercase;
+}
+
+.note-output pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .note-output--stdout,
 .note-output--text {
   background: var(--note-output-bg);
   color: #713f12;
 }
 
-.note-output--stderr,
-.note-output--error {
+.note-output--stderr {
+  background: var(--note-warning-soft);
+  color: var(--note-warning);
+}
+
+.note-output--error,
+.note-output--compiler_error,
+.note-output--runtime_error {
   background: var(--note-error-soft);
   color: var(--note-error);
+}
+
+.note-output--hint {
+  background: var(--note-info-soft);
+  color: var(--note-info);
+}
+
+.note-output--debug,
+.note-output--raw_log {
+  background: #f3f4f6;
+  color: #374151;
 }
 
 .note-output--html {
   background: var(--note-panel);
   color: var(--note-text);
   font-family: inherit;
+}
+
+@media (max-width: 1100px) {
+  .note-status {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 920px) {
@@ -519,10 +665,11 @@ button:disabled {
 
   .note-actions {
     width: 100%;
+    justify-content: flex-start;
   }
 
   .note-button {
-    flex: 1;
+    flex: 1 1 140px;
   }
 }
 
@@ -553,7 +700,35 @@ button:disabled {
     flex-direction: column;
   }
 
+  .note-cell__info,
+  .note-cell__meta,
+  .note-cell__actions {
+    width: 100%;
+  }
+
+  .note-cell__actions button,
+  .note-cell__run {
+    flex: 1 1 auto;
+  }
+
   .note-cell__run {
     width: 100%;
+  }
+
+  textarea {
+    min-height: 130px;
+    padding: 16px;
+  }
+
+  .note-cell__body,
+  .note-code,
+  .note-html-preview,
+  .note-preview {
+    padding: 18px;
+  }
+
+  .note-outputs,
+  .note-output-list {
+    padding: 14px;
   }
 }

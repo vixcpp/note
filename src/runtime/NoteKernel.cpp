@@ -26,9 +26,32 @@ namespace vix::note
 {
   bool NoteKernelRunResult::has_failures() const noexcept
   {
+    if (failed > 0)
+    {
+      return true;
+    }
+
     for (const NoteResult &result : results)
     {
       if (result.failed())
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool NoteKernelRunResult::has_skipped() const noexcept
+  {
+    if (skipped > 0)
+    {
+      return true;
+    }
+
+    for (const NoteResult &result : results)
+    {
+      if (result.was_skipped())
       {
         return true;
       }
@@ -117,6 +140,19 @@ namespace vix::note
     return session_.can_execute_cell(index);
   }
 
+  bool NoteKernel::can_execute_cell(const std::string &id) const noexcept
+  {
+    const std::optional<std::size_t> index =
+        session_.cell_index(id);
+
+    if (!index)
+    {
+      return false;
+    }
+
+    return can_execute_cell(*index);
+  }
+
   std::optional<std::size_t> NoteKernel::cell_index(const std::string &id) const noexcept
   {
     return session_.cell_index(id);
@@ -198,7 +234,11 @@ namespace vix::note
       {
         if (options_.includeNonExecutableAsSkipped)
         {
-          run.results.push_back(NoteResult::skipped("cell is not executable"));
+          NoteResult skipped =
+              NoteResult::skipped("cell is not executable");
+
+          run.results.push_back(skipped);
+          ++run.skipped;
         }
 
         continue;
@@ -210,6 +250,7 @@ namespace vix::note
 
       if (result.failed())
       {
+        ++run.failed;
         run.ok = false;
 
         if (options_.stopOnFirstFailure)
@@ -217,6 +258,10 @@ namespace vix::note
           run.stopped = true;
           break;
         }
+      }
+      else if (result.was_skipped())
+      {
+        ++run.skipped;
       }
     }
 
@@ -249,6 +294,7 @@ namespace vix::note
 
       if (result.failed())
       {
+        ++run.failed;
         run.ok = false;
 
         if (options_.stopOnFirstFailure)
@@ -256,6 +302,10 @@ namespace vix::note
           run.stopped = true;
           break;
         }
+      }
+      else if (result.was_skipped())
+      {
+        ++run.skipped;
       }
     }
 
@@ -315,5 +365,11 @@ namespace vix::note
   {
     NoteKernel kernel(std::move(document));
     return kernel.run_cell(index);
+  }
+
+  NoteResult run_note_cell(NoteDocument document, const std::string &id)
+  {
+    NoteKernel kernel(std::move(document));
+    return kernel.run_cell(id);
   }
 }

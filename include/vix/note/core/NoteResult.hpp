@@ -72,16 +72,42 @@ namespace vix::note
     Html,
 
     /**
-     * @brief Error output.
+     * @brief Generic error output.
      */
-    Error
+    Error,
+
+    /**
+     * @brief Compiler diagnostic output.
+     */
+    CompilerError,
+
+    /**
+     * @brief Runtime failure output.
+     */
+    RuntimeError,
+
+    /**
+     * @brief Debug metadata output.
+     */
+    Debug,
+
+    /**
+     * @brief Beginner-friendly learning hint.
+     */
+    Hint,
+
+    /**
+     * @brief Raw execution log output.
+     */
+    RawLog
   };
 
   /**
    * @brief Represents one output emitted by a note cell.
    *
    * A cell can produce multiple outputs. For example, a C++ cell may emit
-   * stdout, stderr, and an error message.
+   * stdout, stderr, compiler diagnostics, runtime errors, debug metadata,
+   * raw logs, and beginner-friendly hints.
    */
   struct NoteOutput
   {
@@ -128,12 +154,52 @@ namespace vix::note
     static NoteOutput html(std::string content);
 
     /**
-     * @brief Creates an error output.
+     * @brief Creates a generic error output.
      *
      * @param content Error content.
      * @return Created output.
      */
     static NoteOutput error(std::string content);
+
+    /**
+     * @brief Creates a compiler error output.
+     *
+     * @param content Compiler diagnostic content.
+     * @return Created output.
+     */
+    static NoteOutput compiler_error(std::string content);
+
+    /**
+     * @brief Creates a runtime error output.
+     *
+     * @param content Runtime error content.
+     * @return Created output.
+     */
+    static NoteOutput runtime_error(std::string content);
+
+    /**
+     * @brief Creates a debug metadata output.
+     *
+     * @param content Debug metadata content.
+     * @return Created output.
+     */
+    static NoteOutput debug(std::string content);
+
+    /**
+     * @brief Creates a beginner-friendly hint output.
+     *
+     * @param content Hint content.
+     * @return Created output.
+     */
+    static NoteOutput hint(std::string content);
+
+    /**
+     * @brief Creates a raw log output.
+     *
+     * @param content Raw log content.
+     * @return Created output.
+     */
+    static NoteOutput raw_log(std::string content);
 
     /**
      * @brief Checks whether the output has no content.
@@ -287,12 +353,52 @@ namespace vix::note
     NoteResult &add_html(std::string content);
 
     /**
-     * @brief Adds an error output.
+     * @brief Adds a generic error output.
      *
      * @param content Error content.
      * @return Reference to this result.
      */
     NoteResult &add_error(std::string content);
+
+    /**
+     * @brief Adds a compiler error output.
+     *
+     * @param content Compiler diagnostic content.
+     * @return Reference to this result.
+     */
+    NoteResult &add_compiler_error(std::string content);
+
+    /**
+     * @brief Adds a runtime error output.
+     *
+     * @param content Runtime error content.
+     * @return Reference to this result.
+     */
+    NoteResult &add_runtime_error(std::string content);
+
+    /**
+     * @brief Adds a debug metadata output.
+     *
+     * @param content Debug metadata content.
+     * @return Reference to this result.
+     */
+    NoteResult &add_debug(std::string content);
+
+    /**
+     * @brief Adds a beginner-friendly hint output.
+     *
+     * @param content Hint content.
+     * @return Reference to this result.
+     */
+    NoteResult &add_hint(std::string content);
+
+    /**
+     * @brief Adds a raw log output.
+     *
+     * @param content Raw log content.
+     * @return Reference to this result.
+     */
+    NoteResult &add_raw_log(std::string content);
 
   private:
     /**

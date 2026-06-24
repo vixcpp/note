@@ -158,6 +158,206 @@ int main()
   {
     vix::note::NoteDocument doc;
 
+    doc.add_cell(
+        vix::note::NoteCell(
+            "first",
+            vix::note::NoteCellKind::Markdown,
+            "First"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "third",
+            vix::note::NoteCellKind::Cpp,
+            "Third"));
+
+    const bool insertedBefore =
+        doc.insert_cell_before(
+            "third",
+            vix::note::NoteCell(
+                "second",
+                vix::note::NoteCellKind::Reply,
+                "Second"));
+
+    assert(insertedBefore);
+    assert(doc.cell_count() == 3);
+    assert(doc.cells()[0].id() == "first");
+    assert(doc.cells()[1].id() == "second");
+    assert(doc.cells()[2].id() == "third");
+
+    const bool insertedAfter =
+        doc.insert_cell_after(
+            "third",
+            vix::note::NoteCell(
+                "fourth",
+                vix::note::NoteCellKind::Html,
+                "Fourth"));
+
+    assert(insertedAfter);
+    assert(doc.cell_count() == 4);
+    assert(doc.cells()[3].id() == "fourth");
+
+    const bool missingBefore =
+        doc.insert_cell_before(
+            "missing",
+            vix::note::NoteCell::markdown("bad"));
+
+    assert(!missingBefore);
+    assert(doc.cell_count() == 4);
+
+    const bool missingAfter =
+        doc.insert_cell_after(
+            "missing",
+            vix::note::NoteCell::markdown("bad"));
+
+    assert(!missingAfter);
+    assert(doc.cell_count() == 4);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "cell-1",
+            vix::note::NoteCellKind::Markdown,
+            "Old markdown"));
+
+    doc.cells()[0].set_title("Editable cell");
+    doc.cells()[0].set_execution_count(3);
+    doc.cells()[0].add_output(
+        vix::note::NoteOutput::stdout_text("old output"));
+
+    const bool updated =
+        doc.update_cell(
+            "cell-1",
+            vix::note::NoteCellKind::Cpp,
+            "int main() { return 0; }");
+
+    assert(updated);
+    assert(doc.cell_count() == 1);
+    assert(doc.cells()[0].id() == "cell-1");
+    assert(doc.cells()[0].kind() == vix::note::NoteCellKind::Cpp);
+    assert(doc.cells()[0].source() == "int main() { return 0; }");
+
+    assert(doc.cells()[0].title() == "Editable cell");
+    assert(doc.cells()[0].execution_count() == 3);
+    assert(doc.cells()[0].has_outputs());
+    assert(doc.cells()[0].outputs()[0].content == "old output");
+
+    const bool missing =
+        doc.update_cell(
+            "missing",
+            vix::note::NoteCellKind::Markdown,
+            "bad");
+
+    assert(!missing);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "cell-1",
+            vix::note::NoteCellKind::Markdown,
+            "Old source"));
+
+    const bool updated =
+        doc.update_cell_source(
+            "cell-1",
+            "New source");
+
+    assert(updated);
+    assert(doc.cells()[0].id() == "cell-1");
+    assert(doc.cells()[0].kind() == vix::note::NoteCellKind::Markdown);
+    assert(doc.cells()[0].source() == "New source");
+
+    const bool missing =
+        doc.update_cell_source(
+            "missing",
+            "bad");
+
+    assert(!missing);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "a",
+            vix::note::NoteCellKind::Markdown,
+            "A"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "b",
+            vix::note::NoteCellKind::Reply,
+            "B"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "c",
+            vix::note::NoteCellKind::Cpp,
+            "C"));
+
+    assert(doc.move_cell(0, 2));
+    assert(doc.cells()[0].id() == "b");
+    assert(doc.cells()[1].id() == "c");
+    assert(doc.cells()[2].id() == "a");
+
+    assert(doc.move_cell(2, 0));
+    assert(doc.cells()[0].id() == "a");
+    assert(doc.cells()[1].id() == "b");
+    assert(doc.cells()[2].id() == "c");
+
+    assert(doc.move_cell(1, 1));
+    assert(doc.cells()[0].id() == "a");
+    assert(doc.cells()[1].id() == "b");
+    assert(doc.cells()[2].id() == "c");
+
+    assert(!doc.move_cell(99, 0));
+    assert(!doc.move_cell(0, 99));
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "a",
+            vix::note::NoteCellKind::Markdown,
+            "A"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "b",
+            vix::note::NoteCellKind::Reply,
+            "B"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "c",
+            vix::note::NoteCellKind::Cpp,
+            "C"));
+
+    assert(doc.move_cell("c", 0));
+    assert(doc.cells()[0].id() == "c");
+    assert(doc.cells()[1].id() == "a");
+    assert(doc.cells()[2].id() == "b");
+
+    assert(doc.move_cell("c", 2));
+    assert(doc.cells()[0].id() == "a");
+    assert(doc.cells()[1].id() == "b");
+    assert(doc.cells()[2].id() == "c");
+
+    assert(!doc.move_cell("missing", 0));
+    assert(!doc.move_cell("a", 99));
+  }
+
+  {
+    vix::note::NoteDocument doc;
+
     doc.add_markdown("first");
     doc.add_reply("second");
     doc.add_cpp("third");

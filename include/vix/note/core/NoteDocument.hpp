@@ -227,6 +227,69 @@ namespace vix::note
     bool insert_cell(std::size_t index, NoteCell cell);
 
     /**
+     * @brief Inserts a cell before another cell.
+     *
+     * @param id   Existing target cell id.
+     * @param cell Cell to insert.
+     * @return True when the target cell exists.
+     */
+    bool insert_cell_before(const std::string &id, NoteCell cell);
+
+    /**
+     * @brief Inserts a cell after another cell.
+     *
+     * @param id   Existing target cell id.
+     * @param cell Cell to insert.
+     * @return True when the target cell exists.
+     */
+    bool insert_cell_after(const std::string &id, NoteCell cell);
+
+    /**
+     * @brief Updates a cell by id.
+     *
+     * The cell keeps its stable id, execution count, title, and outputs unless
+     * the caller updates those fields separately.
+     *
+     * @param id     Existing cell id.
+     * @param kind   New cell kind.
+     * @param source New cell source content.
+     * @return True when the cell exists and was updated.
+     */
+    bool update_cell(
+        const std::string &id,
+        NoteCellKind kind,
+        std::string source);
+
+    /**
+     * @brief Updates only the source content of a cell by id.
+     *
+     * @param id     Existing cell id.
+     * @param source New source content.
+     * @return True when the cell exists and was updated.
+     */
+    bool update_cell_source(
+        const std::string &id,
+        std::string source);
+
+    /**
+     * @brief Moves a cell from one index to another index.
+     *
+     * @param fromIndex Current cell index.
+     * @param toIndex   Target cell index.
+     * @return True on success, false when one index is out of range.
+     */
+    bool move_cell(std::size_t fromIndex, std::size_t toIndex);
+
+    /**
+     * @brief Moves a cell by id to another index.
+     *
+     * @param id      Existing cell id.
+     * @param toIndex Target cell index.
+     * @return True on success, false when the cell or target index is invalid.
+     */
+    bool move_cell(const std::string &id, std::size_t toIndex);
+
+    /**
      * @brief Removes a cell by index.
      *
      * @param index Cell index.

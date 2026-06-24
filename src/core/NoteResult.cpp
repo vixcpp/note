@@ -47,6 +47,31 @@ namespace vix::note
     return {NoteOutputKind::Error, std::move(content)};
   }
 
+  NoteOutput NoteOutput::compiler_error(std::string content)
+  {
+    return {NoteOutputKind::CompilerError, std::move(content)};
+  }
+
+  NoteOutput NoteOutput::runtime_error(std::string content)
+  {
+    return {NoteOutputKind::RuntimeError, std::move(content)};
+  }
+
+  NoteOutput NoteOutput::debug(std::string content)
+  {
+    return {NoteOutputKind::Debug, std::move(content)};
+  }
+
+  NoteOutput NoteOutput::hint(std::string content)
+  {
+    return {NoteOutputKind::Hint, std::move(content)};
+  }
+
+  NoteOutput NoteOutput::raw_log(std::string content)
+  {
+    return {NoteOutputKind::RawLog, std::move(content)};
+  }
+
   bool NoteOutput::empty() const noexcept
   {
     return content.empty();
@@ -157,6 +182,31 @@ namespace vix::note
     return add_output(NoteOutput::error(std::move(content)));
   }
 
+  NoteResult &NoteResult::add_compiler_error(std::string content)
+  {
+    return add_output(NoteOutput::compiler_error(std::move(content)));
+  }
+
+  NoteResult &NoteResult::add_runtime_error(std::string content)
+  {
+    return add_output(NoteOutput::runtime_error(std::move(content)));
+  }
+
+  NoteResult &NoteResult::add_debug(std::string content)
+  {
+    return add_output(NoteOutput::debug(std::move(content)));
+  }
+
+  NoteResult &NoteResult::add_hint(std::string content)
+  {
+    return add_output(NoteOutput::hint(std::move(content)));
+  }
+
+  NoteResult &NoteResult::add_raw_log(std::string content)
+  {
+    return add_output(NoteOutput::raw_log(std::move(content)));
+  }
+
   std::string_view to_string(NoteResultStatus status) noexcept
   {
     switch (status)
@@ -192,6 +242,21 @@ namespace vix::note
 
     case NoteOutputKind::Error:
       return "error";
+
+    case NoteOutputKind::CompilerError:
+      return "compiler_error";
+
+    case NoteOutputKind::RuntimeError:
+      return "runtime_error";
+
+    case NoteOutputKind::Debug:
+      return "debug";
+
+    case NoteOutputKind::Hint:
+      return "hint";
+
+    case NoteOutputKind::RawLog:
+      return "raw_log";
     }
 
     return "text";

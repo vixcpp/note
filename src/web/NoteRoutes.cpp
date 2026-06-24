@@ -47,6 +47,47 @@ namespace vix::note
              value.substr(0, prefix.size()) == prefix;
     }
 
+    bool ends_with(std::string_view value, std::string_view suffix)
+    {
+      return value.size() >= suffix.size() &&
+             value.substr(value.size() - suffix.size()) == suffix;
+    }
+
+    bool is_digits(std::string_view value)
+    {
+      if (value.empty())
+      {
+        return false;
+      }
+
+      for (char c : value)
+      {
+        if (c < '0' || c > '9')
+        {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    std::optional<std::size_t> parse_size_value(std::string_view value)
+    {
+      if (!is_digits(value))
+      {
+        return std::nullopt;
+      }
+
+      std::size_t out = 0;
+
+      for (char c : value)
+      {
+        out = (out * 10) + static_cast<std::size_t>(c - '0');
+      }
+
+      return out;
+    }
+
     std::string json_escape(const std::string &value)
     {
       std::string out;
@@ -85,22 +126,198 @@ namespace vix::note
       return out;
     }
 
-    std::optional<std::size_t> parse_cell_index_path(std::string_view path)
+    std::string json_unescape(std::string_view value)
+    {
+      std::string out;
+      out.reserve(value.size());
+
+      bool escaping = false;
+
+      for (char c : value)
+      {
+        if (escaping)
+        {
+          switch (c)
+          {
+          case 'n':
+            out += '\n';
+            break;
+
+          case 'r':
+            out += '\r';
+            break;
+
+          case 't':
+            out += '\t';
+            break;
+
+          case '\\':
+            out += '\\';
+            break;
+
+          case '"':
+            out += '"';
+            break;
+
+          default:
+            out += c;
+            break;
+          }
+
+          escaping = false;
+          continue;
+        }
+
+        if (c == '\\')
+        {
+          escaping = true;
+          continue;
+        }
+
+        out += c;
+      }
+
+      if (escaping)
+      {
+        out += '\\';
+      }
+
+      return out;
+    }
+
+    std::optional<std::string> json_string_field(
+        std::string_view json,
+        std::string_view key)
+    {
+      const std::string pattern =
+          "\"" + std::string(key) + "\"";
+
+      std::size_t pos =
+          json.find(pattern);
+
+      if (pos == std::string_view::npos)
+      {
+        return std::nullopt;
+      }
+
+      pos = json.find(':', pos + pattern.size());
+
+      if (pos == std::string_view::npos)
+      {
+        return std::nullopt;
+      }
+
+      ++pos;
+
+      while (pos < json.size() &&
+             (json[pos] == ' ' ||
+              json[pos] == '\t' ||
+              json[pos] == '\n' ||
+              json[pos] == '\r'))
+      {
+        ++pos;
+      }
+
+      if (pos >= json.size() || json[pos] != '"')
+      {
+        return std::nullopt;
+      }
+
+      ++pos;
+
+      std::string raw;
+      bool escaping = false;
+
+      while (pos < json.size())
+      {
+        const char c = json[pos++];
+
+        if (escaping)
+        {
+          raw += '\\';
+          raw += c;
+          escaping = false;
+          continue;
+        }
+
+        if (c == '\\')
+        {
+          escaping = true;
+          continue;
+        }
+
+        if (c == '"')
+        {
+          return json_unescape(raw);
+        }
+
+        raw += c;
+      }
+
+      return std::nullopt;
+    }
+
+    std::optional<std::size_t> json_size_field(
+        std::string_view json,
+        std::string_view key)
+    {
+      const std::string pattern =
+          "\"" + std::string(key) + "\"";
+
+      std::size_t pos =
+          json.find(pattern);
+
+      if (pos == std::string_view::npos)
+      {
+        return std::nullopt;
+      }
+
+      pos = json.find(':', pos + pattern.size());
+
+      if (pos == std::string_view::npos)
+      {
+        return std::nullopt;
+      }
+
+      ++pos;
+
+      while (pos < json.size() &&
+             (json[pos] == ' ' ||
+              json[pos] == '\t' ||
+              json[pos] == '\n' ||
+              json[pos] == '\r'))
+      {
+        ++pos;
+      }
+
+      const std::size_t begin = pos;
+
+      while (pos < json.size() &&
+             json[pos] >= '0' &&
+             json[pos] <= '9')
+      {
+        ++pos;
+      }
+
+      if (begin == pos)
+      {
+        return std::nullopt;
+      }
+
+      return parse_size_value(json.substr(begin, pos - begin));
+    }
+
+    std::optional<std::string> parse_cell_run_path(std::string_view path)
     {
       constexpr std::string_view prefix = "/api/cells/";
       constexpr std::string_view suffix = "/run";
 
-      if (!starts_with(path, prefix))
+      if (!starts_with(path, prefix) || !ends_with(path, suffix))
       {
         return std::nullopt;
       }
 
       if (path.size() <= prefix.size() + suffix.size())
-      {
-        return std::nullopt;
-      }
-
-      if (path.substr(path.size() - suffix.size()) != suffix)
       {
         return std::nullopt;
       }
@@ -115,19 +332,109 @@ namespace vix::note
         return std::nullopt;
       }
 
-      std::size_t value = 0;
+      return std::string(raw);
+    }
 
-      for (char c : raw)
+    std::optional<std::string> parse_cell_move_path(std::string_view path)
+    {
+      constexpr std::string_view prefix = "/api/cells/";
+      constexpr std::string_view suffix = "/move";
+
+      if (!starts_with(path, prefix) || !ends_with(path, suffix))
       {
-        if (c < '0' || c > '9')
-        {
-          return std::nullopt;
-        }
-
-        value = (value * 10) + static_cast<std::size_t>(c - '0');
+        return std::nullopt;
       }
 
-      return value;
+      if (path.size() <= prefix.size() + suffix.size())
+      {
+        return std::nullopt;
+      }
+
+      const std::string_view raw =
+          path.substr(
+              prefix.size(),
+              path.size() - prefix.size() - suffix.size());
+
+      if (raw.empty())
+      {
+        return std::nullopt;
+      }
+
+      return std::string(raw);
+    }
+
+    std::optional<std::string> parse_cell_id_path(std::string_view path)
+    {
+      constexpr std::string_view prefix = "/api/cells/";
+
+      if (!starts_with(path, prefix))
+      {
+        return std::nullopt;
+      }
+
+      if (path.size() <= prefix.size())
+      {
+        return std::nullopt;
+      }
+
+      const std::string_view raw =
+          path.substr(prefix.size());
+
+      if (raw.empty() ||
+          raw.find('/') != std::string_view::npos)
+      {
+        return std::nullopt;
+      }
+
+      return std::string(raw);
+    }
+
+    NoteCellKind json_cell_kind(
+        std::string_view body,
+        NoteCellKind fallback = NoteCellKind::Markdown)
+    {
+      const std::optional<std::string> kind =
+          json_string_field(body, "kind");
+
+      if (!kind)
+      {
+        return fallback;
+      }
+
+      const NoteCellKind parsed =
+          note_cell_kind_from_string(*kind);
+
+      if (parsed == NoteCellKind::Unknown)
+      {
+        return fallback;
+      }
+
+      return parsed;
+    }
+
+    std::string make_unique_cell_id(const NoteDocument &doc)
+    {
+      std::size_t index = doc.cell_count() + 1;
+
+      while (true)
+      {
+        const std::string id =
+            "cell-" + std::to_string(index);
+
+        if (doc.find_cell(id) == nullptr)
+        {
+          return id;
+        }
+
+        ++index;
+      }
+    }
+
+    bool document_has_cell_id(
+        const NoteDocument &doc,
+        const std::string &id)
+    {
+      return doc.find_cell(id) != nullptr;
     }
   }
 
@@ -211,6 +518,16 @@ namespace vix::note
     return kernel_;
   }
 
+  const NoteStore &NoteRoutes::store() const noexcept
+  {
+    return store_;
+  }
+
+  NoteStore &NoteRoutes::store() noexcept
+  {
+    return store_;
+  }
+
   const NoteDocument &NoteRoutes::document() const noexcept
   {
     return kernel_.document();
@@ -260,6 +577,24 @@ namespace vix::note
             std::move(body)});
   }
 
+  NoteRouteResponse NoteRoutes::put(std::string_view path, std::string body)
+  {
+    return handle(
+        NoteRouteRequest{
+            NoteRouteMethod::Put,
+            std::string(path),
+            std::move(body)});
+  }
+
+  NoteRouteResponse NoteRoutes::delete_request(std::string_view path)
+  {
+    return handle(
+        NoteRouteRequest{
+            NoteRouteMethod::Delete,
+            std::string(path),
+            {}});
+  }
+
   std::optional<NoteRouteResponse> NoteRoutes::handle_asset(std::string_view path) const
   {
     std::optional<NoteAsset> asset =
@@ -297,19 +632,203 @@ namespace vix::note
           run_result_json(result));
     }
 
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/document/save")
+    {
+      if (!options_.enableSave)
+      {
+        return NoteRouteResponse::json(
+            403,
+            "{\"ok\":false,\"error\":\"save disabled\"}");
+      }
+
+      NoteResult result =
+          store_.save(kernel_.document());
+
+      return NoteRouteResponse::json(
+          result.ok() ? 200 : 500,
+          save_result_json(result));
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/cells")
+    {
+      if (!options_.enableEditing)
+      {
+        return NoteRouteResponse::json(
+            403,
+            "{\"ok\":false,\"error\":\"editing disabled\"}");
+      }
+
+      NoteDocument &doc =
+          kernel_.document();
+
+      std::string id =
+          json_string_field(request.body, "id").value_or(std::string{});
+
+      if (id.empty())
+      {
+        id = make_unique_cell_id(doc);
+      }
+
+      if (document_has_cell_id(doc, id))
+      {
+        return NoteRouteResponse::json(
+            409,
+            "{\"ok\":false,\"error\":\"cell id already exists\"}");
+      }
+
+      const NoteCellKind kind =
+          json_cell_kind(request.body, NoteCellKind::Markdown);
+
+      const std::string source =
+          json_string_field(request.body, "source").value_or(std::string{});
+
+      NoteCell cell(id, kind, source);
+
+      const std::optional<std::size_t> index =
+          json_size_field(request.body, "index");
+
+      const bool inserted =
+          index
+              ? doc.insert_cell(*index, std::move(cell))
+              : (doc.add_cell(std::move(cell)), true);
+
+      if (!inserted)
+      {
+        return NoteRouteResponse::json(
+            400,
+            "{\"ok\":false,\"error\":\"invalid cell index\"}");
+      }
+
+      return NoteRouteResponse::json(
+          200,
+          cell_mutation_json(true, "cell added", id));
+    }
+
+    if (request.method == NoteRouteMethod::Put)
+    {
+      const std::optional<std::string> id =
+          parse_cell_id_path(request.path);
+
+      if (id)
+      {
+        if (!options_.enableEditing)
+        {
+          return NoteRouteResponse::json(
+              403,
+              "{\"ok\":false,\"error\":\"editing disabled\"}");
+        }
+
+        NoteDocument &doc =
+            kernel_.document();
+
+        NoteCell *cell =
+            doc.find_cell(*id);
+
+        if (cell == nullptr)
+        {
+          return NoteRouteResponse::json(
+              404,
+              "{\"ok\":false,\"error\":\"cell not found\"}");
+        }
+
+        const NoteCellKind kind =
+            json_cell_kind(request.body, cell->kind());
+
+        const std::string source =
+            json_string_field(request.body, "source").value_or(cell->source());
+
+        const bool updated =
+            doc.update_cell(*id, kind, source);
+
+        return NoteRouteResponse::json(
+            updated ? 200 : 404,
+            cell_mutation_json(updated, updated ? "cell updated" : "cell not found", *id));
+      }
+    }
+
+    if (request.method == NoteRouteMethod::Delete)
+    {
+      const std::optional<std::string> id =
+          parse_cell_id_path(request.path);
+
+      if (id)
+      {
+        if (!options_.enableEditing)
+        {
+          return NoteRouteResponse::json(
+              403,
+              "{\"ok\":false,\"error\":\"editing disabled\"}");
+        }
+
+        const bool removed =
+            kernel_.document().remove_cell_by_id(*id);
+
+        return NoteRouteResponse::json(
+            removed ? 200 : 404,
+            cell_mutation_json(removed, removed ? "cell deleted" : "cell not found", *id));
+      }
+    }
+
     if (request.method == NoteRouteMethod::Post)
     {
-      const std::optional<std::size_t> index =
-          parse_cell_index_path(request.path);
+      const std::optional<std::string> moveId =
+          parse_cell_move_path(request.path);
 
-      if (index)
+      if (moveId)
       {
-        NoteResult result =
-            kernel_.run_cell(*index);
+        if (!options_.enableEditing)
+        {
+          return NoteRouteResponse::json(
+              403,
+              "{\"ok\":false,\"error\":\"editing disabled\"}");
+        }
+
+        const std::optional<std::size_t> index =
+            json_size_field(request.body, "index");
+
+        if (!index)
+        {
+          return NoteRouteResponse::json(
+              400,
+              "{\"ok\":false,\"error\":\"missing target index\"}");
+        }
+
+        const bool moved =
+            kernel_.document().move_cell(*moveId, *index);
+
+        return NoteRouteResponse::json(
+            moved ? 200 : 404,
+            cell_mutation_json(moved, moved ? "cell moved" : "cell not found or invalid index", *moveId));
+      }
+
+      const std::optional<std::string> runId =
+          parse_cell_run_path(request.path);
+
+      if (runId)
+      {
+        NoteResult result;
+
+        std::optional<std::size_t> index;
+
+        if (is_digits(*runId))
+        {
+          index = parse_size_value(*runId);
+          result = kernel_.run_cell(*index);
+        }
+        else
+        {
+          index = kernel_.cell_index(*runId);
+          result = kernel_.run_cell(*runId);
+        }
+
+        const std::size_t responseIndex =
+            index.value_or(kernel_.cell_count());
 
         return NoteRouteResponse::json(
             result.ok() || result.was_skipped() ? 200 : 500,
-            cell_run_json(*index, result));
+            cell_run_json(responseIndex, result));
       }
     }
 
@@ -428,7 +947,7 @@ namespace vix::note
     std::ostringstream out;
 
     out << "{";
-    out << "\"ok\":" << (result.ok() ? "true" : "false") << ",";
+    out << "\"ok\":" << ((result.ok() || result.was_skipped()) ? "true" : "false") << ",";
     out << "\"result\":" << result_json(result) << ",";
     out << "\"cell\":";
 
@@ -441,6 +960,58 @@ namespace vix::note
       out << cell_json(*cell, index);
     }
 
+    out << ",";
+    out << "\"document\":" << document_json();
+    out << "}";
+
+    return out.str();
+  }
+
+  std::string NoteRoutes::cell_mutation_json(
+      bool ok,
+      std::string_view message,
+      std::string_view cellId) const
+  {
+    const NoteDocument &doc = kernel_.document();
+    const NoteCell *cell = cellId.empty()
+                               ? nullptr
+                               : doc.find_cell(std::string(cellId));
+
+    std::ostringstream out;
+
+    out << "{";
+    out << "\"ok\":" << (ok ? "true" : "false") << ",";
+    out << "\"message\":\"" << json_escape(std::string(message)) << "\",";
+    out << "\"cellId\":\"" << json_escape(std::string(cellId)) << "\",";
+    out << "\"cell\":";
+
+    if (cell == nullptr)
+    {
+      out << "null";
+    }
+    else
+    {
+      const std::optional<std::size_t> index =
+          doc.cell_index(std::string(cellId));
+
+      out << cell_json(*cell, index.value_or(0));
+    }
+
+    out << ",";
+    out << "\"document\":" << document_json();
+    out << "}";
+
+    return out.str();
+  }
+
+  std::string NoteRoutes::save_result_json(const NoteResult &result) const
+  {
+    std::ostringstream out;
+
+    out << "{";
+    out << "\"ok\":" << (result.ok() ? "true" : "false") << ",";
+    out << "\"result\":" << result_json(result) << ",";
+    out << "\"document\":" << document_json();
     out << "}";
 
     return out.str();
@@ -455,6 +1026,8 @@ namespace vix::note
     out << "\"stopped\":" << (result.stopped ? "true" : "false") << ",";
     out << "\"visited\":" << result.visited << ",";
     out << "\"executed\":" << result.executed << ",";
+    out << "\"skipped\":" << result.skipped << ",";
+    out << "\"failed\":" << result.failed << ",";
     out << "\"results\":[";
 
     for (std::size_t i = 0; i < result.results.size(); ++i)
@@ -473,6 +1046,7 @@ namespace vix::note
 
     return out.str();
   }
+
   std::string_view to_string(NoteRouteMethod method) noexcept
   {
     switch (method)

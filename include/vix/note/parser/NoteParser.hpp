@@ -36,8 +36,23 @@ namespace vix::note
   {
     /**
      * @brief Automatically assign ids to cells that do not have one.
+     *
+     * This keeps old markdown-compatible notes usable even when they do not
+     * contain Vix Note metadata comments.
      */
     bool assignCellIds = true;
+
+    /**
+     * @brief Read Vix Note cell metadata comments when present.
+     *
+     * Supported metadata comment format:
+     * `<!-- vixnote:cell id="cell-1" kind="markdown" -->`
+     *
+     * Metadata comments are used to preserve stable cell ids across save/load
+     * cycles. They are consumed by the parser and are not stored as markdown
+     * cell source content.
+     */
+    bool readCellMetadata = true;
 
     /**
      * @brief Infer the document title from the first markdown heading.
@@ -100,14 +115,19 @@ namespace vix::note
   /**
    * @brief Parses the lightweight Vix Note document format.
    *
-   * Vix Note currently uses a markdown-compatible format where normal text is
-   * stored as markdown cells and fenced blocks become executable or renderable
-   * cells.
+   * Vix Note uses a markdown-compatible format where normal text is stored as
+   * markdown cells and fenced blocks become executable or renderable cells.
    *
    * Supported fenced cell languages:
    * - `reply` or `repl`
    * - `cpp` or `c++`
    * - `html`
+   *
+   * Supported metadata comment:
+   * - `<!-- vixnote:cell id="cell-1" kind="markdown" -->`
+   *
+   * Metadata comments allow the storage layer to preserve stable cell ids while
+   * keeping `.vixnote` files readable as markdown.
    *
    * Any unknown fenced language is preserved as markdown.
    */

@@ -86,6 +86,16 @@ namespace vix::note
     std::size_t executed = 0;
 
     /**
+     * @brief Number of skipped cells included in the result list.
+     */
+    std::size_t skipped = 0;
+
+    /**
+     * @brief Number of failed executable cells.
+     */
+    std::size_t failed = 0;
+
+    /**
      * @brief Results produced while running cells.
      */
     std::vector<NoteResult> results;
@@ -96,6 +106,13 @@ namespace vix::note
      * @return True when one result is a failure.
      */
     bool has_failures() const noexcept;
+
+    /**
+     * @brief Checks whether at least one cell was skipped.
+     *
+     * @return True when one result is skipped.
+     */
+    bool has_skipped() const noexcept;
 
     /**
      * @brief Checks whether the run produced any results.
@@ -215,6 +232,14 @@ namespace vix::note
     bool can_execute_cell(std::size_t index) const noexcept;
 
     /**
+     * @brief Checks whether a cell can be executed.
+     *
+     * @param id Cell id.
+     * @return True when the cell exists and is executable.
+     */
+    bool can_execute_cell(const std::string &id) const noexcept;
+
+    /**
      * @brief Finds the index of a cell by id.
      *
      * @param id Cell id.
@@ -274,9 +299,9 @@ namespace vix::note
     /**
      * @brief Runs a Reply cell.
      *
-     * Reply execution is intentionally not implemented in v0.2.0. Reply cells
-     * are recognized by the kernel but currently return a skipped result until
-     * the Reply runtime integration is added in a later version.
+     * Reply execution is intentionally not implemented yet. Reply cells are
+     * recognized by the kernel but currently return a skipped result until the
+     * Reply runtime integration is added in a later version.
      *
      * @param cell Cell to run.
      * @return Execution result.
@@ -328,6 +353,15 @@ namespace vix::note
    * @return Cell execution result.
    */
   NoteResult run_note_cell(NoteDocument document, std::size_t index);
+
+  /**
+   * @brief Runs one cell in a document using default kernel options.
+   *
+   * @param document Document to execute.
+   * @param id       Cell id.
+   * @return Cell execution result.
+   */
+  NoteResult run_note_cell(NoteDocument document, const std::string &id);
 }
 
 #endif // VIX_NOTE_RUNTIME_NOTE_KERNEL_HPP

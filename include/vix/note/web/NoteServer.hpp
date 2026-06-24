@@ -89,8 +89,8 @@ namespace vix::note
    *
    * NoteServer owns the route resolver and starts a small local HTTP server
    * for the browser UI. It keeps the public API independent from the concrete
-   * socket implementation so tests can still call handle(), get(), and post()
-   * directly without opening a network port.
+   * socket implementation so tests can still call handle(), get(), post(),
+   * put(), and delete_request() directly without opening a network port.
    */
   class NoteServer
   {
@@ -280,6 +280,23 @@ namespace vix::note
      * @return Route response.
      */
     NoteRouteResponse post(std::string_view path, std::string body = {});
+
+    /**
+     * @brief Handles a PUT request through the server routes.
+     *
+     * @param path Request path.
+     * @param body Request body.
+     * @return Route response.
+     */
+    NoteRouteResponse put(std::string_view path, std::string body = {});
+
+    /**
+     * @brief Handles a DELETE request through the server routes.
+     *
+     * @param path Request path.
+     * @return Route response.
+     */
+    NoteRouteResponse delete_request(std::string_view path);
 
   private:
     /**

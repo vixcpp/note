@@ -59,6 +59,17 @@ namespace
         "  echo simulated failure\n"
         "  exit /b 7\n"
         ")\n"
+        "if \"%3\"==\"--compiler-fail\" (\n"
+        "  echo main.cpp:3:10: error: expected ';' 1>&2\n"
+        "  exit /b 1\n"
+        ")\n"
+        "if \"%3\"==\"--runtime-fail\" (\n"
+        "  echo segmentation fault 1>&2\n"
+        "  exit /b 139\n"
+        ")\n"
+        "if \"%3\"==\"--stderr-ok\" (\n"
+        "  echo warning: simulated warning 1>&2\n"
+        ")\n"
         "echo fake vix run\n"
         "echo mode:%1\n"
         "type \"%2\"\n"
@@ -74,6 +85,17 @@ namespace
         "if [ \"$3\" = \"--fail\" ]; then\n"
         "  echo simulated failure\n"
         "  exit 7\n"
+        "fi\n"
+        "if [ \"$3\" = \"--compiler-fail\" ]; then\n"
+        "  echo \"main.cpp:3:10: error: expected ';'\" >&2\n"
+        "  exit 1\n"
+        "fi\n"
+        "if [ \"$3\" = \"--runtime-fail\" ]; then\n"
+        "  echo \"segmentation fault\" >&2\n"
+        "  exit 139\n"
+        "fi\n"
+        "if [ \"$3\" = \"--stderr-ok\" ]; then\n"
+        "  echo \"warning: simulated warning\" >&2\n"
         "fi\n"
         "echo fake vix run\n"
         "echo mode:$1\n"
@@ -105,6 +127,38 @@ namespace
 
     return count;
   }
+
+  bool has_output_kind(
+      const vix::note::NoteResult &result,
+      vix::note::NoteOutputKind kind)
+  {
+    for (const vix::note::NoteOutput &output : result.outputs())
+    {
+      if (output.kind == kind)
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool output_contains(
+      const vix::note::NoteResult &result,
+      vix::note::NoteOutputKind kind,
+      const std::string &needle)
+  {
+    for (const vix::note::NoteOutput &output : result.outputs())
+    {
+      if (output.kind == kind &&
+          output.content.find(needle) != std::string::npos)
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
 }
 
 int main()
@@ -125,6 +179,10 @@ int main()
     assert(runner.options().temporaryDirectory.empty());
     assert(runner.options().runArgs.empty());
     assert(!runner.options().keepTemporaryFile);
+    assert(!runner.options().debugMode);
+    assert(runner.options().separateStreams);
+    assert(runner.options().includeRawLog);
+    assert(runner.options().enableErrorHints);
   }
 
   {
@@ -168,14 +226,31 @@ int main()
     assert(result.exit_code() == 0);
     assert(result.message() == "C++ cell executed");
     assert(result.has_outputs());
-    assert(result.outputs().size() == 1);
-    assert(result.outputs()[0].kind == vix::note::NoteOutputKind::Stdout);
 
-    assert(result.outputs()[0].content.find("fake vix run") != std::string::npos);
-    assert(result.outputs()[0].content.find("mode:run") != std::string::npos);
-    assert(result.outputs()[0].content.find("hello from cell") != std::string::npos);
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
+
+    assert(output_contains(result, vix::note::NoteOutputKind::Stdout, "fake vix run"));
+    assert(output_contains(result, vix::note::NoteOutputKind::Stdout, "mode:run"));
+    assert(output_contains(result, vix::note::NoteOutputKind::Stdout, "hello from cell"));
 
     assert(count_cpp_files(options.temporaryDirectory) == 0);
+  }
+
+  {
+    vix::note::CppCellRunnerOptions options;
+    options.vixCommand = fakeVix.string();
+    options.temporaryDirectory = root / "tmp-success-no-raw";
+    options.includeRawLog = false;
+
+    vix::note::CppCellRunner runner(options);
+
+    vix::note::NoteResult result =
+        runner.run_source("int main() { return 0; }\n");
+
+    assert(result.ok());
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
+    assert(!has_output_kind(result, vix::note::NoteOutputKind::RawLog));
   }
 
   {
@@ -208,8 +283,152 @@ int main()
     assert(result.exit_code() == 7);
     assert(result.message() == "C++ cell failed");
     assert(result.has_outputs());
-    assert(result.outputs()[0].kind == vix::note::NoteOutputKind::Error);
-    assert(result.outputs()[0].content.find("simulated failure") != std::string::npos);
+
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Error));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RuntimeError));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
+
+    assert(output_contains(result, vix::note::NoteOutputKind::Error, "simulated failure"));
+  }
+
+  {
+    vix::note::CppCellRunnerOptions options;
+    options.vixCommand = fakeVix.string();
+    options.temporaryDirectory = root / "tmp-compiler-failure";
+    options.runArgs.push_back("--compiler-fail");
+
+    vix::note::CppCellRunner runner(options);
+
+    vix::note::NoteResult result =
+        runner.run_source("int main() { return 0 }\n");
+
+    assert(result.failed());
+    assert(result.exit_code() == 1);
+    assert(result.message() == "C++ cell failed");
+
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stderr));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Error));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::CompilerError));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Hint));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
+
+    assert(output_contains(result, vix::note::NoteOutputKind::CompilerError, "expected ';'"));
+    assert(output_contains(result, vix::note::NoteOutputKind::Hint, "semicolon"));
+  }
+
+  {
+    vix::note::CppCellRunnerOptions options;
+    options.vixCommand = fakeVix.string();
+    options.temporaryDirectory = root / "tmp-runtime-failure";
+    options.runArgs.push_back("--runtime-fail");
+
+    vix::note::CppCellRunner runner(options);
+
+    vix::note::NoteResult result =
+        runner.run_source("int main() { return 139; }\n");
+
+    assert(result.failed());
+    assert(result.exit_code() == 139);
+    assert(result.message() == "C++ cell failed");
+
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stderr));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Error));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RuntimeError));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Hint));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
+
+    assert(output_contains(result, vix::note::NoteOutputKind::RuntimeError, "segmentation fault"));
+    assert(output_contains(result, vix::note::NoteOutputKind::Hint, "invalid memory access"));
+  }
+
+  {
+    vix::note::CppCellRunnerOptions options;
+    options.vixCommand = fakeVix.string();
+    options.temporaryDirectory = root / "tmp-debug";
+    options.debugMode = true;
+
+    vix::note::CppCellRunner runner(options);
+
+    vix::note::NoteResult result =
+        runner.run_source("int main() { return 0; }\n");
+
+    assert(result.ok());
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Debug));
+
+    assert(output_contains(result, vix::note::NoteOutputKind::Debug, "source_path="));
+    assert(output_contains(result, vix::note::NoteOutputKind::Debug, "duration_ms="));
+    assert(output_contains(result, vix::note::NoteOutputKind::Debug, "exit_code=0"));
+
+    assert(count_cpp_files(options.temporaryDirectory) == 0);
+  }
+
+  {
+    vix::note::CppCellRunnerOptions options;
+    options.vixCommand = fakeVix.string();
+    options.temporaryDirectory = root / "tmp-debug-keep";
+    options.debugMode = true;
+    options.keepTemporaryFile = true;
+
+    vix::note::CppCellRunner runner(options);
+
+    vix::note::NoteResult result =
+        runner.run_source("int main() { return 0; }\n");
+
+    assert(result.ok());
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Debug));
+    assert(count_cpp_files(options.temporaryDirectory) == 1);
+  }
+
+  {
+    vix::note::CppCellRunnerOptions options;
+    options.vixCommand = fakeVix.string();
+    options.temporaryDirectory = root / "tmp-stderr-ok";
+    options.runArgs.push_back("--stderr-ok");
+
+    vix::note::CppCellRunner runner(options);
+
+    vix::note::NoteResult result =
+        runner.run_source("int main() { return 0; }\n");
+
+    assert(result.ok());
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stderr));
+    assert(output_contains(result, vix::note::NoteOutputKind::Stderr, "simulated warning"));
+  }
+
+  {
+    vix::note::CppCellRunnerOptions options;
+    options.vixCommand = fakeVix.string();
+    options.temporaryDirectory = root / "tmp-merged";
+    options.separateStreams = false;
+
+    vix::note::CppCellRunner runner(options);
+
+    vix::note::NoteResult result =
+        runner.run_source("int main() { return 0; }\n");
+
+    assert(result.ok());
+    assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
+    assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
+    assert(output_contains(result, vix::note::NoteOutputKind::Stdout, "fake vix run"));
+  }
+
+  {
+    vix::note::CppCellRunnerOptions options;
+    options.vixCommand = fakeVix.string();
+    options.temporaryDirectory = root / "tmp-no-hints";
+    options.enableErrorHints = false;
+    options.runArgs.push_back("--compiler-fail");
+
+    vix::note::CppCellRunner runner(options);
+
+    vix::note::NoteResult result =
+        runner.run_source("int main() { return 0 }\n");
+
+    assert(result.failed());
+    assert(has_output_kind(result, vix::note::NoteOutputKind::CompilerError));
+    assert(!has_output_kind(result, vix::note::NoteOutputKind::Hint));
   }
 
   {
@@ -233,7 +452,7 @@ int main()
 
     assert(result.ok());
     assert(result.has_outputs());
-    assert(result.outputs()[0].content.find("cell ok") != std::string::npos);
+    assert(output_contains(result, vix::note::NoteOutputKind::Stdout, "cell ok"));
   }
 
   {
@@ -262,6 +481,10 @@ int main()
     options.vixCommand = fakeVix.string();
     options.temporaryDirectory = root / "tmp-options";
     options.keepTemporaryFile = true;
+    options.debugMode = true;
+    options.separateStreams = false;
+    options.includeRawLog = false;
+    options.enableErrorHints = false;
 
     vix::note::CppCellRunner runner;
     runner.set_options(options);
@@ -269,6 +492,10 @@ int main()
     assert(runner.options().vixCommand == fakeVix.string());
     assert(runner.options().temporaryDirectory == options.temporaryDirectory);
     assert(runner.options().keepTemporaryFile);
+    assert(runner.options().debugMode);
+    assert(!runner.options().separateStreams);
+    assert(!runner.options().includeRawLog);
+    assert(!runner.options().enableErrorHints);
   }
 
   {

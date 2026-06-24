@@ -61,8 +61,23 @@
             <button
               class="note-button note-button--ghost"
               type="button"
+              data-action="add-markdown"
+            >
+              Add Markdown
+            </button>
+
+            <button
+              class="note-button note-button--ghost"
+              type="button"
+              data-action="add-cpp"
+            >
+              Add C++
+            </button>
+
+            <button
+              class="note-button note-button--ghost"
+              type="button"
               data-action="save"
-              title="Save will be available in Vix Note v0.3.0"
             >
               Save
             </button>
@@ -80,6 +95,7 @@
         <section class="note-status" aria-label="Notebook status">
           <article class="note-status__card">
             <span class="note-status__label">Document</span>
+
             <strong class="note-status__value" data-note-document>
               Untitled note
             </strong>
@@ -87,12 +103,22 @@
 
           <article class="note-status__card">
             <span class="note-status__label">Cells</span>
-            <strong class="note-status__value" data-note-cell-count>0</strong>
+
+            <strong class="note-status__value" data-note-cell-count> 0 </strong>
           </article>
 
           <article class="note-status__card">
             <span class="note-status__label">Kernel</span>
-            <strong class="note-status__value" data-note-kernel>Idle</strong>
+
+            <strong class="note-status__value" data-note-kernel> Idle </strong>
+          </article>
+
+          <article class="note-status__card">
+            <span class="note-status__label">State</span>
+
+            <strong class="note-status__value" data-note-state>
+              Loading
+            </strong>
           </article>
         </section>
 
@@ -103,7 +129,12 @@
           aria-live="polite"
         ></section>
 
-        <section class="note-workspace" id="cells" data-note-cells>
+        <section
+          class="note-workspace"
+          id="cells"
+          data-note-cells
+          aria-label="Vix Note cells"
+        >
           <article class="note-empty">
             <p>Loading note document...</p>
           </article>

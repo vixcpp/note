@@ -264,6 +264,120 @@ int main()
 
   {
     const std::string source =
+        "<!-- vixnote:cell id=\"intro\" kind=\"markdown\" -->\n"
+        "\n"
+        "# Metadata Intro\n"
+        "\n"
+        "This markdown cell keeps its id.\n"
+        "\n"
+        "<!-- vixnote:cell id=\"cpp-cell\" kind=\"cpp\" -->\n"
+        "\n"
+        "```cpp\n"
+        "int main() { return 0; }\n"
+        "```\n"
+        "\n"
+        "<!-- vixnote:cell id=\"reply-cell\" kind=\"reply\" -->\n"
+        "\n"
+        "```reply\n"
+        "println(\"hello\")\n"
+        "```\n";
+
+    vix::note::NoteParseResult result =
+        vix::note::parse_note(source);
+
+    assert(result.ok);
+    assert(result.document.title() == "Metadata Intro");
+    assert(result.document.cell_count() == 3);
+
+    assert(result.document.cells()[0].id() == "intro");
+    assert(result.document.cells()[0].kind() == vix::note::NoteCellKind::Markdown);
+    assert(result.document.cells()[0].source() == "# Metadata Intro\n\nThis markdown cell keeps its id.");
+
+    assert(result.document.cells()[1].id() == "cpp-cell");
+    assert(result.document.cells()[1].kind() == vix::note::NoteCellKind::Cpp);
+    assert(result.document.cells()[1].source() == "int main() { return 0; }");
+
+    assert(result.document.cells()[2].id() == "reply-cell");
+    assert(result.document.cells()[2].kind() == vix::note::NoteCellKind::Reply);
+    assert(result.document.cells()[2].source() == "println(\"hello\")");
+  }
+
+  {
+    const std::string source =
+        "<!-- vixnote:cell id=\"manual-markdown\" kind=\"markdown\" -->\n"
+        "\n"
+        "# Manual Metadata\n"
+        "\n"
+        "<!-- vixnote:cell id=\"manual-cpp\" kind=\"cpp\" -->\n"
+        "\n"
+        "```cpp\n"
+        "int main() { return 0; }\n"
+        "```\n";
+
+    vix::note::NoteParseOptions options;
+    options.assignCellIds = false;
+    options.readCellMetadata = true;
+
+    vix::note::NoteParser parser(options);
+    vix::note::NoteParseResult result =
+        parser.parse(source);
+
+    assert(result.ok);
+    assert(result.document.cell_count() == 2);
+
+    assert(result.document.cells()[0].id() == "manual-markdown");
+    assert(result.document.cells()[0].kind() == vix::note::NoteCellKind::Markdown);
+
+    assert(result.document.cells()[1].id() == "manual-cpp");
+    assert(result.document.cells()[1].kind() == vix::note::NoteCellKind::Cpp);
+  }
+
+  {
+    const std::string source =
+        "<!-- vixnote:cell id=\"visible-comment\" kind=\"markdown\" -->\n"
+        "\n"
+        "# Metadata Disabled\n";
+
+    vix::note::NoteParseOptions options;
+    options.readCellMetadata = false;
+
+    vix::note::NoteParser parser(options);
+    vix::note::NoteParseResult result =
+        parser.parse(source);
+
+    assert(result.ok);
+    assert(result.document.cell_count() == 1);
+
+    assert(result.document.cells()[0].id() == "cell-1");
+    assert(result.document.cells()[0].kind() == vix::note::NoteCellKind::Markdown);
+
+    assert(
+        result.document.cells()[0].source() ==
+        "<!-- vixnote:cell id=\"visible-comment\" kind=\"markdown\" -->\n\n"
+        "# Metadata Disabled");
+  }
+
+  {
+    const std::string source =
+        "<!-- vixnote:cell id=\"html-cell\" kind=\"html\" -->\n"
+        "\n"
+        "```html\n"
+        "<section>HTML</section>\n"
+        "```\n";
+
+    vix::note::NoteParseResult result =
+        vix::note::parse_note(source);
+
+    assert(result.ok);
+    assert(result.document.cell_count() == 1);
+
+    assert(result.document.cells()[0].id() == "html-cell");
+    assert(result.document.cells()[0].kind() == vix::note::NoteCellKind::Html);
+    assert(result.document.cells()[0].source() == "<section>HTML</section>");
+  }
+
+  {
+    const std::string source =
         "# Broken\n"
         "\n"
         "```cpp\n"

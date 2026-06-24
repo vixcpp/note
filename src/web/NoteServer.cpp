@@ -180,6 +180,9 @@ namespace vix::note
       case 400:
         return "Bad Request";
 
+      case 403:
+        return "Forbidden";
+
       case 404:
         return "Not Found";
 
@@ -960,6 +963,16 @@ namespace vix::note
   NoteRouteResponse NoteServer::post(std::string_view path, std::string body)
   {
     return routes_.post(path, std::move(body));
+  }
+
+  NoteRouteResponse NoteServer::put(std::string_view path, std::string body)
+  {
+    return routes_.put(path, std::move(body));
+  }
+
+  NoteRouteResponse NoteServer::delete_request(std::string_view path)
+  {
+    return routes_.delete_request(path);
   }
 
   std::string_view to_string(NoteServerState state) noexcept

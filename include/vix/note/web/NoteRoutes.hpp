@@ -22,6 +22,7 @@
 #include <vix/note/core/NoteDocument.hpp>
 #include <vix/note/core/NoteResult.hpp>
 #include <vix/note/runtime/NoteKernel.hpp>
+#include <vix/note/storage/NoteStore.hpp>
 #include <vix/note/web/NoteAssets.hpp>
 
 #include <cstddef>
@@ -156,6 +157,18 @@ namespace vix::note
      * @brief Enables static asset routes.
      */
     bool enableAssets = true;
+
+    /**
+     * @brief Enables document editing API routes.
+     */
+    bool enableEditing = true;
+
+    /**
+     * @brief Enables saving the current document back to disk.
+     *
+     * Saving only works when the document has a non-empty path.
+     */
+    bool enableSave = true;
   };
 
   /**
@@ -238,6 +251,20 @@ namespace vix::note
     NoteKernel &kernel() noexcept;
 
     /**
+     * @brief Returns the note store used by save routes.
+     *
+     * @return Read-only store.
+     */
+    const NoteStore &store() const noexcept;
+
+    /**
+     * @brief Returns the mutable note store used by save routes.
+     *
+     * @return Mutable store.
+     */
+    NoteStore &store() noexcept;
+
+    /**
      * @brief Returns the kernel document.
      *
      * @return Read-only document.
@@ -275,6 +302,23 @@ namespace vix::note
      * @return Route response.
      */
     NoteRouteResponse post(std::string_view path, std::string body = {});
+
+    /**
+     * @brief Handles a PUT request.
+     *
+     * @param path Request path.
+     * @param body Request body.
+     * @return Route response.
+     */
+    NoteRouteResponse put(std::string_view path, std::string body = {});
+
+    /**
+     * @brief Handles a DELETE request.
+     *
+     * @param path Request path.
+     * @return Route response.
+     */
+    NoteRouteResponse delete_request(std::string_view path);
 
   private:
     /**
@@ -352,6 +396,30 @@ namespace vix::note
         const NoteResult &result) const;
 
     /**
+     * @brief Serializes a cell mutation response.
+     *
+     * The response includes a success flag, message, changed cell when
+     * available, and the updated document.
+     *
+     * @param ok      Whether the mutation succeeded.
+     * @param message Human-readable message.
+     * @param cellId  Changed cell id when available.
+     * @return JSON response.
+     */
+    std::string cell_mutation_json(
+        bool ok,
+        std::string_view message,
+        std::string_view cellId = {}) const;
+
+    /**
+     * @brief Serializes a document save response.
+     *
+     * @param result Storage save result.
+     * @return JSON response.
+     */
+    std::string save_result_json(const NoteResult &result) const;
+
+    /**
      * @brief Serializes a multi-cell kernel run result.
      *
      * The response includes the run summary, individual results, and the
@@ -376,6 +444,11 @@ namespace vix::note
      * @brief Runtime kernel used by API routes.
      */
     NoteKernel kernel_;
+
+    /**
+     * @brief Storage helper used by document save routes.
+     */
+    NoteStore store_;
   };
 
   /**

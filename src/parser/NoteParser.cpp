@@ -17,6 +17,7 @@
 #include <vix/note/parser/NoteParser.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -27,6 +28,13 @@ namespace vix::note
 {
   namespace
   {
+    struct CellMetadata
+    {
+      std::string id;
+      std::string title;
+      NoteCellKind kind = NoteCellKind::Unknown;
+    };
+
     std::string trim_copy(std::string_view value)
     {
       std::size_t begin = 0;
@@ -58,6 +66,12 @@ namespace vix::note
     {
       return value.size() >= prefix.size() &&
              value.substr(0, prefix.size()) == prefix;
+    }
+
+    bool ends_with(std::string_view value, std::string_view suffix)
+    {
+      return value.size() >= suffix.size() &&
+             value.substr(value.size() - suffix.size()) == suffix;
     }
 
     std::string lower_copy(std::string value)
@@ -106,6 +120,76 @@ namespace vix::note
       }
 
       return NoteCellKind::Markdown;
+    }
+
+    std::string extract_quoted_attribute(
+        std::string_view value,
+        std::string_view name)
+    {
+      const std::string text(value);
+
+      const std::string pattern =
+          std::string(name) + "=\"";
+
+      const std::size_t begin =
+          text.find(pattern);
+
+      if (begin == std::string::npos)
+      {
+        return {};
+      }
+
+      const std::size_t valueBegin =
+          begin + pattern.size();
+
+      const std::size_t valueEnd =
+          text.find('"', valueBegin);
+
+      if (valueEnd == std::string::npos)
+      {
+        return {};
+      }
+
+      return text.substr(
+          valueBegin,
+          valueEnd - valueBegin);
+    }
+
+    bool parse_cell_metadata_comment(
+        std::string_view line,
+        CellMetadata &metadata)
+    {
+      metadata = CellMetadata{};
+
+      const std::string trimmed =
+          trim_copy(line);
+
+      if (!starts_with(trimmed, "<!--") ||
+          !ends_with(trimmed, "-->"))
+      {
+        return false;
+      }
+
+      if (trimmed.find("vixnote:cell") == std::string::npos)
+      {
+        return false;
+      }
+
+      metadata.id =
+          extract_quoted_attribute(trimmed, "id");
+
+      metadata.title =
+          extract_quoted_attribute(trimmed, "title");
+
+      const std::string kind =
+          extract_quoted_attribute(trimmed, "kind");
+
+      if (!kind.empty())
+      {
+        metadata.kind = note_cell_kind_from_string(kind);
+      }
+
+      return true;
     }
 
     std::string make_cell_id(std::size_t index)
@@ -198,10 +282,33 @@ namespace vix::note
       cell.set_id(make_cell_id(cellIndex));
     }
 
+    void apply_pending_metadata(
+        NoteCell &cell,
+        std::optional<CellMetadata> &pendingMetadata)
+    {
+      if (!pendingMetadata)
+      {
+        return;
+      }
+
+      if (!pendingMetadata->id.empty())
+      {
+        cell.set_id(pendingMetadata->id);
+      }
+
+      if (!pendingMetadata->title.empty())
+      {
+        cell.set_title(pendingMetadata->title);
+      }
+
+      pendingMetadata.reset();
+    }
+
     void append_markdown_cell(
-        NoteDocument &doc,
+        NoteDocument &document,
         std::string &markdown,
-        const NoteParseOptions &options)
+        const NoteParseOptions &options,
+        std::optional<CellMetadata> &pendingMetadata)
     {
       if (!contains_non_whitespace(markdown))
       {
@@ -212,23 +319,29 @@ namespace vix::note
       trim_outer_whitespace(markdown);
 
       NoteCell cell = NoteCell::markdown(std::move(markdown));
-      assign_id_if_needed(cell, options, doc.cell_count() + 1);
-      doc.add_cell(std::move(cell));
 
+      apply_pending_metadata(cell, pendingMetadata);
+      assign_id_if_needed(cell, options, document.cell_count() + 1);
+
+      document.add_cell(std::move(cell));
       markdown.clear();
     }
 
     void append_code_cell(
-        NoteDocument &doc,
+        NoteDocument &document,
         NoteCellKind kind,
         std::string source,
-        const NoteParseOptions &options)
+        const NoteParseOptions &options,
+        std::optional<CellMetadata> &pendingMetadata)
     {
       remove_final_newline(source);
 
       NoteCell cell(kind, std::move(source));
-      assign_id_if_needed(cell, options, doc.cell_count() + 1);
-      doc.add_cell(std::move(cell));
+
+      apply_pending_metadata(cell, pendingMetadata);
+      assign_id_if_needed(cell, options, document.cell_count() + 1);
+
+      document.add_cell(std::move(cell));
     }
   }
 
@@ -268,6 +381,8 @@ namespace vix::note
     std::size_t fenceStartLine = 0;
     std::size_t lineNumber = 0;
 
+    std::optional<CellMetadata> pendingMetadata;
+
     std::istringstream in{std::string(source)};
     std::string line;
 
@@ -276,10 +391,29 @@ namespace vix::note
       ++lineNumber;
 
       std::string language;
+      CellMetadata metadata;
+
+      if (!inFence &&
+          options_.readCellMetadata &&
+          parse_cell_metadata_comment(line, metadata))
+      {
+        append_markdown_cell(
+            document,
+            markdownBuffer,
+            options_,
+            pendingMetadata);
+
+        pendingMetadata = std::move(metadata);
+        continue;
+      }
 
       if (!inFence && is_fence_line(line, language))
       {
-        append_markdown_cell(document, markdownBuffer, options_);
+        append_markdown_cell(
+            document,
+            markdownBuffer,
+            options_,
+            pendingMetadata);
 
         inFence = true;
         fenceLanguage = language;
@@ -306,7 +440,13 @@ namespace vix::note
         }
         else
         {
-          append_code_cell(document, fenceKind, std::move(codeBuffer), options_);
+          append_code_cell(
+              document,
+              fenceKind,
+              std::move(codeBuffer),
+              options_,
+              pendingMetadata);
+
           codeBuffer.clear();
         }
 
@@ -339,7 +479,11 @@ namespace vix::note
       return result;
     }
 
-    append_markdown_cell(document, markdownBuffer, options_);
+    append_markdown_cell(
+        document,
+        markdownBuffer,
+        options_,
+        pendingMetadata);
 
     if (options_.inferTitle && !document.has_title())
     {
@@ -350,7 +494,8 @@ namespace vix::note
           continue;
         }
 
-        const std::string title = infer_title_from_markdown(cell.source());
+        const std::string title =
+            infer_title_from_markdown(cell.source());
 
         if (!title.empty())
         {
