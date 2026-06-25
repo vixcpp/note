@@ -459,6 +459,41 @@
       });
   }
 
+  function removeTabState(path) {
+    const normalized = normalizeExplorerPath(path);
+
+    state.tabs = state.tabs.filter((tab) => {
+      return normalizeExplorerPath(tab.path) !== normalized;
+    });
+
+    if (
+      state.activeTabPath &&
+      normalizeExplorerPath(state.activeTabPath) === normalized
+    ) {
+      state.activeTabPath = state.tabs.length ? state.tabs[0].path : null;
+    }
+
+    state.explorer.entries.delete(normalized);
+
+    persistTabs();
+    renderOpenTabs();
+    renderTabsBar();
+    renderExplorer();
+  }
+
+  function isMissingNoteError(error) {
+    const message = String(
+      error && error.message ? error.message : error || "",
+    ).toLowerCase();
+
+    return (
+      message.includes("cannot open note file") ||
+      message.includes("not found") ||
+      message.includes("no such file") ||
+      message.includes("failed to load note")
+    );
+  }
+
   function buildExplorerTreeRows(parent = ".", depth = 0, rows = []) {
     const parentPathValue = normalizeExplorerPath(parent);
 
@@ -2141,6 +2176,25 @@
 
       setMessage("Note opened.", "success");
     } catch (error) {
+      if (isMissingNoteError(error)) {
+        removeTabState(path);
+
+        setMessage(`Removed missing note from tabs: ${path}`, "warning");
+
+        if (state.activeTabPath) {
+          await openNotePath(state.activeTabPath);
+        } else {
+          clearEditorNoOpenNote();
+
+          await loadDirectory(".", {
+            silent: true,
+            force: true,
+          });
+        }
+
+        return;
+      }
+
       setMessage(error.message || "Failed to open note.", "error");
     } finally {
       setBusy(false);
@@ -2491,6 +2545,28 @@
     }, 400);
   }
 
+  async function restoreFirstAvailableTab() {
+    while (state.tabs.length) {
+      const path = state.activeTabPath || state.tabs[0].path;
+
+      try {
+        await openNotePath(path);
+        return true;
+      } catch (error) {
+        removeTabState(path);
+      }
+    }
+
+    clearEditorNoOpenNote();
+
+    await loadDirectory(".", {
+      silent: true,
+      force: true,
+    });
+
+    return false;
+  }
+
   /* ==========================================================
    * Load
    * ======================================================== */
@@ -2504,35 +2580,13 @@
       renderTabsBar();
 
       if (state.activeTabPath) {
-        try {
-          await openNotePath(state.activeTabPath);
+        const ok = await restoreFirstAvailableTab();
+
+        if (ok) {
           setKernel("idle");
-
-          await loadExplorerForDocumentPath(state.activeTabPath);
-          return;
-        } catch (error) {
-          setMessage(error.message || "Failed to restore open tab.", "error");
-
-          state.tabs = state.tabs.filter(
-            (tab) => tab.path !== state.activeTabPath,
-          );
-          state.activeTabPath = state.tabs.length ? state.tabs[0].path : null;
-          persistTabs();
-
-          if (state.activeTabPath) {
-            await openNotePath(state.activeTabPath);
-            return;
-          }
-
-          clearEditorNoOpenNote();
-
-          await loadDirectory(".", {
-            silent: true,
-            force: true,
-          });
-
-          return;
         }
+
+        return;
       }
 
       clearEditorNoOpenNote();
