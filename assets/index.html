@@ -7,32 +7,28 @@
       name="description"
       content="Vix Note is a visual executable note workspace for learning C++ and Vix.cpp faster."
     />
+
     <title>Vix Note</title>
+
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23f37726'/%3E%3Cpath d='M18 14h10l7 23 7-23h10L40 50H30L18 14z' fill='white'/%3E%3C/svg%3E"
+    />
+
     <link rel="stylesheet" href="/assets/note.css" />
   </head>
 
   <body>
     <div class="vn" data-note-app data-kernel="idle">
-      <!-- ============ TOP MENU BAR ============ -->
-      <header class="vn-MenuBar">
-        <button
-          class="vn-MenuBar__sidebarToggle"
-          type="button"
-          data-action="toggle-sidebar"
-          title="Toggle sidebar"
-          aria-label="Toggle sidebar"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M3 4h18v2H3V4zm0 7h12v2H3v-2zm0 7h18v2H3v-2z" />
-          </svg>
-        </button>
-
-        <div class="vn-MenuBar__brand">
-          <span class="vn-MenuBar__logo" aria-hidden="true">V</span>
-          <span class="vn-MenuBar__title">Vix Note</span>
+      <!-- ============ TOP APP BAR (global, minimal) ============ -->
+      <header class="vn-AppBar">
+        <div class="vn-AppBar__brand">
+          <span class="vn-AppBar__logo" aria-hidden="true">V</span>
+          <span class="vn-AppBar__title">Vix Note</span>
         </div>
 
-        <nav class="vn-MenuBar__menus" aria-label="Main menu" data-menubar>
+        <nav class="vn-AppBar__menus" aria-label="Main menu" data-menubar>
           <div class="vn-Menu" data-menu="file">
             <button type="button" class="vn-Menu__label" data-menu-button>
               File
@@ -41,40 +37,10 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="add-cpp"
-              >
-                New C++ cell <span class="vn-Menu__hint">B</span>
-              </button>
-              <button
-                type="button"
-                class="vn-Menu__item"
-                data-command="add-markdown"
-              >
-                New Markdown cell
-              </button>
-              <button
-                type="button"
-                class="vn-Menu__item"
-                data-command="add-reply"
-              >
-                New Reply cell
-              </button>
-              <button
-                type="button"
-                class="vn-Menu__item"
-                data-command="add-html"
-              >
-                New HTML cell
-              </button>
-              <div class="vn-Menu__sep"></div>
-              <button
-                type="button"
-                class="vn-Menu__item"
                 data-command="new-note"
               >
                 New note
               </button>
-
               <button
                 type="button"
                 class="vn-Menu__item"
@@ -82,7 +48,6 @@
               >
                 Open note
               </button>
-
               <button
                 type="button"
                 class="vn-Menu__item"
@@ -90,7 +55,6 @@
               >
                 New folder
               </button>
-
               <div class="vn-Menu__sep"></div>
               <button type="button" class="vn-Menu__item" data-command="save">
                 Save note <span class="vn-Menu__hint">⌘S</span>
@@ -106,6 +70,13 @@
               Edit
             </button>
             <div class="vn-Menu__dropdown" role="menu" hidden>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="insert-below"
+              >
+                Insert cell below <span class="vn-Menu__hint">B</span>
+              </button>
               <button
                 type="button"
                 class="vn-Menu__item"
@@ -152,6 +123,13 @@
               >
                 Change to Reply <span class="vn-Menu__hint">R</span>
               </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="to-html"
+              >
+                Change to HTML
+              </button>
             </div>
           </div>
 
@@ -160,6 +138,21 @@
               View
             </button>
             <div class="vn-Menu__dropdown" role="menu" hidden>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="show-explorer"
+              >
+                Show Explorer
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="show-tabs"
+              >
+                Show Open Tabs
+              </button>
+              <div class="vn-Menu__sep"></div>
               <button
                 type="button"
                 class="vn-Menu__item"
@@ -173,21 +166,6 @@
                 data-command="toggle-focus"
               >
                 Toggle focus mode
-              </button>
-              <div class="vn-Menu__sep"></div>
-              <button
-                type="button"
-                class="vn-Menu__item"
-                data-command="collapse-all"
-              >
-                Collapse all outputs
-              </button>
-              <button
-                type="button"
-                class="vn-Menu__item"
-                data-command="expand-all"
-              >
-                Expand all outputs
               </button>
             </div>
           </div>
@@ -233,14 +211,7 @@
               >
                 Clear all outputs
               </button>
-            </div>
-          </div>
-
-          <div class="vn-Menu" data-menu="kernel">
-            <button type="button" class="vn-Menu__label" data-menu-button>
-              Kernel
-            </button>
-            <div class="vn-Menu__dropdown" role="menu" hidden>
+              <div class="vn-Menu__sep"></div>
               <button
                 type="button"
                 class="vn-Menu__item"
@@ -270,13 +241,6 @@
               >
                 Keyboard shortcuts <span class="vn-Menu__hint">?</span>
               </button>
-              <button
-                type="button"
-                class="vn-Menu__item"
-                data-command="palette"
-              >
-                Command palette <span class="vn-Menu__hint">⌘⇧P</span>
-              </button>
               <div class="vn-Menu__sep"></div>
               <button type="button" class="vn-Menu__item" data-command="about">
                 About Vix Note
@@ -285,27 +249,9 @@
           </div>
         </nav>
 
-        <div class="vn-MenuBar__spacer"></div>
+        <div class="vn-AppBar__spacer"></div>
 
-        <div class="vn-MenuBar__status">
-          <button
-            class="vn-MenuBar__palette"
-            type="button"
-            data-action="palette"
-            title="Command palette (Ctrl+Shift+P)"
-            aria-label="Command palette"
-          >
-            <svg viewBox="0 0 24 24" class="vn-icon">
-              <path
-                d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              />
-            </svg>
-            <span class="vn-MenuBar__paletteText">Commands</span>
-          </button>
-
+        <div class="vn-AppBar__status">
           <span class="vn-KernelName" data-note-project>No project</span>
           <span class="vn-KernelStatus" title="Kernel status">
             <span class="vn-KernelStatus__dot"></span>
@@ -314,212 +260,145 @@
         </div>
       </header>
 
-      <!-- ============ NOTEBOOK TOOLBAR ============ -->
-      <div class="vn-Toolbar" role="toolbar" aria-label="Notebook toolbar">
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="save"
-          title="Save (Ctrl+S)"
-          aria-label="Save"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M5 3h11l3 3v15H5V3zm2 2v4h8V5H7zm0 7v6h10v-6H7z" />
-          </svg>
-        </button>
+      <!-- ============ BODY: activity bar + sidebar + editor ============ -->
+      <div class="vn-Body">
+        <!-- ACTIVITY BAR (VS Code style vertical rail) -->
+        <nav class="vn-Activity" aria-label="Activity bar">
+          <button
+            class="vn-Activity__btn is-active"
+            type="button"
+            data-activity="explorer"
+            title="Explorer"
+            aria-label="Explorer"
+          >
+            <svg viewBox="0 0 24 24"><path d="M3 5h6l2 2h10v12H3V5z" /></svg>
+          </button>
+          <button
+            class="vn-Activity__btn"
+            type="button"
+            data-activity="tabs"
+            title="Open tabs"
+            aria-label="Open tabs"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M3 5h8v4H3V5zm0 6h18v8H3v-8zm10-6h8v4h-8V5z" />
+            </svg>
+          </button>
 
-        <span class="vn-Toolbar__sep"></span>
+          <div class="vn-Activity__spacer"></div>
 
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="insert-below"
-          title="Insert cell below (B)"
-          aria-label="Insert cell below"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z" />
-          </svg>
-        </button>
+          <button
+            class="vn-Activity__btn"
+            type="button"
+            data-action="shortcuts"
+            title="Keyboard shortcuts"
+            aria-label="Keyboard shortcuts"
+          >
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M4 5h16a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1zm2 3v2h2V8H6zm4 0v2h2V8h-2zm4 0v2h2V8h-2zm-8 4v2h2v-2H6zm4 0v2h6v-2h-6z"
+              />
+            </svg>
+          </button>
+        </nav>
 
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="cut-cell"
-          title="Delete selected cell (D D)"
-          aria-label="Delete cell"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" />
-          </svg>
-        </button>
-
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="duplicate"
-          title="Duplicate cell"
-          aria-label="Duplicate cell"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path
-              d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"
-            />
-          </svg>
-        </button>
-
-        <span class="vn-Toolbar__sep"></span>
-
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="move-up"
-          title="Move cell up"
-          aria-label="Move cell up"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M12 7l6 6-1.4 1.4L12 9.8l-4.6 4.6L6 13l6-6z" />
-          </svg>
-        </button>
-
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="move-down"
-          title="Move cell down"
-          aria-label="Move cell down"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M12 17l-6-6 1.4-1.4L12 14.2l4.6-4.6L18 11l-6 6z" />
-          </svg>
-        </button>
-
-        <span class="vn-Toolbar__sep"></span>
-
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="run-cell"
-          title="Run selected cell (Ctrl+Enter)"
-          aria-label="Run cell"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </button>
-
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="run-all"
-          title="Run all cells"
-          aria-label="Run all cells"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M5 5v14l8-7-8-7zm9 0v14l8-7-8-7z" />
-          </svg>
-        </button>
-
-        <button
-          class="vn-ToolbarButton"
-          type="button"
-          data-action="restart"
-          title="Restart kernel"
-          aria-label="Restart"
-        >
-          <svg viewBox="0 0 24 24" class="vn-icon">
-            <path d="M12 6V3L8 7l4 4V8a4 4 0 11-4 4H6a6 6 0 106-6z" />
-          </svg>
-        </button>
-
-        <span class="vn-Toolbar__sep"></span>
-
-        <div class="vn-CellTypeSelect">
-          <select data-action="toolbar-kind" aria-label="Cell type">
-            <option value="">Code</option>
-            <option value="cpp">C++</option>
-            <option value="reply">Reply</option>
-            <option value="markdown">Markdown</option>
-            <option value="html">HTML</option>
-          </select>
-        </div>
-
-        <div class="vn-Toolbar__grow"></div>
-
-        <span class="vn-Toolbar__filename" data-note-document
-          >Untitled.vixnote</span
-        >
-        <span
-          class="vn-Toolbar__dirty"
-          data-note-state
-          hidden
-          title="Unsaved changes"
-          >●</span
-        >
-      </div>
-
-      <!-- ============ MAIN AREA ============ -->
-      <div class="vn-Main">
-        <!-- SIDEBAR (resizable + collapsible) -->
+        <!-- SIDEBAR (resizable) -->
         <aside class="vn-Sidebar" aria-label="Sidebar" data-sidebar>
           <div class="vn-Sidebar__inner">
-            <div class="vn-Sidebar__section">
-              <p class="vn-Sidebar__heading">Notebook</p>
-              <p class="vn-Sidebar__name" data-note-title>Loading…</p>
-              <dl class="vn-Sidebar__meta">
-                <div>
-                  <dt>Cells</dt>
-                  <dd data-note-cell-count>0</dd>
+            <!-- EXPLORER PANEL -->
+            <section class="vn-Panel" data-panel="explorer">
+              <header class="vn-Panel__head">
+                <span class="vn-Panel__title">
+                  Explorer
+                  <span class="vn-Panel__count" data-explorer-count>0</span>
+                </span>
+                <div class="vn-Panel__actions">
+                  <button
+                    type="button"
+                    class="vn-IconBtn"
+                    data-action="new-note"
+                    title="New note"
+                    aria-label="New note"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M6 2h8l4 4v16H6V2zm6 7v3h3v2h-3v3h-2v-3H7v-2h3V9h2z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="vn-IconBtn"
+                    data-action="new-folder"
+                    title="New folder"
+                    aria-label="New folder"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M3 5h6l2 2h10v12H3V5zm9 5v2h-2v2h2v2h2v-2h2v-2h-2v-2h-2z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="vn-IconBtn"
+                    data-action="open-note"
+                    title="Open note"
+                    aria-label="Open note"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path d="M3 5h6l2 2h10v3H3V5zm0 5h18l-2 9H5l-2-9z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="vn-IconBtn"
+                    data-action="refresh"
+                    title="Refresh"
+                    aria-label="Refresh"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 6V3L8 7l4 4V8a4 4 0 11-4 4H6a6 6 0 106-6z" />
+                    </svg>
+                  </button>
                 </div>
-                <div>
-                  <dt>Executed</dt>
-                  <dd data-note-exec-count>0</dd>
-                </div>
-                <div>
-                  <dt>Kernel</dt>
-                  <dd data-note-kernel-2>Idle</dd>
-                </div>
-                <div>
-                  <dt>Project</dt>
-                  <dd data-note-project-2>—</dd>
-                </div>
-              </dl>
-            </div>
+              </header>
 
-            <div class="vn-Sidebar__section">
-              <p class="vn-Sidebar__heading">Add cell</p>
-              <div class="vn-Sidebar__buttons">
-                <button type="button" data-action="add-cpp">
-                  <span class="vn-dot vn-dot--cpp"></span>C++
-                </button>
-                <button type="button" data-action="add-reply">
-                  <span class="vn-dot vn-dot--reply"></span>Reply
-                </button>
-                <button type="button" data-action="add-markdown">
-                  <span class="vn-dot vn-dot--md"></span>Markdown
-                </button>
-                <button type="button" data-action="add-html">
-                  <span class="vn-dot vn-dot--html"></span>HTML
-                </button>
+              <div class="vn-Panel__search">
+                <svg viewBox="0 0 24 24" class="vn-Panel__searchIcon">
+                  <path
+                    d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  />
+                </svg>
+                <input
+                  type="text"
+                  data-explorer-search
+                  placeholder="Filter notes…"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
               </div>
-            </div>
 
-            <div
-              class="vn-Sidebar__section vn-Sidebar__section--toc"
-              data-toc-panel
-            >
-              <p class="vn-Sidebar__heading">
-                Outline
-                <span class="vn-Sidebar__count" data-toc-count>0</span>
-              </p>
-              <nav class="vn-Toc" data-note-toc aria-label="Table of contents">
-                <p class="vn-Toc__empty">No headings yet.</p>
-              </nav>
-            </div>
+              <div class="vn-Tree" data-explorer-list aria-label="Files">
+                <p class="vn-Tree__empty">No notes yet.</p>
+              </div>
+            </section>
 
-            <div class="vn-Sidebar__footer">
-              <p>Visual executable notes for C++ and Vix.cpp.</p>
-            </div>
+            <!-- OPEN TABS PANEL -->
+            <section class="vn-Panel" data-panel="tabs" hidden>
+              <header class="vn-Panel__head">
+                <span class="vn-Panel__title">
+                  Open Tabs
+                  <span class="vn-Panel__count" data-open-tabs-count>0</span>
+                </span>
+              </header>
+              <div class="vn-Tree" data-open-tabs-list aria-label="Open tabs">
+                <p class="vn-Tree__empty">No open notes.</p>
+              </div>
+            </section>
           </div>
 
           <div
@@ -533,79 +412,202 @@
           ></div>
         </aside>
 
-        <!-- NOTEBOOK PANEL -->
-        <main class="vn-NotebookPanel" id="workspace">
-          <div
-            class="vn-Notice"
-            data-note-message
-            hidden
-            aria-live="polite"
-          ></div>
-
-          <div
-            class="vn-Notebook"
-            data-note-cells
-            aria-label="Vix Note cells"
-            tabindex="0"
-          >
-            <div class="vn-Notebook__loading">
-              <span class="vn-spinner" aria-hidden="true"></span>
-              Loading note document…
-            </div>
+        <!-- EDITOR COLUMN (tabs + toolbar + notebook) -->
+        <div class="vn-Editor-col">
+          <!-- CENTER TABS BAR -->
+          <div class="vn-TabsBar" data-tabs-bar aria-label="Open note tabs">
+            <div class="vn-TabsBar__empty">No open notes</div>
           </div>
-        </main>
+
+          <!-- NOTEBOOK TOOLBAR (scoped to the editor zone) -->
+          <div class="vn-Toolbar" role="toolbar" aria-label="Notebook toolbar">
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="save"
+              title="Save (Ctrl/⌘ S)"
+              aria-label="Save"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path d="M5 3h11l3 3v15H5V3zm2 2v4h8V5H7zm0 7v6h10v-6H7z" />
+              </svg>
+            </button>
+
+            <span class="vn-Toolbar__sep"></span>
+
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="insert-below"
+              title="Insert cell below (B)"
+              aria-label="Insert cell below"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z" />
+              </svg>
+            </button>
+
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="cut-cell"
+              title="Delete selected cell (D D)"
+              aria-label="Delete cell"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" />
+              </svg>
+            </button>
+
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="duplicate"
+              title="Duplicate cell"
+              aria-label="Duplicate cell"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path
+                  d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"
+                />
+              </svg>
+            </button>
+
+            <span class="vn-Toolbar__sep"></span>
+
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="move-up"
+              title="Move cell up"
+              aria-label="Move cell up"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path d="M12 7l6 6-1.4 1.4L12 9.8l-4.6 4.6L6 13l6-6z" />
+              </svg>
+            </button>
+
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="move-down"
+              title="Move cell down"
+              aria-label="Move cell down"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path d="M12 17l-6-6 1.4-1.4L12 14.2l4.6-4.6L18 11l-6 6z" />
+              </svg>
+            </button>
+
+            <span class="vn-Toolbar__sep"></span>
+
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="run-cell"
+              title="Run selected cell (Ctrl/⌘ Enter)"
+              aria-label="Run cell"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
+
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="run-all"
+              title="Run all cells"
+              aria-label="Run all cells"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path d="M5 5v14l8-7-8-7zm9 0v14l8-7-8-7z" />
+              </svg>
+            </button>
+
+            <button
+              class="vn-ToolbarButton"
+              type="button"
+              data-action="restart"
+              title="Restart kernel"
+              aria-label="Restart"
+            >
+              <svg viewBox="0 0 24 24" class="vn-icon">
+                <path d="M12 6V3L8 7l4 4V8a4 4 0 11-4 4H6a6 6 0 106-6z" />
+              </svg>
+            </button>
+
+            <span class="vn-Toolbar__sep"></span>
+
+            <div class="vn-CellTypeSelect">
+              <select data-action="toolbar-kind" aria-label="Cell type">
+                <option value="">Code</option>
+                <option value="cpp">C++</option>
+                <option value="reply">Reply</option>
+                <option value="markdown">Markdown</option>
+                <option value="html">HTML</option>
+              </select>
+            </div>
+
+            <div class="vn-Toolbar__grow"></div>
+
+            <span class="vn-Toolbar__title" data-note-title>Untitled note</span>
+            <span class="vn-Toolbar__filename" data-note-document
+              >Untitled.vixnote</span
+            >
+          </div>
+
+          <!-- NOTEBOOK PANEL -->
+          <main class="vn-NotebookPanel" id="workspace">
+            <div
+              class="vn-Notice"
+              data-note-message
+              hidden
+              aria-live="polite"
+            ></div>
+
+            <div
+              class="vn-Notebook"
+              data-note-cells
+              aria-label="Vix Note cells"
+              tabindex="0"
+            >
+              <div class="vn-Notebook__loading">
+                <span class="vn-spinner" aria-hidden="true"></span>
+                Loading note document…
+              </div>
+            </div>
+          </main>
+        </div>
       </div>
 
-      <!-- ============ STATUS BAR ============ -->
+      <!-- ============ STATUS BAR (fixed-width slots, never reflows) ============ -->
       <footer class="vn-StatusBar" aria-label="Status bar">
         <div class="vn-StatusBar__left">
           <span class="vn-StatusBar__mode" data-status-mode>Command</span>
           <span class="vn-StatusBar__sep">·</span>
-          <span data-status-position>Cell 0 of 0</span>
+          <span class="vn-StatusBar__pos" data-status-position
+            >Cell 0 of 0</span
+          >
         </div>
         <div class="vn-StatusBar__right">
-          <span data-status-kind>—</span>
+          <span class="vn-StatusBar__kind" data-status-kind>—</span>
+          <span class="vn-StatusBar__sep">·</span>
+          <span class="vn-StatusBar__cells">
+            <span data-note-cell-count>0</span> cells ·
+            <span data-note-exec-count>0</span> run
+          </span>
           <span class="vn-StatusBar__sep">·</span>
           <span class="vn-StatusBar__kernel">
             <span class="vn-StatusBar__dot"></span>
-            <span data-status-kernel>Idle</span>
+            <span class="vn-StatusBar__kernelText" data-status-kernel
+              >Idle</span
+            >
           </span>
-          <span class="vn-StatusBar__sep">·</span>
-          <button
-            type="button"
-            class="vn-StatusBar__btn"
-            data-action="shortcuts"
-            title="Keyboard shortcuts"
-          >
-            ⌨ Shortcuts
-          </button>
         </div>
       </footer>
 
-      <!-- ============ COMMAND PALETTE (modal) ============ -->
-      <div
-        class="vn-Palette"
-        data-palette
-        hidden
-        role="dialog"
-        aria-modal="true"
-        aria-label="Command palette"
-      >
-        <div class="vn-Palette__backdrop" data-palette-close></div>
-        <div class="vn-Palette__box">
-          <input
-            type="text"
-            class="vn-Palette__input"
-            data-palette-input
-            placeholder="Type a command…"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <div class="vn-Palette__list" data-palette-list></div>
-        </div>
-      </div>
-
-      <!-- ============ SHORTCUTS / ABOUT (modal) ============ -->
+      <!-- ============ MODAL (forms / confirm / info) ============ -->
       <div class="vn-Modal" data-modal hidden role="dialog" aria-modal="true">
         <div class="vn-Modal__backdrop" data-modal-close></div>
         <div class="vn-Modal__box">
@@ -621,6 +623,7 @@
             </button>
           </header>
           <div class="vn-Modal__body" data-modal-body></div>
+          <footer class="vn-Modal__foot" data-modal-foot></footer>
         </div>
       </div>
     </div>

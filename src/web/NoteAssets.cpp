@@ -427,6 +427,11 @@ namespace vix::note
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Vix Note</title>
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23f37726'/%3E%3Cpath d='M18 14h10l7 23 7-23h10L40 50H30L18 14z' fill='white'/%3E%3C/svg%3E"
+  />
   <link rel="stylesheet" href="/assets/note.css">
 </head>
 <body>

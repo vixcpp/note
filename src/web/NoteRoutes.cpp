@@ -25,6 +25,9 @@
 #include <vector>
 #include <filesystem>
 #include <system_error>
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
 
 namespace vix::note
 {
@@ -329,6 +332,52 @@ namespace vix::note
       return parse_size_value(json.substr(begin, pos - begin));
     }
 
+    std::optional<bool> json_bool_field(
+        std::string_view json,
+        std::string_view key)
+    {
+      const std::string pattern =
+          "\"" + std::string(key) + "\"";
+
+      std::size_t pos =
+          json.find(pattern);
+
+      if (pos == std::string_view::npos)
+      {
+        return std::nullopt;
+      }
+
+      pos = json.find(':', pos + pattern.size());
+
+      if (pos == std::string_view::npos)
+      {
+        return std::nullopt;
+      }
+
+      ++pos;
+
+      while (pos < json.size() &&
+             (json[pos] == ' ' ||
+              json[pos] == '\t' ||
+              json[pos] == '\n' ||
+              json[pos] == '\r'))
+      {
+        ++pos;
+      }
+
+      if (json.substr(pos, 4) == "true")
+      {
+        return true;
+      }
+
+      if (json.substr(pos, 5) == "false")
+      {
+        return false;
+      }
+
+      return std::nullopt;
+    }
+
     std::optional<std::string> parse_cell_run_path(std::string_view path)
     {
       constexpr std::string_view prefix = "/api/cells/";
@@ -475,6 +524,178 @@ namespace vix::note
 
       return "Untitled Note";
     }
+
+    bool is_safe_relative_path(const std::filesystem::path &path)
+    {
+      if (path.empty())
+      {
+        return true;
+      }
+
+      if (path.is_absolute())
+      {
+        return false;
+      }
+
+      for (const auto &part : path)
+      {
+        const std::string value = part.string();
+
+        if (value == "..")
+        {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    std::filesystem::path normalize_workspace_path(const std::string &pathText)
+    {
+      if (pathText.empty())
+      {
+        return std::filesystem::path(".");
+      }
+
+      return std::filesystem::path(pathText).lexically_normal();
+    }
+
+    std::int64_t file_time_to_epoch_ms(
+        const std::filesystem::file_time_type &time)
+    {
+      const auto systemTime =
+          std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+              time - std::filesystem::file_time_type::clock::now() +
+              std::chrono::system_clock::now());
+
+      return std::chrono::duration_cast<std::chrono::milliseconds>(
+                 systemTime.time_since_epoch())
+          .count();
+    }
+
+    std::int64_t last_write_time_ms(const std::filesystem::path &path)
+    {
+      std::error_code ec;
+
+      const auto time =
+          std::filesystem::last_write_time(path, ec);
+
+      if (ec)
+      {
+        return 0;
+      }
+
+      return file_time_to_epoch_ms(time);
+    }
+
+    std::uintmax_t safe_file_size(const std::filesystem::path &path)
+    {
+      std::error_code ec;
+
+      const std::uintmax_t size =
+          std::filesystem::file_size(path, ec);
+
+      if (ec)
+      {
+        return 0;
+      }
+
+      return size;
+    }
+
+    /**
+     * @brief Builds a `{ "ok": false, "error": "..." }` response.
+     */
+    NoteRouteResponse json_error(int status, std::string_view message)
+    {
+      std::ostringstream out;
+
+      out << "{\"ok\":false,\"error\":\""
+          << json_escape(std::string(message))
+          << "\"}";
+
+      return NoteRouteResponse::json(status, out.str());
+    }
+
+    /**
+     * @brief Builds a success response for a path action.
+     *
+     * Shape: `{ "ok": true, "path": "...", "newPath": "...",
+     *           "type": "file|dir", "message": "..." }`.
+     */
+    NoteRouteResponse json_path_action(
+        const std::filesystem::path &oldPath,
+        const std::filesystem::path &newPath,
+        std::string_view type,
+        std::string_view message)
+    {
+      std::ostringstream out;
+
+      out << "{";
+      out << "\"ok\":true,";
+      out << "\"path\":\"" << json_escape(oldPath.generic_string()) << "\",";
+      out << "\"newPath\":\"" << json_escape(newPath.generic_string()) << "\",";
+      out << "\"type\":\"" << json_escape(std::string(type)) << "\",";
+      out << "\"message\":\"" << json_escape(std::string(message)) << "\"";
+      out << "}";
+
+      return NoteRouteResponse::json(200, out.str());
+    }
+
+    /**
+     * @brief Returns "dir" or "file" for an existing path.
+     */
+    std::string path_type_json(const std::filesystem::path &path)
+    {
+      std::error_code ec;
+
+      if (std::filesystem::is_directory(path, ec) && !ec)
+      {
+        return "dir";
+      }
+
+      return "file";
+    }
+
+    std::string directory_entry_json(
+        const std::filesystem::directory_entry &entry)
+    {
+      std::error_code ec;
+
+      const std::filesystem::path path =
+          entry.path().lexically_normal();
+
+      const std::string name =
+          path.filename().string();
+
+      const bool directory =
+          entry.is_directory(ec);
+
+      ec.clear();
+
+      const bool regularFile =
+          entry.is_regular_file(ec);
+
+      const std::string extension =
+          regularFile ? path.extension().string() : std::string{};
+
+      const bool noteFile =
+          regularFile && extension == ".vixnote";
+
+      std::ostringstream out;
+
+      out << "{";
+      out << "\"name\":\"" << json_escape(name) << "\",";
+      out << "\"path\":\"" << json_escape(path.generic_string()) << "\",";
+      out << "\"type\":\"" << (directory ? "dir" : "file") << "\",";
+      out << "\"extension\":\"" << json_escape(extension) << "\",";
+      out << "\"size\":" << (regularFile ? safe_file_size(path) : 0) << ",";
+      out << "\"modified\":" << last_write_time_ms(path) << ",";
+      out << "\"openable\":" << (noteFile ? "true" : "false");
+      out << "}";
+
+      return out.str();
+    }
   }
 
   NoteRouteResponse NoteRouteResponse::text(int status, std::string body)
@@ -600,6 +821,29 @@ namespace vix::note
     kernel_.set_document(std::move(document));
   }
 
+  bool NoteRoutes::is_current_document_path(
+      const std::filesystem::path &normalized) const
+  {
+    const std::string &current = kernel_.document().path();
+
+    if (current.empty())
+    {
+      return false;
+    }
+
+    return normalize_workspace_path(current) == normalized;
+  }
+
+  void NoteRoutes::update_current_document_path_if_needed(
+      const std::filesystem::path &oldPath,
+      const std::filesystem::path &newPath)
+  {
+    if (is_current_document_path(oldPath))
+    {
+      kernel_.document().set_path(newPath.string());
+    }
+  }
+
   NoteRouteResponse NoteRoutes::handle(const NoteRouteRequest &request)
   {
     if (options_.enableApi)
@@ -677,6 +921,9 @@ namespace vix::note
       return std::nullopt;
     }
 
+    // ----------------------------------------------------------------
+    // Document routes
+    // ----------------------------------------------------------------
     if (request.method == NoteRouteMethod::Get &&
         request.path == "/api/document")
     {
@@ -699,9 +946,7 @@ namespace vix::note
     {
       if (!options_.enableSave)
       {
-        return NoteRouteResponse::json(
-            403,
-            "{\"ok\":false,\"error\":\"save disabled\"}");
+        return json_error(403, "save disabled");
       }
 
       NoteResult result =
@@ -717,9 +962,7 @@ namespace vix::note
     {
       if (!options_.enableFileActions)
       {
-        return NoteRouteResponse::json(
-            403,
-            "{\"ok\":false,\"error\":\"file actions disabled\"}");
+        return json_error(403, "file actions disabled");
       }
 
       return handle_document_new(request.body);
@@ -730,35 +973,112 @@ namespace vix::note
     {
       if (!options_.enableFileActions)
       {
-        return NoteRouteResponse::json(
-            403,
-            "{\"ok\":false,\"error\":\"file actions disabled\"}");
+        return json_error(403, "file actions disabled");
       }
 
       return handle_document_open(request.body);
     }
 
     if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/document/update")
+    {
+      if (!options_.enableEditing)
+      {
+        return json_error(403, "editing disabled");
+      }
+
+      return handle_document_update(request.body);
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/document/save-as")
+    {
+      if (!options_.enableSave || !options_.enableFileActions)
+      {
+        return json_error(403, "save-as disabled");
+      }
+
+      return handle_document_save_as(request.body);
+    }
+
+    // ----------------------------------------------------------------
+    // Directory + path routes
+    // ----------------------------------------------------------------
+    if (request.method == NoteRouteMethod::Post &&
         request.path == "/api/directory/create")
     {
       if (!options_.enableFileActions)
       {
-        return NoteRouteResponse::json(
-            403,
-            "{\"ok\":false,\"error\":\"file actions disabled\"}");
+        return json_error(403, "file actions disabled");
       }
 
       return handle_directory_create(request.body);
     }
 
     if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/directory/list")
+    {
+      if (!options_.enableFileActions)
+      {
+        return json_error(403, "file actions disabled");
+      }
+
+      return handle_directory_list(request.body);
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/path/delete")
+    {
+      if (!options_.enableFileActions)
+      {
+        return json_error(403, "file actions disabled");
+      }
+
+      return handle_path_delete(request.body);
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/path/rename")
+    {
+      if (!options_.enableFileActions)
+      {
+        return json_error(403, "file actions disabled");
+      }
+
+      return handle_path_rename(request.body);
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/path/move")
+    {
+      if (!options_.enableFileActions)
+      {
+        return json_error(403, "file actions disabled");
+      }
+
+      return handle_path_move(request.body);
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/path/copy")
+    {
+      if (!options_.enableFileActions)
+      {
+        return json_error(403, "file actions disabled");
+      }
+
+      return handle_path_copy(request.body);
+    }
+
+    // ----------------------------------------------------------------
+    // Cell routes (unchanged — these feed the notebook editor)
+    // ----------------------------------------------------------------
+    if (request.method == NoteRouteMethod::Post &&
         request.path == "/api/cells")
     {
       if (!options_.enableEditing)
       {
-        return NoteRouteResponse::json(
-            403,
-            "{\"ok\":false,\"error\":\"editing disabled\"}");
+        return json_error(403, "editing disabled");
       }
 
       NoteDocument &doc =
@@ -774,9 +1094,7 @@ namespace vix::note
 
       if (document_has_cell_id(doc, id))
       {
-        return NoteRouteResponse::json(
-            409,
-            "{\"ok\":false,\"error\":\"cell id already exists\"}");
+        return json_error(409, "cell id already exists");
       }
 
       const NoteCellKind kind =
@@ -797,9 +1115,7 @@ namespace vix::note
 
       if (!inserted)
       {
-        return NoteRouteResponse::json(
-            400,
-            "{\"ok\":false,\"error\":\"invalid cell index\"}");
+        return json_error(400, "invalid cell index");
       }
 
       return NoteRouteResponse::json(
@@ -816,9 +1132,7 @@ namespace vix::note
       {
         if (!options_.enableEditing)
         {
-          return NoteRouteResponse::json(
-              403,
-              "{\"ok\":false,\"error\":\"editing disabled\"}");
+          return json_error(403, "editing disabled");
         }
 
         NoteDocument &doc =
@@ -829,9 +1143,7 @@ namespace vix::note
 
         if (cell == nullptr)
         {
-          return NoteRouteResponse::json(
-              404,
-              "{\"ok\":false,\"error\":\"cell not found\"}");
+          return json_error(404, "cell not found");
         }
 
         const NoteCellKind kind =
@@ -858,9 +1170,7 @@ namespace vix::note
       {
         if (!options_.enableEditing)
         {
-          return NoteRouteResponse::json(
-              403,
-              "{\"ok\":false,\"error\":\"editing disabled\"}");
+          return json_error(403, "editing disabled");
         }
 
         const bool removed =
@@ -881,9 +1191,7 @@ namespace vix::note
       {
         if (!options_.enableEditing)
         {
-          return NoteRouteResponse::json(
-              403,
-              "{\"ok\":false,\"error\":\"editing disabled\"}");
+          return json_error(403, "editing disabled");
         }
 
         const std::optional<std::size_t> index =
@@ -891,9 +1199,7 @@ namespace vix::note
 
         if (!index)
         {
-          return NoteRouteResponse::json(
-              400,
-              "{\"ok\":false,\"error\":\"missing target index\"}");
+          return json_error(400, "missing target index");
         }
 
         const bool moved =
@@ -933,9 +1239,7 @@ namespace vix::note
       }
     }
 
-    return NoteRouteResponse::json(
-        404,
-        "{\"ok\":false,\"error\":\"api route not found\"}");
+    return json_error(404, "api route not found");
   }
 
   NoteRouteResponse NoteRoutes::handle_document_new(std::string_view body)
@@ -948,18 +1252,32 @@ namespace vix::note
 
     if (pathText.empty())
     {
-      return NoteRouteResponse::json(
-          400,
-          "{\"ok\":false,\"error\":\"missing note path\"}");
+      return json_error(400, "missing note path");
     }
 
-    const std::filesystem::path path(pathText);
+    const std::filesystem::path path =
+        normalize_workspace_path(pathText);
+
+    if (!is_safe_relative_path(path))
+    {
+      return json_error(400, "unsafe path");
+    }
 
     if (!is_vixnote_path(path))
     {
-      return NoteRouteResponse::json(
-          400,
-          "{\"ok\":false,\"error\":\"note path must end with .vixnote\"}");
+      return json_error(400, "note path must end with .vixnote");
+    }
+
+    std::error_code existsError;
+
+    if (std::filesystem::exists(path, existsError))
+    {
+      return json_error(409, "note file already exists");
+    }
+
+    if (existsError)
+    {
+      return json_error(500, existsError.message());
     }
 
     if (title.empty())
@@ -981,9 +1299,7 @@ namespace vix::note
 
     if (!saved.ok())
     {
-      return NoteRouteResponse::json(
-          500,
-          "{\"ok\":false,\"error\":\"" + json_escape(saved.message()) + "\"}");
+      return json_error(500, saved.message());
     }
 
     set_document(std::move(document));
@@ -1000,18 +1316,20 @@ namespace vix::note
 
     if (pathText.empty())
     {
-      return NoteRouteResponse::json(
-          400,
-          "{\"ok\":false,\"error\":\"missing note path\"}");
+      return json_error(400, "missing note path");
     }
 
-    const std::filesystem::path path(pathText);
+    const std::filesystem::path path =
+        normalize_workspace_path(pathText);
+
+    if (!is_safe_relative_path(path))
+    {
+      return json_error(400, "unsafe path");
+    }
 
     if (!is_vixnote_path(path))
     {
-      return NoteRouteResponse::json(
-          400,
-          "{\"ok\":false,\"error\":\"note path must end with .vixnote\"}");
+      return json_error(400, "note path must end with .vixnote");
     }
 
     NoteLoadResult loaded =
@@ -1019,12 +1337,85 @@ namespace vix::note
 
     if (!loaded.ok)
     {
-      return NoteRouteResponse::json(
-          404,
-          "{\"ok\":false,\"error\":\"" + json_escape(loaded.error) + "\"}");
+      return json_error(404, loaded.error);
     }
 
     set_document(std::move(loaded.document));
+
+    return NoteRouteResponse::json(
+        200,
+        document_json());
+  }
+
+  NoteRouteResponse NoteRoutes::handle_document_update(std::string_view body)
+  {
+    const std::optional<std::string> title =
+        json_string_field(body, "title");
+
+    if (title)
+    {
+      kernel_.document().set_title(*title);
+    }
+
+    const bool save =
+        json_bool_field(body, "save").value_or(false);
+
+    if (save && !kernel_.document().path().empty())
+    {
+      const NoteResult result =
+          store_.save(kernel_.document());
+
+      if (!result.ok())
+      {
+        return json_error(500, result.message());
+      }
+    }
+
+    return NoteRouteResponse::json(
+        200,
+        document_json());
+  }
+
+  NoteRouteResponse NoteRoutes::handle_document_save_as(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{});
+
+    const std::optional<std::string> title =
+        json_string_field(body, "title");
+
+    if (pathText.empty())
+    {
+      return json_error(400, "missing note path");
+    }
+
+    const std::filesystem::path path =
+        normalize_workspace_path(pathText);
+
+    if (!is_safe_relative_path(path))
+    {
+      return json_error(400, "unsafe path");
+    }
+
+    if (!is_vixnote_path(path))
+    {
+      return json_error(400, "note path must end with .vixnote");
+    }
+
+    if (title)
+    {
+      kernel_.document().set_title(*title);
+    }
+
+    const NoteResult saved =
+        store_.save(kernel_.document(), path);
+
+    if (!saved.ok())
+    {
+      return json_error(500, saved.message());
+    }
+
+    kernel_.document().set_path(path.string());
 
     return NoteRouteResponse::json(
         200,
@@ -1038,26 +1429,579 @@ namespace vix::note
 
     if (pathText.empty())
     {
-      return NoteRouteResponse::json(
-          400,
-          "{\"ok\":false,\"error\":\"missing directory path\"}");
+      return json_error(400, "missing directory path");
     }
 
-    const std::filesystem::path path(pathText);
+    const std::filesystem::path path =
+        normalize_workspace_path(pathText);
+
+    if (!is_safe_relative_path(path))
+    {
+      return json_error(400, "unsafe directory path");
+    }
 
     std::error_code ec;
     std::filesystem::create_directories(path, ec);
 
     if (ec)
     {
-      return NoteRouteResponse::json(
-          500,
-          "{\"ok\":false,\"error\":\"" + json_escape(ec.message()) + "\"}");
+      return json_error(500, ec.message());
     }
 
-    return NoteRouteResponse::json(
-        200,
-        "{\"ok\":true,\"path\":\"" + json_escape(path.string()) + "\"}");
+    std::ostringstream out;
+
+    out << "{\"ok\":true,\"path\":\""
+        << json_escape(path.generic_string())
+        << "\"}";
+
+    return NoteRouteResponse::json(200, out.str());
+  }
+
+  NoteRouteResponse NoteRoutes::handle_path_delete(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{});
+
+    const bool recursive =
+        json_bool_field(body, "recursive").value_or(false);
+
+    if (pathText.empty())
+    {
+      return json_error(400, "empty path");
+    }
+
+    const std::filesystem::path path =
+        normalize_workspace_path(pathText);
+
+    if (!is_safe_relative_path(path))
+    {
+      return json_error(400, "unsafe path");
+    }
+
+    std::error_code ec;
+
+    if (!std::filesystem::exists(path, ec))
+    {
+      return json_error(404, "path not found");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    const bool deletingCurrentDocument = is_current_document_path(path);
+
+    std::uintmax_t removed = 0;
+
+    if (std::filesystem::is_directory(path, ec))
+    {
+      if (ec)
+      {
+        return json_error(500, ec.message());
+      }
+
+      if (recursive)
+      {
+        removed = std::filesystem::remove_all(path, ec);
+      }
+      else
+      {
+        const bool ok =
+            std::filesystem::remove(path, ec);
+
+        removed = ok ? 1 : 0;
+      }
+    }
+    else
+    {
+      const bool ok =
+          std::filesystem::remove(path, ec);
+
+      removed = ok ? 1 : 0;
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    if (deletingCurrentDocument)
+    {
+      NoteDocument empty =
+          NoteDocument::create("Untitled Note");
+
+      empty.set_path({});
+      kernel_.set_document(std::move(empty));
+    }
+
+    std::ostringstream out;
+
+    out << "{";
+    out << "\"ok\":true,";
+    out << "\"path\":\"" << json_escape(path.generic_string()) << "\",";
+    out << "\"removed\":" << removed << ",";
+    out << "\"currentDeleted\":" << (deletingCurrentDocument ? "true" : "false");
+    out << "}";
+
+    return NoteRouteResponse::json(200, out.str());
+  }
+
+  NoteRouteResponse NoteRoutes::handle_path_rename(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{});
+
+    if (pathText.empty())
+    {
+      return json_error(400, "empty path");
+    }
+
+    const std::filesystem::path source =
+        normalize_workspace_path(pathText);
+
+    if (!is_safe_relative_path(source))
+    {
+      return json_error(400, "unsafe path");
+    }
+
+    // Resolve the destination from either "newName" or "newPath".
+    std::filesystem::path destination;
+
+    const std::optional<std::string> newName =
+        json_string_field(body, "newName");
+
+    const std::optional<std::string> newPath =
+        json_string_field(body, "newPath");
+
+    if (newName && !newName->empty())
+    {
+      const std::filesystem::path nameOnly(*newName);
+
+      // A rename keeps the file inside its current parent directory, so the
+      // provided name must be a bare file/folder name, not a nested path.
+      if (nameOnly.has_parent_path())
+      {
+        return json_error(400, "newName must be a bare name, not a path");
+      }
+
+      destination = source.parent_path() / nameOnly;
+    }
+    else if (newPath && !newPath->empty())
+    {
+      destination = normalize_workspace_path(*newPath);
+    }
+    else
+    {
+      return json_error(400, "missing newName or newPath");
+    }
+
+    destination = destination.lexically_normal();
+
+    if (!is_safe_relative_path(destination))
+    {
+      return json_error(400, "unsafe destination path");
+    }
+
+    std::error_code ec;
+
+    if (!std::filesystem::exists(source, ec))
+    {
+      return json_error(404, "path not found");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    const bool sourceIsDir =
+        std::filesystem::is_directory(source, ec);
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    // A .vixnote file must stay a .vixnote file after rename.
+    if (!sourceIsDir &&
+        is_vixnote_path(source) &&
+        !is_vixnote_path(destination))
+    {
+      return json_error(400, "renamed note must keep the .vixnote extension");
+    }
+
+    if (std::filesystem::exists(destination, ec))
+    {
+      return json_error(409, "destination already exists");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    std::filesystem::rename(source, destination, ec);
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    update_current_document_path_if_needed(source, destination);
+
+    return json_path_action(
+        source,
+        destination,
+        sourceIsDir ? "dir" : "file",
+        "path renamed");
+  }
+
+  NoteRouteResponse NoteRoutes::handle_path_move(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{});
+
+    if (pathText.empty())
+    {
+      return json_error(400, "empty path");
+    }
+
+    const std::filesystem::path source =
+        normalize_workspace_path(pathText);
+
+    if (!is_safe_relative_path(source))
+    {
+      return json_error(400, "unsafe path");
+    }
+
+    // Resolve the destination from either "directory" or "newPath".
+    std::filesystem::path destination;
+
+    const std::optional<std::string> directory =
+        json_string_field(body, "directory");
+
+    const std::optional<std::string> newPath =
+        json_string_field(body, "newPath");
+
+    if (directory)
+    {
+      const std::filesystem::path targetDir =
+          normalize_workspace_path(*directory);
+
+      if (!is_safe_relative_path(targetDir))
+      {
+        return json_error(400, "unsafe destination directory");
+      }
+
+      destination = (targetDir / source.filename()).lexically_normal();
+    }
+    else if (newPath && !newPath->empty())
+    {
+      destination = normalize_workspace_path(*newPath);
+    }
+    else
+    {
+      return json_error(400, "missing directory or newPath");
+    }
+
+    if (!is_safe_relative_path(destination))
+    {
+      return json_error(400, "unsafe destination path");
+    }
+
+    std::error_code ec;
+
+    if (!std::filesystem::exists(source, ec))
+    {
+      return json_error(404, "path not found");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    const bool sourceIsDir =
+        std::filesystem::is_directory(source, ec);
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    if (!sourceIsDir &&
+        is_vixnote_path(source) &&
+        !is_vixnote_path(destination))
+    {
+      return json_error(400, "moved note must keep the .vixnote extension");
+    }
+
+    if (std::filesystem::exists(destination, ec))
+    {
+      return json_error(409, "destination already exists");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    // Make sure the destination parent directory exists.
+    const std::filesystem::path destParent =
+        destination.parent_path();
+
+    if (!destParent.empty())
+    {
+      std::filesystem::create_directories(destParent, ec);
+
+      if (ec)
+      {
+        return json_error(500, ec.message());
+      }
+    }
+
+    std::filesystem::rename(source, destination, ec);
+
+    if (ec)
+    {
+      // rename() can fail across devices; fall back to copy + remove.
+      std::error_code copyError;
+
+      std::filesystem::copy(
+          source,
+          destination,
+          std::filesystem::copy_options::recursive,
+          copyError);
+
+      if (copyError)
+      {
+        return json_error(500, copyError.message());
+      }
+
+      std::error_code removeError;
+      std::filesystem::remove_all(source, removeError);
+
+      if (removeError)
+      {
+        return json_error(500, removeError.message());
+      }
+    }
+
+    update_current_document_path_if_needed(source, destination);
+
+    return json_path_action(
+        source,
+        destination,
+        sourceIsDir ? "dir" : "file",
+        "path moved");
+  }
+
+  NoteRouteResponse NoteRoutes::handle_path_copy(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{});
+
+    const std::string newPathText =
+        json_string_field(body, "newPath").value_or(std::string{});
+
+    const bool recursive =
+        json_bool_field(body, "recursive").value_or(false);
+
+    if (pathText.empty())
+    {
+      return json_error(400, "empty path");
+    }
+
+    if (newPathText.empty())
+    {
+      return json_error(400, "missing newPath");
+    }
+
+    const std::filesystem::path source =
+        normalize_workspace_path(pathText);
+
+    const std::filesystem::path destination =
+        normalize_workspace_path(newPathText);
+
+    if (!is_safe_relative_path(source) ||
+        !is_safe_relative_path(destination))
+    {
+      return json_error(400, "unsafe path");
+    }
+
+    std::error_code ec;
+
+    if (!std::filesystem::exists(source, ec))
+    {
+      return json_error(404, "path not found");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    const bool sourceIsDir =
+        std::filesystem::is_directory(source, ec);
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    if (!sourceIsDir &&
+        is_vixnote_path(source) &&
+        !is_vixnote_path(destination))
+    {
+      return json_error(400, "copied note must keep the .vixnote extension");
+    }
+
+    if (std::filesystem::exists(destination, ec))
+    {
+      return json_error(409, "destination already exists");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    const std::filesystem::path destParent =
+        destination.parent_path();
+
+    if (!destParent.empty())
+    {
+      std::filesystem::create_directories(destParent, ec);
+
+      if (ec)
+      {
+        return json_error(500, ec.message());
+      }
+    }
+
+    if (sourceIsDir)
+    {
+      const std::filesystem::copy_options copyOptions =
+          recursive
+              ? std::filesystem::copy_options::recursive
+              : std::filesystem::copy_options::none;
+
+      std::filesystem::copy(source, destination, copyOptions, ec);
+    }
+    else
+    {
+      std::filesystem::copy_file(source, destination, ec);
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    return json_path_action(
+        source,
+        destination,
+        sourceIsDir ? "dir" : "file",
+        "path copied");
+  }
+
+  NoteRouteResponse NoteRoutes::handle_directory_list(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{"."});
+
+    const std::filesystem::path path =
+        normalize_workspace_path(pathText);
+
+    if (!is_safe_relative_path(path))
+    {
+      return json_error(400, "unsafe directory path");
+    }
+
+    std::error_code ec;
+
+    if (!std::filesystem::exists(path, ec))
+    {
+      return json_error(404, "directory not found");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    if (!std::filesystem::is_directory(path, ec))
+    {
+      return json_error(400, "path is not a directory");
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    std::vector<std::filesystem::directory_entry> entries;
+
+    for (std::filesystem::directory_iterator it(path, ec), end;
+         it != end;
+         it.increment(ec))
+    {
+      if (ec)
+      {
+        break;
+      }
+
+      entries.push_back(*it);
+    }
+
+    if (ec)
+    {
+      return json_error(500, ec.message());
+    }
+
+    std::sort(
+        entries.begin(),
+        entries.end(),
+        [](const std::filesystem::directory_entry &a,
+           const std::filesystem::directory_entry &b)
+        {
+          std::error_code aec;
+          std::error_code bec;
+
+          const bool aDir = a.is_directory(aec);
+          const bool bDir = b.is_directory(bec);
+
+          if (aDir != bDir)
+          {
+            return aDir;
+          }
+
+          return lower_copy(a.path().filename().string()) <
+                 lower_copy(b.path().filename().string());
+        });
+
+    std::ostringstream out;
+
+    out << "{";
+    out << "\"ok\":true,";
+    out << "\"path\":\"" << json_escape(path.generic_string()) << "\",";
+    out << "\"entries\":[";
+
+    for (std::size_t i = 0; i < entries.size(); ++i)
+    {
+      if (i > 0)
+      {
+        out << ",";
+      }
+
+      out << directory_entry_json(entries[i]);
+    }
+
+    out << "]";
+    out << "}";
+
+    return NoteRouteResponse::json(200, out.str());
   }
 
   std::string NoteRoutes::document_json() const

@@ -1,8 +1,7 @@
 /*
  * Vix Note — notebook UI
- * Visual executable notes for C++ and Vix.cpp: menu bar with dropdowns,
- * notebook toolbar, resizable/collapsible sidebar, In[ ]/Out[ ] prompts,
- * command palette, status bar.
+ * Lightweight editor: top app bar, activity bar, explorer/open-tabs sidebar,
+ * central tabs + notebook toolbar, stable status bar, custom modals.
  *
  * Copyright 2026, Gaspard Kirira. MIT License.
  */
@@ -16,20 +15,23 @@
   --vn-color0: #ffffff;
   --vn-color1: #ffffff;
   --vn-color2: #f5f5f5;
-  --vn-color3: #e6e6e6;
+  --vn-color3: #e9e9e9;
   --vn-color4: #bdbdbd;
 
-  --vn-border1: #bdbdbd;
-  --vn-border2: #e0e0e0;
+  --vn-border1: #c8c8c8;
+  --vn-border2: #e2e2e2;
   --vn-border3: #eeeeee;
 
   --vn-toolbar-bg: #ffffff;
-  --vn-menubar-bg: #f7f7f7;
+  --vn-appbar-bg: #f7f7f7;
+  --vn-activity-bg: #ededed;
+  --vn-sidebar-bg: #f3f3f3;
+  --vn-tabsbar-bg: #f0f0f0;
 
   --vn-text0: #000000;
   --vn-text1: #212121;
-  --vn-text2: #616161;
-  --vn-text3: #9e9e9e;
+  --vn-text2: #5f6368;
+  --vn-text3: #9aa0a6;
 
   --vn-content1: #212121;
 
@@ -44,8 +46,8 @@
   /* Cell prompts */
   --vn-prompt-width: 64px;
   --vn-prompt-not-active: #b0b0b0;
-  --vn-editor-bg: #f5f5f5;
-  --vn-editor-border: #cfcfcf;
+  --vn-editor-bg: #f6f6f6;
+  --vn-editor-border: #d4d4d4;
   --vn-editor-active-bg: #ffffff;
   --vn-inprompt: #303f9f;
   --vn-outprompt: #d84315;
@@ -77,12 +79,17 @@
   --vn-code-size: 13px;
   --vn-code-lh: 1.45;
 
+  --vn-appbar-h: 36px;
   --vn-toolbar-h: 38px;
-  --vn-menubar-h: 32px;
+  --vn-tabsbar-h: 36px;
   --vn-statusbar-h: 24px;
+  --vn-activity-w: 48px;
+
+  /* fixed slot so Idle/Busy/Error swaps never reflow neighbors */
+  --vn-kernel-slot: 46px;
 
   /* sidebar width, JS-controlled */
-  --vn-sidebar-w: 250px;
+  --vn-sidebar-w: 260px;
 }
 
 * {
@@ -122,14 +129,14 @@ input {
 }
 
 /* ============================================================
-   MENU BAR
+   TOP APP BAR
    ============================================================ */
-.vn-MenuBar {
+.vn-AppBar {
   display: flex;
   align-items: center;
-  height: var(--vn-menubar-h);
+  height: var(--vn-appbar-h);
   padding: 0 6px;
-  background: var(--vn-menubar-bg);
+  background: var(--vn-appbar-bg);
   border-bottom: 1px solid var(--vn-border2);
   user-select: none;
   flex: 0 0 auto;
@@ -137,48 +144,46 @@ input {
   z-index: 40;
 }
 
-.vn-MenuBar__sidebarToggle {
+.vn-AppBar__sidebarToggle {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 26px;
+  width: 30px;
+  height: 28px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   cursor: pointer;
   margin-right: 2px;
 }
-.vn-MenuBar__sidebarToggle:hover {
+.vn-AppBar__sidebarToggle:hover {
   background: var(--vn-color3);
 }
 
-.vn-MenuBar__brand {
+.vn-AppBar__brand {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px 0 4px;
+  gap: 7px;
+  padding: 0 12px 0 4px;
 }
-
-.vn-MenuBar__logo {
+.vn-AppBar__logo {
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
   background: var(--vn-brand1);
   color: #fff;
   font-weight: 800;
   font-size: 11px;
 }
-
-.vn-MenuBar__title {
-  font-weight: 600;
+.vn-AppBar__title {
+  font-weight: 650;
   font-size: 12.5px;
   color: var(--vn-text1);
   white-space: nowrap;
 }
 
-.vn-MenuBar__menus {
+.vn-AppBar__menus {
   display: flex;
   align-items: stretch;
   height: 100%;
@@ -190,14 +195,14 @@ input {
   display: flex;
   align-items: stretch;
 }
-
 .vn-Menu__label {
   border: 0;
   background: transparent;
   color: var(--vn-text1);
-  padding: 0 9px;
+  padding: 0 10px;
   cursor: pointer;
   font-size: 12.5px;
+  border-radius: 4px;
 }
 .vn-Menu__label:hover,
 .vn-Menu.is-open .vn-Menu__label {
@@ -208,18 +213,17 @@ input {
   position: absolute;
   top: 100%;
   left: 0;
-  min-width: 230px;
-  padding: 4px;
+  min-width: 234px;
+  padding: 5px;
   background: var(--vn-color1);
   border: 1px solid var(--vn-border1);
-  border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
   z-index: 50;
 }
 .vn-Menu__dropdown[hidden] {
   display: none;
 }
-
 .vn-Menu__item {
   display: flex;
   align-items: center;
@@ -229,8 +233,8 @@ input {
   background: transparent;
   color: var(--vn-text1);
   text-align: left;
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 7px 10px;
+  border-radius: 5px;
   cursor: pointer;
   font-size: 12.5px;
 }
@@ -238,23 +242,6 @@ input {
   background: var(--vn-accent1);
   color: #fff;
 }
-.vn-Menu__icon {
-  display: inline-grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-}
-.vn-Menu__icon svg {
-  width: 15px;
-  height: 15px;
-  fill: var(--vn-text2);
-  stroke: none;
-}
-.vn-Menu__item:hover .vn-Menu__icon svg {
-  fill: #fff;
-}
-/* push the hint to the far right; the label text node sits between */
 .vn-Menu__hint {
   margin-left: auto;
   color: var(--vn-text3);
@@ -267,45 +254,20 @@ input {
 }
 .vn-Menu__sep {
   height: 1px;
-  margin: 4px 6px;
+  margin: 5px 6px;
   background: var(--vn-border2);
 }
 
-.vn-MenuBar__spacer {
+.vn-AppBar__spacer {
   flex: 1 1 auto;
 }
 
-.vn-MenuBar__status {
+.vn-AppBar__status {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-right: 6px;
+  gap: 12px;
+  padding-right: 8px;
 }
-
-.vn-MenuBar__palette {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 9px;
-  border: 1px solid var(--vn-border1);
-  border-radius: 12px;
-  background: var(--vn-color1);
-  color: var(--vn-text2);
-  font-size: 12px;
-  cursor: pointer;
-}
-.vn-MenuBar__palette:hover {
-  border-color: var(--vn-brand1);
-  color: var(--vn-brand0);
-}
-.vn-MenuBar__palette .vn-icon {
-  width: 13px;
-  height: 13px;
-  fill: none;
-  stroke: currentColor;
-}
-
 .vn-KernelName {
   color: var(--vn-text2);
   font-size: 12px;
@@ -314,7 +276,6 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .vn-KernelStatus {
   display: inline-flex;
   align-items: center;
@@ -322,14 +283,12 @@ input {
   font-size: 12px;
   color: var(--vn-text2);
 }
-
-/* Reserve a fixed slot so Idle/Busy/Error swaps don't reflow the header */
+/* Reserve a fixed slot so Idle/Busy/Error swaps don't reflow the bar */
 .vn-KernelStatus__text {
   display: inline-block;
-  min-width: 42px;
+  min-width: var(--vn-kernel-slot);
   text-align: left;
 }
-
 .vn-KernelStatus__dot {
   width: 9px;
   height: 9px;
@@ -349,8 +308,8 @@ input {
 }
 .vn[data-kernel="busy"] .vn-KernelStatus__dot,
 .vn[data-kernel="busy"] .vn-StatusBar__dot {
-  border-color: #757575;
-  background: #757575;
+  border-color: var(--vn-brand1);
+  background: var(--vn-brand1);
   animation: vn-pulse 1s ease-in-out infinite;
 }
 .vn[data-kernel="error"] .vn-KernelStatus__dot,
@@ -358,7 +317,6 @@ input {
   border-color: var(--vn-error);
   background: var(--vn-error);
 }
-
 @keyframes vn-pulse {
   0%,
   100% {
@@ -369,101 +327,70 @@ input {
   }
 }
 
-/* ============================================================
-   TOOLBAR
-   ============================================================ */
-.vn-Toolbar {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  height: var(--vn-toolbar-h);
-  padding: 0 6px;
-  background: var(--vn-toolbar-bg);
-  border-bottom: 1px solid var(--vn-border2);
-  flex: 0 0 auto;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.vn-Toolbar::-webkit-scrollbar {
-  display: none;
-}
-
-.vn-ToolbarButton {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  cursor: pointer;
-  flex: 0 0 auto;
-}
-.vn-ToolbarButton:hover {
-  background: var(--vn-color3);
-}
-.vn-ToolbarButton:active {
-  background: var(--vn-color4);
-}
-.vn-ToolbarButton:disabled {
-  opacity: 0.4;
-  cursor: default;
-  background: transparent;
-}
-
 .vn-icon {
   width: 18px;
   height: 18px;
   fill: var(--vn-text2);
 }
 
-.vn-Toolbar__sep {
-  width: 1px;
-  height: 20px;
-  margin: 0 5px;
-  background: var(--vn-border2);
-  flex: 0 0 auto;
-}
-
-.vn-CellTypeSelect select {
-  height: 28px;
-  padding: 0 22px 0 8px;
-  border: 1px solid var(--vn-border1);
-  border-radius: 4px;
-  background: var(--vn-color1)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23616161'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")
-    no-repeat right 4px center / 16px;
-  color: var(--vn-text1);
-  font-size: 12.5px;
-  appearance: none;
-  cursor: pointer;
-}
-
-.vn-Toolbar__grow {
-  flex: 1 1 auto;
-}
-
-.vn-Toolbar__filename {
-  color: var(--vn-text2);
-  font-size: 12.5px;
-  padding-right: 4px;
-  white-space: nowrap;
-}
-
-.vn-Toolbar__dirty {
-  color: var(--vn-brand1);
-  font-size: 16px;
-  line-height: 1;
-}
-
 /* ============================================================
-   MAIN AREA
+   BODY: activity bar + sidebar + editor column
    ============================================================ */
-.vn-Main {
+.vn-Body {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
   position: relative;
+}
+
+/* ---------- Activity bar ---------- */
+.vn-Activity {
+  flex: 0 0 var(--vn-activity-w);
+  width: var(--vn-activity-w);
+  background: var(--vn-activity-bg);
+  border-right: 1px solid var(--vn-border2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  gap: 2px;
+}
+.vn-Activity__btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--vn-text2);
+}
+.vn-Activity__btn svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+.vn-Activity__btn:hover {
+  background: var(--vn-color3);
+  color: var(--vn-text1);
+}
+.vn-Activity__btn.is-active {
+  color: var(--vn-brand0);
+}
+.vn-Activity__btn.is-active::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--vn-brand1);
+}
+.vn-Activity__spacer {
+  flex: 1 1 auto;
 }
 
 /* ---------- Sidebar ---------- */
@@ -471,21 +398,18 @@ input {
   position: relative;
   width: var(--vn-sidebar-w);
   flex: 0 0 var(--vn-sidebar-w);
-  background: var(--vn-color2);
+  background: var(--vn-sidebar-bg);
   border-right: 1px solid var(--vn-border2);
   display: flex;
   min-height: 0;
 }
-
 .vn-Sidebar__inner {
   flex: 1 1 auto;
-  overflow-y: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
-
-/* collapsed state */
 .vn.is-sidebar-collapsed .vn-Sidebar {
   width: 0;
   flex-basis: 0;
@@ -494,170 +418,6 @@ input {
 }
 .vn.is-sidebar-collapsed .vn-Sidebar__resizer {
   display: none;
-}
-
-.vn-Sidebar__section {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--vn-border3);
-}
-.vn-Sidebar__section--toc {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.vn-Sidebar__heading {
-  margin: 0 0 8px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--vn-text3);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.vn-Sidebar__count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: var(--vn-color3);
-  color: var(--vn-text2);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-.vn-Sidebar__name {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--vn-text1);
-  word-break: break-word;
-}
-
-.vn-Sidebar__meta {
-  margin: 10px 0 0;
-}
-.vn-Sidebar__meta > div {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 3px 0;
-}
-.vn-Sidebar__meta dt {
-  margin: 0;
-  color: var(--vn-text3);
-  font-size: 12px;
-}
-.vn-Sidebar__meta dd {
-  margin: 0;
-  color: var(--vn-text1);
-  font-size: 12px;
-  font-weight: 600;
-  max-width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-}
-
-.vn-Sidebar__buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-.vn-Sidebar__buttons button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--vn-border1);
-  border-radius: 4px;
-  background: var(--vn-color1);
-  color: var(--vn-text1);
-  padding: 6px 8px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.vn-Sidebar__buttons button:hover {
-  border-color: var(--vn-brand1);
-  color: var(--vn-brand0);
-}
-
-.vn-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-.vn-dot--cpp {
-  background: var(--vn-type);
-}
-.vn-dot--reply {
-  background: var(--vn-brand1);
-}
-.vn-dot--md {
-  background: var(--vn-text3);
-}
-.vn-dot--html {
-  background: #00897b;
-}
-
-.vn-Toc {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.vn-Toc__item {
-  display: block;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  width: 100%;
-  padding: 4px 6px;
-  font-size: 12.5px;
-  color: var(--vn-text2);
-  cursor: pointer;
-  border-radius: 3px;
-  border-left: 2px solid transparent;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vn-Toc__item:hover {
-  background: var(--vn-color3);
-  color: var(--vn-text1);
-}
-.vn-Toc__item--h1 {
-  padding-left: 6px;
-  font-weight: 600;
-}
-.vn-Toc__item--h2 {
-  padding-left: 18px;
-}
-.vn-Toc__item--h3 {
-  padding-left: 30px;
-  font-size: 12px;
-}
-.vn-Toc__empty {
-  margin: 0;
-  font-size: 12px;
-  color: var(--vn-text3);
-  font-style: italic;
-}
-
-.vn-Sidebar__footer {
-  padding: 12px 14px;
-  font-size: 11.5px;
-  color: var(--vn-text3);
-  line-height: 1.5;
 }
 
 /* resize handle */
@@ -692,10 +452,378 @@ input {
   user-select: none;
 }
 
+/* ---------- Panels (explorer / open tabs) ---------- */
+.vn-Panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vn-Panel[hidden] {
+  display: none;
+}
+.vn-Panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  flex: 0 0 auto;
+}
+.vn-Panel__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--vn-text2);
+}
+.vn-Panel__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--vn-color3);
+  color: var(--vn-text2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.vn-Panel__actions {
+  display: flex;
+  gap: 1px;
+}
+.vn-IconBtn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--vn-text2);
+}
+.vn-IconBtn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+.vn-IconBtn:hover {
+  background: var(--vn-color3);
+  color: var(--vn-text1);
+}
+
+.vn-Panel__search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 6px;
+  padding: 0 8px;
+  height: 28px;
+  border: 1px solid var(--vn-border1);
+  border-radius: 6px;
+  background: var(--vn-color1);
+}
+.vn-Panel__search:focus-within {
+  border-color: var(--vn-brand2);
+}
+.vn-Panel__searchIcon {
+  width: 13px;
+  height: 13px;
+  color: var(--vn-text3);
+  flex: 0 0 auto;
+}
+.vn-Panel__search input {
+  flex: 1 1 auto;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--vn-text1);
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+/* ---------- File tree ---------- */
+.vn-Tree {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 2px 6px 12px;
+}
+.vn-Tree__empty {
+  margin: 8px 8px;
+  font-size: 12px;
+  color: var(--vn-text3);
+  line-height: 1.5;
+}
+.vn-Tree__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  padding-left: calc(6px + var(--depth, 0) * 12px);
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--vn-text1);
+  outline: none;
+}
+.vn-Tree__row:hover {
+  background: var(--vn-color3);
+}
+.vn-Tree__row:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--vn-accent1);
+}
+.vn-Tree__row.is-active {
+  background: var(--vn-brand3);
+}
+.vn-Tree__icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: var(--vn-text3);
+}
+.vn-Tree__row.is-active .vn-Tree__icon {
+  fill: var(--vn-brand0);
+}
+.vn-Tree__row.is-loading {
+  opacity: 0.72;
+}
+
+.vn-Tree__row.is-loading .vn-Tree__label::after {
+  content: " loading…";
+  color: var(--vn-text3);
+  font-size: 11px;
+}
+.vn-Tree__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.vn-Tree__meta {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--vn-text3);
+  white-space: nowrap;
+}
+.vn-Tree__menuBtn {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vn-text3);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  display: grid;
+  place-items: center;
+}
+.vn-Tree__row:hover .vn-Tree__menuBtn {
+  opacity: 1;
+}
+.vn-Tree__menuBtn:hover {
+  background: var(--vn-color4);
+  color: var(--vn-text1);
+}
+.vn-Tree__row {
+  padding-left: calc(6px + var(--depth, 0) * 14px);
+}
+
+.vn-Tree__chevron {
+  display: inline-grid;
+  place-items: center;
+  width: 12px;
+  height: 16px;
+  flex: 0 0 12px;
+  color: var(--vn-text3);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.vn-Tree__row:hover .vn-Tree__chevron,
+.vn-Tree__row.is-expanded .vn-Tree__chevron {
+  color: var(--vn-text1);
+}
+/* ============================================================
+   EDITOR COLUMN
+   ============================================================ */
+.vn-Editor-col {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ---------- Center tabs bar ---------- */
+.vn-TabsBar {
+  display: flex;
+  align-items: stretch;
+  height: var(--vn-tabsbar-h);
+  background: var(--vn-tabsbar-bg);
+  border-bottom: 1px solid var(--vn-border2);
+  flex: 0 0 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vn-TabsBar::-webkit-scrollbar {
+  display: none;
+}
+.vn-TabsBar__empty {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 12px;
+  color: var(--vn-text3);
+}
+.vn-Tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px 0 14px;
+  border-right: 1px solid var(--vn-border2);
+  background: transparent;
+  cursor: pointer;
+  max-width: 220px;
+  flex: 0 0 auto;
+  color: var(--vn-text2);
+}
+.vn-Tab:hover {
+  background: var(--vn-color3);
+}
+.vn-Tab.is-active {
+  background: var(--vn-color1);
+  color: var(--vn-text1);
+  box-shadow: inset 0 -2px 0 var(--vn-brand1);
+}
+.vn-Tab__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.vn-Tab__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vn-brand1);
+  flex: 0 0 auto;
+}
+.vn-Tab__close {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vn-text3);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  opacity: 0;
+}
+.vn-Tab:hover .vn-Tab__close,
+.vn-Tab.is-active .vn-Tab__close {
+  opacity: 1;
+}
+.vn-Tab__close:hover {
+  background: var(--vn-color4);
+  color: var(--vn-text1);
+}
+
+/* ---------- Notebook toolbar ---------- */
+.vn-Toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: var(--vn-toolbar-h);
+  padding: 0 6px;
+  background: var(--vn-toolbar-bg);
+  border-bottom: 1px solid var(--vn-border2);
+  flex: 0 0 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vn-Toolbar::-webkit-scrollbar {
+  display: none;
+}
+.vn-ToolbarButton {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.vn-ToolbarButton:hover {
+  background: var(--vn-color3);
+}
+.vn-ToolbarButton:active {
+  background: var(--vn-color4);
+}
+.vn-ToolbarButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+}
+.vn-Toolbar__sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 5px;
+  background: var(--vn-border2);
+  flex: 0 0 auto;
+}
+.vn-CellTypeSelect select {
+  height: 28px;
+  padding: 0 22px 0 8px;
+  border: 1px solid var(--vn-border1);
+  border-radius: 5px;
+  background: var(--vn-color1)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23616161'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")
+    no-repeat right 4px center / 16px;
+  color: var(--vn-text1);
+  font-size: 12.5px;
+  appearance: none;
+  cursor: pointer;
+}
+.vn-Toolbar__grow {
+  flex: 1 1 auto;
+}
+.vn-Toolbar__title {
+  color: var(--vn-text1);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.vn-Toolbar__filename {
+  color: var(--vn-text3);
+  font-size: 12px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
 /* ---------- Notebook panel ---------- */
 .vn-NotebookPanel {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   background: var(--vn-color2);
   overflow-y: auto;
   display: flex;
@@ -705,7 +833,7 @@ input {
 .vn-Notice {
   margin: 8px 12px 0;
   padding: 8px 12px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 12.5px;
   border: 1px solid transparent;
 }
@@ -738,8 +866,6 @@ input {
   padding: 16px 16px 240px;
   outline: none;
 }
-
-/* focus mode narrows the notebook */
 .vn.is-focus .vn-Notebook {
   max-width: 760px;
 }
@@ -752,7 +878,6 @@ input {
   color: var(--vn-text2);
   font-size: 13px;
 }
-
 .vn-spinner {
   width: 16px;
   height: 16px;
@@ -766,12 +891,11 @@ input {
     transform: rotate(360deg);
   }
 }
-
 .vn-Notebook__empty {
   margin: 30px 10px;
   padding: 40px;
   border: 1px dashed var(--vn-border1);
-  border-radius: 6px;
+  border-radius: 8px;
   text-align: center;
   color: var(--vn-text2);
   background: var(--vn-color1);
@@ -785,7 +909,6 @@ input {
   display: flex;
   padding: 4px 0;
 }
-
 .vn-Cell__collapser {
   flex: 0 0 var(--vn-collapser-width);
   width: var(--vn-collapser-width);
@@ -800,25 +923,22 @@ input {
 .vn-Cell.is-editing > .vn-Cell__collapser {
   background: var(--vn-collapser-edit);
 }
-
 .vn-Cell.is-selected .vn-Cell__body {
   box-shadow: inset 0 0 0 1px var(--vn-collapser-selected);
 }
 .vn-Cell.is-editing .vn-Cell__body {
   box-shadow: inset 0 0 0 1px var(--vn-collapser-edit);
 }
-
 .vn-Cell__body {
   flex: 1 1 auto;
   min-width: 0;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 .vn-InputArea {
   display: flex;
   align-items: stretch;
 }
-
 .vn-InputPrompt {
   flex: 0 0 var(--vn-prompt-width);
   width: var(--vn-prompt-width);
@@ -841,7 +961,7 @@ input {
   flex: 1 1 auto;
   min-width: 0;
   border: 1px solid var(--vn-editor-border);
-  border-radius: 3px;
+  border-radius: 5px;
   background: var(--vn-editor-bg);
   overflow: hidden;
 }
@@ -849,11 +969,9 @@ input {
   background: var(--vn-editor-active-bg);
   border-color: var(--vn-brand2);
 }
-
 .vn-Editor__wrap {
   position: relative;
 }
-
 .vn-Editor__highlight,
 .vn-Editor textarea {
   margin: 0;
@@ -866,7 +984,6 @@ input {
   white-space: pre;
   word-wrap: normal;
 }
-
 .vn-Editor__highlight {
   position: absolute;
   inset: 0;
@@ -875,7 +992,6 @@ input {
   color: var(--vn-punct);
   white-space: pre;
 }
-
 .vn-Editor textarea {
   position: relative;
   display: block;
@@ -889,13 +1005,45 @@ input {
   overflow: hidden;
   white-space: pre;
 }
-
 .vn-Editor--plain textarea {
   color: var(--vn-content1);
   caret-color: #000;
 }
 .vn-Editor--plain .vn-Editor__highlight {
   display: none;
+}
+.vn-Editor__wrap {
+  position: relative;
+}
+
+.vn-Editor__lineFocus {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.055);
+  border-left: 2px solid rgba(243, 119, 38, 0.72);
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    transform 80ms ease;
+  z-index: 1;
+}
+
+.vn-Cell.is-editing .vn-Editor__lineFocus {
+  opacity: 1;
+}
+
+.vn-Editor textarea {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  tab-size: 2;
+}
+
+.vn-Editor__highlight {
+  z-index: 0;
 }
 
 /* Output row */
@@ -906,7 +1054,6 @@ input {
 .vn-OutputArea.is-collapsed .vn-OutputArea__list {
   display: none;
 }
-
 .vn-OutputPrompt {
   flex: 0 0 var(--vn-prompt-width);
   width: var(--vn-prompt-width);
@@ -918,12 +1065,10 @@ input {
   line-height: var(--vn-code-lh);
   user-select: none;
 }
-
 .vn-OutputArea__list {
   flex: 1 1 auto;
   min-width: 0;
 }
-
 .vn-Output {
   padding: 4px 10px;
   font-family: var(--vn-code-font);
@@ -935,7 +1080,6 @@ input {
   white-space: pre-wrap;
   word-break: break-word;
 }
-
 .vn-Output--stdout {
   color: var(--vn-content1);
 }
@@ -961,12 +1105,11 @@ input {
   color: var(--vn-text2);
   font-style: italic;
 }
-
 .vn-Output__kind {
   display: inline-block;
   margin-right: 8px;
   padding: 0 5px;
-  border-radius: 2px;
+  border-radius: 3px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1011,12 +1154,12 @@ input {
   font-size: 0.9em;
   background: var(--vn-color2);
   padding: 0.1em 0.35em;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 .vn-RenderedMarkdown pre {
   background: var(--vn-color2);
   border: 1px solid var(--vn-border2);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 10px 12px;
   overflow-x: auto;
 }
@@ -1024,7 +1167,6 @@ input {
   background: transparent;
   padding: 0;
 }
-
 .vn-RenderedHTML {
   flex: 1 1 auto;
   min-width: 0;
@@ -1032,7 +1174,6 @@ input {
   color: var(--vn-content1);
   line-height: 1.6;
 }
-
 .vn-Cell.is-editing .vn-RenderedMarkdown,
 .vn-Cell.is-editing .vn-RenderedHTML {
   display: none;
@@ -1114,7 +1255,7 @@ input {
   gap: 1px;
   background: var(--vn-color1);
   border: 1px solid var(--vn-border2);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 1px;
   opacity: 0;
   transition: opacity 0.12s;
@@ -1131,7 +1272,7 @@ input {
   height: 22px;
   border: 0;
   background: transparent;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
 }
 .vn-Cell__toolbar button:hover {
@@ -1142,7 +1283,6 @@ input {
   height: 15px;
   fill: var(--vn-text2);
 }
-
 .vn-Cell.is-running .vn-InputPrompt {
   color: var(--vn-outprompt);
 }
@@ -1151,7 +1291,7 @@ input {
 }
 
 /* ============================================================
-   STATUS BAR
+   STATUS BAR — fixed-width slots, no reflow on kernel change
    ============================================================ */
 .vn-StatusBar {
   display: flex;
@@ -1159,7 +1299,7 @@ input {
   justify-content: space-between;
   height: var(--vn-statusbar-h);
   padding: 0 12px;
-  background: var(--vn-menubar-bg);
+  background: var(--vn-appbar-bg);
   border-top: 1px solid var(--vn-border2);
   flex: 0 0 auto;
   font-size: 11.5px;
@@ -1169,7 +1309,7 @@ input {
 .vn-StatusBar__right {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
 .vn-StatusBar__sep {
   color: var(--vn-text3);
@@ -1177,11 +1317,26 @@ input {
 .vn-StatusBar__mode {
   font-weight: 600;
   color: var(--vn-text1);
+  display: inline-block;
+  min-width: 56px;
+}
+.vn-StatusBar__pos {
+  display: inline-block;
+  min-width: 78px;
+}
+.vn-StatusBar__kind {
+  display: inline-block;
+  min-width: 56px;
+  text-align: right;
 }
 .vn-StatusBar__kernel {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+}
+.vn-StatusBar__kernelText {
+  display: inline-block;
+  min-width: var(--vn-kernel-slot);
 }
 .vn-StatusBar__dot {
   width: 8px;
@@ -1189,105 +1344,11 @@ input {
   border-radius: 50%;
   border: 1.5px solid var(--vn-text3);
   background: transparent;
-}
-.vn-StatusBar__btn {
-  border: 0;
-  background: transparent;
-  color: var(--vn-text2);
-  cursor: pointer;
-  font-size: 11.5px;
-  padding: 0;
-}
-.vn-StatusBar__btn:hover {
-  color: var(--vn-brand0);
+  flex: 0 0 auto;
 }
 
 /* ============================================================
-   COMMAND PALETTE
-   ============================================================ */
-.vn-Palette {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: 12vh;
-}
-.vn-Palette[hidden] {
-  display: none;
-}
-.vn-Palette__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.28);
-}
-.vn-Palette__box {
-  position: relative;
-  width: min(560px, calc(100% - 32px));
-  background: var(--vn-color1);
-  border: 1px solid var(--vn-border1);
-  border-radius: 8px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-.vn-Palette__input {
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--vn-border2);
-  padding: 13px 16px;
-  font-size: 14px;
-  outline: none;
-  color: var(--vn-text1);
-}
-.vn-Palette__list {
-  max-height: 320px;
-  overflow-y: auto;
-  padding: 6px;
-}
-.vn-Palette__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  padding: 8px 12px;
-  border-radius: 5px;
-  cursor: pointer;
-  color: var(--vn-text1);
-  font-size: 13px;
-}
-.vn-Palette__item:hover,
-.vn-Palette__item.is-active {
-  background: var(--vn-accent1);
-  color: #fff;
-}
-.vn-Palette__item .vn-Menu__icon svg {
-  fill: var(--vn-text2);
-}
-.vn-Palette__item:hover .vn-Menu__icon svg,
-.vn-Palette__item.is-active .vn-Menu__icon svg {
-  fill: #fff;
-}
-.vn-Palette__item .vn-Menu__hint {
-  margin-left: auto;
-  color: var(--vn-text3);
-}
-.vn-Palette__item:hover .vn-Menu__hint,
-.vn-Palette__item.is-active .vn-Menu__hint {
-  color: rgba(255, 255, 255, 0.85);
-}
-.vn-Palette__empty {
-  padding: 16px;
-  text-align: center;
-  color: var(--vn-text3);
-  font-size: 13px;
-}
-
-/* ============================================================
-   MODAL (shortcuts / about)
+   MODAL (forms / confirm / info)
    ============================================================ */
 .vn-Modal {
   position: fixed;
@@ -1308,11 +1369,11 @@ input {
 }
 .vn-Modal__box {
   position: relative;
-  width: min(560px, 100%);
-  max-height: 80vh;
+  width: min(480px, 100%);
+  max-height: 82vh;
   background: var(--vn-color1);
   border: 1px solid var(--vn-border1);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
@@ -1348,13 +1409,100 @@ input {
   line-height: 1.6;
   color: var(--vn-text1);
 }
+.vn-Modal__text {
+  margin: 0;
+  color: var(--vn-text2);
+}
+.vn-Modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 16px;
+}
+.vn-Modal__foot:empty {
+  display: none;
+}
+
+/* Form fields inside modal */
+.vn-Form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.vn-Form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.vn-Form__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vn-text3);
+}
+.vn-Form__input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--vn-border1);
+  border-radius: 7px;
+  background: var(--vn-color1);
+  color: var(--vn-text1);
+  font-size: 13px;
+  font-family: var(--vn-code-font);
+  outline: none;
+}
+.vn-Form__input:focus {
+  border-color: var(--vn-brand2);
+  box-shadow: 0 0 0 3px var(--vn-brand3);
+}
+.vn-Form__hint {
+  font-size: 11.5px;
+  color: var(--vn-text3);
+}
+
+/* Buttons */
+.vn-Btn {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--vn-border1);
+  border-radius: 7px;
+  background: var(--vn-color1);
+  color: var(--vn-text1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vn-Btn--ghost:hover {
+  background: var(--vn-color2);
+}
+.vn-Btn--primary {
+  border-color: var(--vn-brand1);
+  background: var(--vn-brand1);
+  color: #fff;
+}
+.vn-Btn--primary:hover {
+  background: var(--vn-brand0);
+  border-color: var(--vn-brand0);
+}
+.vn-Btn--danger {
+  border-color: #d32f2f;
+  background: #d32f2f;
+  color: #fff;
+}
+.vn-Btn--danger:hover {
+  background: #b71c1c;
+  border-color: #b71c1c;
+}
+
+/* Shortcuts grid */
 .vn-Modal__body kbd {
   display: inline-block;
   min-width: 18px;
   padding: 1px 6px;
   border: 1px solid var(--vn-border1);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--vn-color2);
   font-family: var(--vn-code-font);
   font-size: 11px;
@@ -1377,26 +1525,72 @@ input {
 }
 
 /* ============================================================
+   CONTEXT MENU (custom, replaces native menu)
+   ============================================================ */
+.vn-Context {
+  position: fixed;
+  z-index: 200;
+  min-width: 180px;
+  padding: 5px;
+  background: var(--vn-color1);
+  border: 1px solid var(--vn-border1);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+}
+.vn-Context__item {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--vn-text1);
+  font-size: 12.5px;
+}
+.vn-Context__item:hover {
+  background: var(--vn-accent1);
+  color: #fff;
+}
+.vn-Context__item.is-danger {
+  color: #c62828;
+}
+.vn-Context__item.is-danger:hover {
+  background: #d32f2f;
+  color: #fff;
+}
+.vn-Context__item.is-disabled {
+  color: var(--vn-text3);
+  cursor: default;
+}
+.vn-Context__item.is-disabled:hover {
+  background: transparent;
+  color: var(--vn-text3);
+}
+.vn-Context__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--vn-border2);
+}
+
+/* ============================================================
    SCROLLBARS
    ============================================================ */
-.vn-Sidebar__inner::-webkit-scrollbar,
-.vn-Toc::-webkit-scrollbar,
+.vn-Tree::-webkit-scrollbar,
 .vn-NotebookPanel::-webkit-scrollbar,
-.vn-Palette__list::-webkit-scrollbar,
 .vn-Modal__body::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-.vn-Sidebar__inner::-webkit-scrollbar-thumb,
-.vn-Toc::-webkit-scrollbar-thumb,
+.vn-Tree::-webkit-scrollbar-thumb,
 .vn-NotebookPanel::-webkit-scrollbar-thumb,
-.vn-Palette__list::-webkit-scrollbar-thumb,
 .vn-Modal__body::-webkit-scrollbar-thumb {
   background: #c4c4c4;
   border: 2px solid var(--vn-color2);
   border-radius: 6px;
 }
-.vn-Sidebar__inner::-webkit-scrollbar-thumb:hover,
+.vn-Tree::-webkit-scrollbar-thumb:hover,
 .vn-NotebookPanel::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
@@ -1404,53 +1598,37 @@ input {
 /* ============================================================
    RESPONSIVE
    ============================================================ */
-
-/* Tablet: sidebar becomes an overlay drawer */
 @media (max-width: 900px) {
   .vn-Sidebar {
     position: absolute;
     top: 0;
-    left: 0;
+    left: var(--vn-activity-w);
     height: 100%;
     z-index: 30;
-    width: min(var(--vn-sidebar-w), 80vw) !important;
+    width: min(var(--vn-sidebar-w), 72vw) !important;
     flex-basis: auto;
     box-shadow: 4px 0 18px rgba(0, 0, 0, 0.18);
     transform: translateX(0);
     transition: transform 0.18s ease;
   }
   .vn.is-sidebar-collapsed .vn-Sidebar {
-    transform: translateX(-100%);
-    width: min(var(--vn-sidebar-w), 80vw) !important;
+    transform: translateX(-120%);
+    width: min(var(--vn-sidebar-w), 72vw) !important;
     border-right: 1px solid var(--vn-border2);
-  }
-  /* backdrop when drawer open */
-  .vn:not(.is-sidebar-collapsed) .vn-Main::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.25);
-    z-index: 25;
   }
   .vn-Sidebar__resizer {
     display: none;
   }
 }
 
-/* Phone: tighten chrome, hide menu labels, smaller prompts */
 @media (max-width: 620px) {
   :root {
     --vn-prompt-width: 46px;
-    --vn-sidebar-w: 230px;
+    --vn-sidebar-w: 240px;
+    --vn-activity-w: 44px;
   }
-  .vn-MenuBar__menus {
+  .vn-AppBar__menus {
     display: none;
-  }
-  .vn-MenuBar__paletteText {
-    display: none;
-  }
-  .vn-MenuBar__palette {
-    padding: 0 8px;
   }
   .vn-KernelName {
     display: none;
@@ -1458,19 +1636,21 @@ input {
   .vn-Notebook {
     padding: 12px 8px 200px;
   }
+  .vn-Toolbar__title,
   .vn-Toolbar__filename {
     display: none;
   }
-  .vn-StatusBar [data-status-position] {
+  .vn-StatusBar__pos,
+  .vn-StatusBar__cells {
     display: none;
   }
 }
 
 @media (max-width: 420px) {
-  .vn-MenuBar__title {
+  .vn-AppBar__title {
     display: none;
   }
-  .vn-StatusBar [data-status-kind] {
+  .vn-StatusBar__kind {
     display: none;
   }
 }

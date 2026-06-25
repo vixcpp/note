@@ -382,9 +382,58 @@ namespace vix::note
     NoteRouteResponse handle_document_open(std::string_view body);
 
     /**
+     * @brief Updates the active document metadata (e.g. its title) in memory.
+     *
+     * When the body contains `"save": true`, the document is also persisted
+     * to disk if it already has a path.
+     */
+    NoteRouteResponse handle_document_update(std::string_view body);
+
+    /**
+     * @brief Saves the active document to a new .vixnote path.
+     *
+     * On success the active document path is updated to the new path.
+     */
+    NoteRouteResponse handle_document_save_as(std::string_view body);
+
+    /**
      * @brief Creates a directory on disk.
      */
     NoteRouteResponse handle_directory_create(std::string_view body);
+
+    /**
+     * @brief Lists files and directories from a local workspace path.
+     */
+    NoteRouteResponse handle_directory_list(std::string_view body);
+
+    /**
+     * @brief Deletes a local file or directory from disk.
+     */
+    NoteRouteResponse handle_path_delete(std::string_view body);
+
+    /**
+     * @brief Renames a local file or directory on disk.
+     *
+     * Accepts either `"newName"` (rename in place) or `"newPath"` (full
+     * destination). Renaming a `.vixnote` file must keep the `.vixnote`
+     * extension.
+     */
+    NoteRouteResponse handle_path_rename(std::string_view body);
+
+    /**
+     * @brief Moves a local file or directory into a new location on disk.
+     *
+     * Accepts either `"directory"` (target folder, keeps the file name) or
+     * `"newPath"` (full destination).
+     */
+    NoteRouteResponse handle_path_move(std::string_view body);
+
+    /**
+     * @brief Copies a local file or directory on disk.
+     *
+     * Directories are copied recursively when `"recursive": true`.
+     */
+    NoteRouteResponse handle_path_copy(std::string_view body);
 
     /**
      * @brief Serializes the current document into a JSON object.
@@ -485,6 +534,27 @@ namespace vix::note
      * @return JSON response.
      */
     std::string run_result_json(const NoteKernelRunResult &result) const;
+
+    /**
+     * @brief Returns true when the given normalized path is the active
+     *        document path.
+     *
+     * @param normalized A path already passed through lexically_normal().
+     * @return True when it matches the active document path.
+     */
+    bool is_current_document_path(
+        const std::filesystem::path &normalized) const;
+
+    /**
+     * @brief Updates the active document path when its file was renamed or
+     *        moved on disk.
+     *
+     * @param oldPath Previous normalized path.
+     * @param newPath New normalized path.
+     */
+    void update_current_document_path_if_needed(
+        const std::filesystem::path &oldPath,
+        const std::filesystem::path &newPath);
 
     /**
      * @brief Route options.
