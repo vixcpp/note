@@ -3,7 +3,7 @@
 
 HTML cells are rendered by the note UI.
 
-They are useful for small visual explanations inside a lesson.
+They are useful for small visual explanations inside a lesson.dd
 
 <!-- vixnote:cell id="html-preview" kind="html" title="HTML preview" -->
 ```html

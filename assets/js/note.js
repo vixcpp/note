@@ -72,6 +72,15 @@
     }
   }
 
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
   function projectLabel(project) {
     if (!project || !project.enabled) {
       return "No project";
@@ -329,14 +338,14 @@
 
     if (kind === "markdown") {
       return `
-        <div class="note-cell__editor">
-          <textarea spellcheck="false" data-action="edit-source">${escapeHtml(source)}</textarea>
-        </div>
+      <div class="note-cell__editor">
+        <textarea spellcheck="false" data-action="edit-source">${escapeHtml(source)}</textarea>
+      </div>
 
-        <div class="note-preview">
-          ${renderMarkdown(source)}
-        </div>
-      `;
+      <div class="note-preview" data-cell-preview>
+        ${renderMarkdown(source)}
+      </div>
+    `;
     }
 
     if (kind === "html") {
@@ -345,7 +354,7 @@
           <textarea spellcheck="false" data-action="edit-source">${escapeHtml(source)}</textarea>
         </div>
 
-        <div class="note-html-preview">
+        <div class="note-html-preview" data-cell-preview>
           ${source}
         </div>
       `;
@@ -543,6 +552,34 @@
     }
 
     return cell;
+  }
+
+  function updatePreview(cellElement) {
+    if (!cellElement) {
+      return;
+    }
+
+    const cell = updateLocalCell(cellElement);
+
+    if (!cell) {
+      return;
+    }
+
+    const kind = normalizeKind(cell.kind);
+    const preview = $("[data-cell-preview]", cellElement);
+
+    if (!preview) {
+      return;
+    }
+
+    if (kind === "markdown") {
+      preview.innerHTML = renderMarkdown(cell.source);
+      return;
+    }
+
+    if (kind === "html") {
+      preview.innerHTML = String(cell.source || "");
+    }
   }
 
   async function syncCell(cellElement, options = {}) {
@@ -963,6 +1000,9 @@
 
       if (target.getAttribute("data-action") === "edit-source") {
         markCellDirty(target);
+
+        const cellElement = findCellElement(target);
+        updatePreview(cellElement);
       }
     });
 
@@ -975,6 +1015,26 @@
 
       if (target.getAttribute("data-action") === "change-kind") {
         markCellDirty(target);
+
+        const cellElement = findCellElement(target);
+        const cell = updateLocalCell(cellElement);
+
+        if (cellElement && cell) {
+          const body = renderCellBody(cell);
+          const oldEditor = $(".note-cell__editor", cellElement);
+          const oldPreview = $(
+            ".note-preview, .note-html-preview",
+            cellElement,
+          );
+
+          if (oldPreview) {
+            oldPreview.remove();
+          }
+
+          if (oldEditor) {
+            oldEditor.outerHTML = body;
+          }
+        }
       }
     });
 
