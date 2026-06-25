@@ -2,160 +2,239 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
     <meta
       name="description"
       content="Vix Note is a visual executable note workspace for learning C++ and Vix.cpp faster."
     />
-
     <title>Vix Note</title>
-
     <link rel="stylesheet" href="/assets/note.css" />
   </head>
 
   <body>
-    <div class="note-app" data-note-app>
-      <aside class="note-sidebar" aria-label="Notebook sidebar">
-        <div class="note-brand">
-          <div class="note-brand__mark" aria-hidden="true">V</div>
-
-          <div>
-            <p class="note-brand__eyebrow">Vix.cpp</p>
-            <h1 class="note-brand__title">Note</h1>
-          </div>
+    <div class="jp" data-note-app>
+      <!-- ============ TOP MENU BAR ============ -->
+      <header class="jp-MenuBar">
+        <div class="jp-MenuBar__brand">
+          <span class="jp-MenuBar__logo" aria-hidden="true">V</span>
+          <span class="jp-MenuBar__title">Vix Note</span>
         </div>
 
-        <nav class="note-nav" aria-label="Notebook sections">
-          <a class="note-nav__item note-nav__item--active" href="#workspace">
-            Workspace
-          </a>
-
-          <a class="note-nav__item" href="#cells">Cells</a>
-
-          <a class="note-nav__item" href="#outputs">Outputs</a>
+        <nav class="jp-MenuBar__menus" aria-label="Menu">
+          <button type="button" class="jp-MenuBar__menu">File</button>
+          <button type="button" class="jp-MenuBar__menu">Edit</button>
+          <button type="button" class="jp-MenuBar__menu">View</button>
+          <button type="button" class="jp-MenuBar__menu">Run</button>
+          <button type="button" class="jp-MenuBar__menu">Kernel</button>
+          <button type="button" class="jp-MenuBar__menu">Help</button>
         </nav>
 
-        <div class="note-sidebar__footer">
-          <p>Visual executable notes for learning C++ and Vix.cpp faster.</p>
+        <div class="jp-MenuBar__spacer"></div>
+
+        <div class="jp-MenuBar__status">
+          <span class="jp-KernelName" data-note-project>No project</span>
+          <span
+            class="jp-KernelStatus"
+            data-note-kernel-dot
+            title="Kernel status"
+          >
+            <span class="jp-KernelStatus__dot"></span>
+            <span class="jp-KernelStatus__text" data-note-kernel>Idle</span>
+          </span>
         </div>
-      </aside>
+      </header>
 
-      <main class="note-main" id="workspace">
-        <header class="note-header">
-          <div>
-            <p class="note-header__eyebrow">Learning workspace</p>
-
-            <h2 class="note-header__title" data-note-title>
-              Loading Vix Note...
-            </h2>
-
-            <p class="note-header__description">
-              Vix Note keeps explanations, code cells, and outputs together so
-              learning C++ feels visual instead of hidden inside a terminal.
-            </p>
-          </div>
-
-          <div class="note-actions" aria-label="Notebook actions">
-            <button
-              class="note-button note-button--ghost"
-              type="button"
-              data-action="add-markdown"
-            >
-              Add Markdown
-            </button>
-
-            <button
-              class="note-button note-button--ghost"
-              type="button"
-              data-action="add-cpp"
-            >
-              Add C++
-            </button>
-
-            <button
-              class="note-button note-button--ghost"
-              type="button"
-              data-action="add-reply"
-            >
-              Add Reply
-            </button>
-
-            <button
-              class="note-button note-button--ghost"
-              type="button"
-              data-action="save"
-            >
-              Save
-            </button>
-
-            <button
-              class="note-button note-button--primary"
-              type="button"
-              data-action="run-all"
-            >
-              Run all
-            </button>
-          </div>
-        </header>
-
-        <section class="note-status" aria-label="Notebook status">
-          <article class="note-status__card">
-            <span class="note-status__label">Document</span>
-
-            <strong class="note-status__value" data-note-document>
-              Untitled note
-            </strong>
-          </article>
-
-          <article class="note-status__card">
-            <span class="note-status__label">Project</span>
-
-            <strong class="note-status__value" data-note-project>
-              No project
-            </strong>
-          </article>
-
-          <article class="note-status__card">
-            <span class="note-status__label">Cells</span>
-
-            <strong class="note-status__value" data-note-cell-count> 0 </strong>
-          </article>
-
-          <article class="note-status__card">
-            <span class="note-status__label">Kernel</span>
-
-            <strong class="note-status__value" data-note-kernel> Idle </strong>
-          </article>
-
-          <article class="note-status__card">
-            <span class="note-status__label">State</span>
-
-            <strong class="note-status__value" data-note-state>
-              Loading
-            </strong>
-          </article>
-        </section>
-
-        <section
-          class="note-message"
-          data-note-message
-          hidden
-          aria-live="polite"
-        ></section>
-
-        <section
-          class="note-workspace"
-          id="cells"
-          data-note-cells
-          aria-label="Vix Note cells"
+      <!-- ============ NOTEBOOK TOOLBAR ============ -->
+      <div class="jp-Toolbar" role="toolbar" aria-label="Notebook toolbar">
+        <button
+          class="jp-ToolbarButton"
+          type="button"
+          data-action="save"
+          title="Save (Ctrl+S)"
+          aria-label="Save"
         >
-          <article class="note-empty">
-            <p>Loading note document...</p>
-          </article>
-        </section>
-      </main>
+          <svg viewBox="0 0 24 24" class="jp-icon">
+            <path d="M5 3h11l3 3v15H5V3zm2 2v4h8V5H7zm0 7v6h10v-6H7z" />
+          </svg>
+        </button>
+
+        <span class="jp-Toolbar__sep"></span>
+
+        <button
+          class="jp-ToolbarButton"
+          type="button"
+          data-action="insert-below"
+          title="Insert cell below"
+          aria-label="Insert cell below"
+        >
+          <svg viewBox="0 0 24 24" class="jp-icon">
+            <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z" />
+          </svg>
+        </button>
+
+        <button
+          class="jp-ToolbarButton"
+          type="button"
+          data-action="cut-cell"
+          title="Cut (delete) selected cell"
+          aria-label="Cut selected cell"
+        >
+          <svg viewBox="0 0 24 24" class="jp-icon">
+            <path
+              d="M9.64 7.64a3 3 0 10-1.42 1.42L11 12l-2.78 2.94a3 3 0 101.42 1.42L13 13.4l5 5h2v-1l-7.36-7.76L20 5V4h-2l-5.36 5.66L9.64 7.64zM6 6a1 1 0 110 2 1 1 0 010-2zm0 10a1 1 0 110 2 1 1 0 010-2z"
+            />
+          </svg>
+        </button>
+
+        <button
+          class="jp-ToolbarButton"
+          type="button"
+          data-action="move-up"
+          title="Move cell up"
+          aria-label="Move cell up"
+        >
+          <svg viewBox="0 0 24 24" class="jp-icon">
+            <path d="M12 7l6 6-1.4 1.4L12 9.8l-4.6 4.6L6 13l6-6z" />
+          </svg>
+        </button>
+
+        <button
+          class="jp-ToolbarButton"
+          type="button"
+          data-action="move-down"
+          title="Move cell down"
+          aria-label="Move cell down"
+        >
+          <svg viewBox="0 0 24 24" class="jp-icon">
+            <path d="M12 17l-6-6 1.4-1.4L12 14.2l4.6-4.6L18 11l-6 6z" />
+          </svg>
+        </button>
+
+        <span class="jp-Toolbar__sep"></span>
+
+        <button
+          class="jp-ToolbarButton"
+          type="button"
+          data-action="run-cell"
+          title="Run the selected cell (Ctrl+Enter)"
+          aria-label="Run cell"
+        >
+          <svg viewBox="0 0 24 24" class="jp-icon">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </button>
+
+        <button
+          class="jp-ToolbarButton"
+          type="button"
+          data-action="run-all"
+          title="Run all cells"
+          aria-label="Run all cells"
+        >
+          <svg viewBox="0 0 24 24" class="jp-icon">
+            <path d="M5 5v14l8-7-8-7zm9 0v14l8-7-8-7z" />
+          </svg>
+        </button>
+
+        <button
+          class="jp-ToolbarButton"
+          type="button"
+          data-action="restart"
+          title="Restart kernel (clears outputs)"
+          aria-label="Restart"
+        >
+          <svg viewBox="0 0 24 24" class="jp-icon">
+            <path d="M12 6V3L8 7l4 4V8a4 4 0 11-4 4H6a6 6 0 106-6z" />
+          </svg>
+        </button>
+
+        <span class="jp-Toolbar__sep"></span>
+
+        <div class="jp-CellTypeSelect">
+          <select data-action="toolbar-kind" aria-label="Cell type">
+            <option value="">Code</option>
+            <option value="cpp">C++</option>
+            <option value="reply">Reply</option>
+            <option value="markdown">Markdown</option>
+            <option value="html">HTML</option>
+          </select>
+        </div>
+
+        <div class="jp-Toolbar__grow"></div>
+
+        <span class="jp-Toolbar__filename" data-note-document
+          >Untitled.vixnote</span
+        >
+        <span class="jp-Toolbar__dirty" data-note-state hidden>●</span>
+      </div>
+
+      <!-- ============ MAIN AREA ============ -->
+      <div class="jp-Main">
+        <!-- LEFT ACTIVITY BAR + SIDEBAR -->
+        <aside class="jp-Sidebar" aria-label="Sidebar">
+          <div class="jp-Sidebar__section">
+            <p class="jp-Sidebar__heading">Notebook</p>
+            <p class="jp-Sidebar__name" data-note-title>Loading…</p>
+            <dl class="jp-Sidebar__meta">
+              <div>
+                <dt>Cells</dt>
+                <dd data-note-cell-count>0</dd>
+              </div>
+              <div>
+                <dt>Kernel</dt>
+                <dd data-note-kernel-2>Idle</dd>
+              </div>
+              <div>
+                <dt>Project</dt>
+                <dd data-note-project-2>—</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="jp-Sidebar__section">
+            <p class="jp-Sidebar__heading">Add cell</p>
+            <div class="jp-Sidebar__buttons">
+              <button type="button" data-action="add-cpp">C++</button>
+              <button type="button" data-action="add-reply">Reply</button>
+              <button type="button" data-action="add-markdown">Markdown</button>
+              <button type="button" data-action="add-html">HTML</button>
+            </div>
+          </div>
+
+          <div class="jp-Sidebar__section jp-Sidebar__section--toc">
+            <p class="jp-Sidebar__heading">Outline</p>
+            <nav class="jp-Toc" data-note-toc aria-label="Table of contents">
+              <p class="jp-Toc__empty">No headings yet.</p>
+            </nav>
+          </div>
+
+          <div class="jp-Sidebar__footer">
+            <p>Visual executable notes for C++ and Vix.cpp.</p>
+          </div>
+        </aside>
+
+        <!-- NOTEBOOK PANEL -->
+        <main class="jp-NotebookPanel" id="workspace">
+          <div
+            class="jp-Notice"
+            data-note-message
+            hidden
+            aria-live="polite"
+          ></div>
+
+          <div
+            class="jp-Notebook"
+            data-note-cells
+            aria-label="Vix Note cells"
+            tabindex="0"
+          >
+            <div class="jp-Notebook__loading">
+              <span class="jp-spinner" aria-hidden="true"></span>
+              Loading note document…
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
 
     <script src="/assets/note.js"></script>
