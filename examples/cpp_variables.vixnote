@@ -1,0 +1,26 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Variables in C++
+
+Variables store values that your program can reuse.
+
+<!-- vixnote:cell id="variables-cpp" kind="cpp" title="Variables example" -->
+```cpp
+#include <iostream>
+#include <string>
+
+int main()
+{
+  int age = 20;
+  double price = 12.5;
+  std::string language = "C++";
+
+  std::cout << "Language: " << language << std::endl;
+  std::cout << "Age: " << age << std::endl;
+  std::cout << "Price: " << price << std::endl;
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+A variable has a type, a name, and a value.

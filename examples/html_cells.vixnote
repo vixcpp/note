@@ -1,0 +1,17 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# HTML Cells
+
+HTML cells are rendered by the note UI.
+
+They are useful for small visual explanations inside a lesson.
+
+<!-- vixnote:cell id="html-preview" kind="html" title="HTML preview" -->
+```html
+<section style="padding: 16px; border: 1px solid #e5e7eb; border-radius: 12px;">
+  <h2 style="margin-top: 0;">Vix Note HTML Cell</h2>
+  <p>This content is rendered as HTML inside the note workspace.</p>
+</section>
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Keep HTML cells small and focused. They should explain, not replace the note UI.

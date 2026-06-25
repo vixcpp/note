@@ -12,7 +12,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-set(VIX_NOTE_MODULE_VERSION 0.2.0)
+set(VIX_NOTE_MODULE_VERSION 0.8.0)
 
 # ============================================================================
 # Re-entry guard
@@ -238,6 +238,7 @@ message(STATUS "Vix Note version: ${_VIX_NOTE_VERSION}")
 target_compile_definitions(vix_note
   PRIVATE
     VIX_NOTE_VERSION="${_VIX_NOTE_VERSION}"
+    VIX_NOTE_INSTALLED_ASSET_DIR="${CMAKE_INSTALL_FULL_DATADIR}/vix/note/assets"
 )
 
 # ============================================================================

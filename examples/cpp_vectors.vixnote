@@ -1,0 +1,27 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Vectors in C++
+
+`std::vector` stores a list of values that can grow.
+
+<!-- vixnote:cell id="vector-cpp" kind="cpp" title="vector example" -->
+```cpp
+#include <iostream>
+#include <vector>
+
+int main()
+{
+  std::vector<int> numbers{2, 4, 6};
+
+  numbers.push_back(8);
+
+  for (int value : numbers)
+  {
+    std::cout << value << std::endl;
+  }
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+A vector is useful when you need a dynamic list of values.

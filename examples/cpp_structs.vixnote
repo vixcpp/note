@@ -1,0 +1,28 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Structs in C++
+
+A `struct` groups related data under one type.
+
+<!-- vixnote:cell id="struct-cpp" kind="cpp" title="struct example" -->
+```cpp
+#include <iostream>
+#include <string>
+
+struct User
+{
+  std::string name;
+  int age;
+};
+
+int main()
+{
+  User user{"Gaspard", 20};
+
+  std::cout << user.name << " is " << user.age << " years old." << std::endl;
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Structs help organize data when values belong together.

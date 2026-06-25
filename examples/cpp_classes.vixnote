@@ -1,0 +1,38 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Classes in C++
+
+A class groups data and behavior together.
+
+<!-- vixnote:cell id="class-cpp" kind="cpp" title="class example" -->
+```cpp
+#include <iostream>
+#include <string>
+
+class Greeter
+{
+public:
+  explicit Greeter(std::string name)
+      : name_(std::move(name))
+  {
+  }
+
+  void say_hello() const
+  {
+    std::cout << "Hello, " << name_ << std::endl;
+  }
+
+private:
+  std::string name_;
+};
+
+int main()
+{
+  Greeter greeter("Vix Note");
+  greeter.say_hello();
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Classes are useful when data and behavior should live together.

@@ -1,0 +1,25 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Reply Calculator Cells
+
+Reply supports small calculator-style expressions.
+
+<!-- vixnote:cell id="basic-math" kind="reply" title="Basic math" -->
+```reply
+calc 1 + 2 * 3
+```
+
+<!-- vixnote:cell id="equals-shortcut" kind="reply" title="Equals shortcut" -->
+```reply
+= (10 + 5) * 2
+```
+
+<!-- vixnote:cell id="math-variable" kind="reply" title="Math with variables" -->
+```reply
+price = 25
+quantity = 4
+total = price * quantity
+println("total =", total)
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Calculator cells are good for quick examples in lessons.

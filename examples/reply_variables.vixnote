@@ -1,0 +1,33 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Reply Variables
+
+Reply cells can store simple values during the note session.
+
+<!-- vixnote:cell id="simple-values" kind="reply" title="Simple values" -->
+```reply
+name = "Vix Note"
+version = 1
+ready = true
+
+println("name =", name)
+println("version =", version)
+println("ready =", ready)
+```
+
+<!-- vixnote:cell id="types" kind="reply" title="Inspect types" -->
+```reply
+type(name)
+type(version)
+type(ready)
+```
+
+<!-- vixnote:cell id="convert-values" kind="reply" title="Convert values" -->
+```reply
+value = "42"
+int(value)
+str(42)
+double(10)
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Reply variables make small explanations easier without writing a full C++ program.

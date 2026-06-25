@@ -490,23 +490,29 @@ namespace vix::note
     return status >= 200 && status < 300;
   }
 
-  NoteRoutes::NoteRoutes() = default;
+  NoteRoutes::NoteRoutes()
+  {
+    sync_assets();
+  }
 
   NoteRoutes::NoteRoutes(NoteDocument document)
       : kernel_(std::move(document))
   {
+    sync_assets();
   }
 
   NoteRoutes::NoteRoutes(NoteRoutesOptions options)
-      : options_(options),
-        kernel_(options.kernelOptions)
+      : options_(std::move(options)),
+        kernel_(options_.kernelOptions)
   {
+    sync_assets();
   }
 
   NoteRoutes::NoteRoutes(NoteDocument document, NoteRoutesOptions options)
-      : options_(options),
-        kernel_(std::move(document), options.kernelOptions)
+      : options_(std::move(options)),
+        kernel_(std::move(document), options_.kernelOptions)
   {
+    sync_assets();
   }
 
   const NoteRoutesOptions &NoteRoutes::options() const noexcept
@@ -516,8 +522,23 @@ namespace vix::note
 
   void NoteRoutes::set_options(NoteRoutesOptions options) noexcept
   {
-    options_ = options;
+    options_ = std::move(options);
     kernel_.set_options(options_.kernelOptions);
+    sync_assets();
+  }
+
+  void NoteRoutes::sync_assets()
+  {
+    NoteAssetResolveOptions assetOptions;
+    assetOptions.customDirectory = options_.assetDirectory;
+    assetOptions.useInstalledDirectory = options_.loadInstalledAssets;
+    assetOptions.keepEmbeddedFallback = options_.keepEmbeddedAssetFallback;
+
+    std::string error;
+    (void)load_best_available_note_assets(
+        assets_,
+        assetOptions,
+        error);
   }
 
   const NoteAssets &NoteRoutes::assets() const noexcept

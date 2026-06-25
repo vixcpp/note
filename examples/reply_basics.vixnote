@@ -1,0 +1,20 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Reply Basics
+
+Reply cells are small interactive cells inside Vix Note.
+
+They are useful for quick checks, small values, and explanations.
+
+<!-- vixnote:cell id="hello-reply" kind="reply" title="println" -->
+```reply
+println("Hello from Reply inside Vix Note")
+```
+
+<!-- vixnote:cell id="print-reply" kind="reply" title="print without newline" -->
+```reply
+print("Vix ")
+println("Note")
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Use Reply cells for small interactive values. Use `vix repl` for the full terminal REPL.

@@ -1,0 +1,30 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# C++ Standard Library
+
+The C++ standard library gives useful tools like strings, vectors, algorithms, and maps.
+
+<!-- vixnote:cell id="algorithm-cpp" kind="cpp" title="algorithm example" -->
+```cpp
+#include <algorithm>
+#include <iostream>
+#include <vector>
+
+int main()
+{
+  std::vector<int> values{5, 1, 4, 2, 3};
+
+  std::sort(values.begin(), values.end());
+
+  for (int value : values)
+  {
+    std::cout << value << " ";
+  }
+
+  std::cout << std::endl;
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Before writing your own helper, check if the standard library already has one.

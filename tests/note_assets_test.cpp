@@ -565,6 +565,110 @@ int main()
     assert(assets.find("/assets/note.js")->content.find("strict note") != std::string::npos);
   }
 
+  {
+    vix::note::NoteAssetResolveOptions options;
+    options.customDirectory = root / "custom-assets";
+    options.useEnvironmentDirectory = false;
+    options.useInstalledDirectory = false;
+
+    const std::vector<std::filesystem::path> paths =
+        vix::note::note_asset_search_paths(options);
+
+    assert(paths.size() == 1);
+    assert(paths[0] == options.customDirectory.lexically_normal());
+  }
+
+  {
+    const std::filesystem::path assetDir =
+        root / "custom-ui";
+
+    write_file(
+        assetDir / "index.html",
+        "<!doctype html><html><body>Custom Vix Note UI</body></html>");
+
+    write_file(
+        assetDir / "css" / "note.css",
+        ".custom-note-ui { color: red; }");
+
+    write_file(
+        assetDir / "js" / "note.js",
+        "console.log('custom note ui');");
+
+    vix::note::NoteAssets assets;
+
+    vix::note::NoteAssetResolveOptions options;
+    options.customDirectory = assetDir;
+    options.useEnvironmentDirectory = false;
+    options.useInstalledDirectory = false;
+    options.keepEmbeddedFallback = true;
+
+    std::string error;
+
+    const bool loaded =
+        vix::note::load_best_available_note_assets(
+            assets,
+            options,
+            error);
+
+    assert(loaded);
+    assert(error.empty());
+
+    std::optional<vix::note::NoteAsset> index =
+        assets.find("/");
+
+    assert(index.has_value());
+    assert(index->content.find("Custom Vix Note UI") != std::string::npos);
+
+    std::optional<vix::note::NoteAsset> css =
+        assets.find("/assets/note.css");
+
+    assert(css.has_value());
+    assert(css->content.find(".custom-note-ui") != std::string::npos);
+
+    std::optional<vix::note::NoteAsset> js =
+        assets.find("/assets/note.js");
+
+    assert(js.has_value());
+    assert(js->content.find("custom note ui") != std::string::npos);
+  }
+
+  {
+    const std::filesystem::path assetDir =
+        root / "partial-ui";
+
+    write_file(
+        assetDir / "index.html",
+        "<!doctype html><html><body>Partial UI</body></html>");
+
+    vix::note::NoteAssets assets;
+
+    vix::note::NoteAssetResolveOptions options;
+    options.customDirectory = assetDir;
+    options.useEnvironmentDirectory = false;
+    options.useInstalledDirectory = false;
+    options.keepEmbeddedFallback = true;
+
+    std::string error;
+
+    const bool loaded =
+        vix::note::load_best_available_note_assets(
+            assets,
+            options,
+            error);
+
+    assert(loaded);
+    assert(error.empty());
+
+    std::optional<vix::note::NoteAsset> index =
+        assets.find("/");
+
+    assert(index.has_value());
+    assert(index->content.find("Partial UI") != std::string::npos);
+
+    assert(assets.contains("/assets/note.css"));
+    assert(assets.contains("/assets/note.js"));
+  }
+
   std::filesystem::remove_all(root);
 
   return 0;

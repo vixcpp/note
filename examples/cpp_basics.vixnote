@@ -1,0 +1,18 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# C++ Basics
+
+This note introduces a small C++ program and shows how Vix Note keeps the explanation, code, and output together.
+
+<!-- vixnote:cell id="hello-cpp" kind="cpp" title="Hello C++" -->
+```cpp
+#include <iostream>
+
+int main()
+{
+  std::cout << "Hello from Vix Note" << std::endl;
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="explain-output" kind="markdown" -->
+The output appears under the cell, close to the code that produced it.

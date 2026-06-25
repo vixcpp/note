@@ -1,0 +1,26 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Functions in C++
+
+A function lets you give a name to reusable logic.
+
+<!-- vixnote:cell id="function-cpp" kind="cpp" title="Function example" -->
+```cpp
+#include <iostream>
+
+int add(int a, int b)
+{
+  return a + b;
+}
+
+int main()
+{
+  int result = add(3, 4);
+
+  std::cout << "3 + 4 = " << result << std::endl;
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Functions help make code easier to read, test, and reuse.

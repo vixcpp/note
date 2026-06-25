@@ -74,17 +74,21 @@ int main()
         store.serialize(doc);
 
     const std::string expected =
+        "<!-- vixnote:cell kind=\"markdown\" -->\n"
         "# Learning C++\n"
         "\n"
+        "<!-- vixnote:cell kind=\"reply\" -->\n"
         "```reply\n"
         "x = 1 + 2\n"
         "println(x)\n"
         "```\n"
         "\n"
+        "<!-- vixnote:cell kind=\"cpp\" -->\n"
         "```cpp\n"
         "int main() { return 0; }\n"
         "```\n"
         "\n"
+        "<!-- vixnote:cell kind=\"html\" -->\n"
         "```html\n"
         "<section>Hello</section>\n"
         "```\n";
@@ -117,8 +121,10 @@ int main()
     const std::string content = read_file(file);
 
     const std::string expected =
+        "<!-- vixnote:cell kind=\"markdown\" -->\n"
         "# Saved Note\n"
         "\n"
+        "<!-- vixnote:cell kind=\"reply\" -->\n"
         "```reply\n"
         "println(\"hello\")\n"
         "```\n";
@@ -303,7 +309,10 @@ int main()
 
     assert(result.ok());
     assert(std::filesystem::exists(file));
-    assert(read_file(file) == "# Direct Write\n");
+    assert(
+        read_file(file) ==
+        "<!-- vixnote:cell kind=\"markdown\" -->\n"
+        "# Direct Write\n");
   }
 
   {
@@ -374,6 +383,49 @@ int main()
     assert(doc.title() == "Free Load");
     assert(doc.cell_count() == 2);
     assert(doc.cells()[1].kind() == vix::note::NoteCellKind::Reply);
+  }
+
+  {
+    vix::note::NoteStore store;
+
+    vix::note::NoteDocument doc("Stable IDs");
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "intro-cell",
+            vix::note::NoteCellKind::Markdown,
+            "# Stable IDs"));
+
+    doc.add_cell(
+        vix::note::NoteCell(
+            "run-cell",
+            vix::note::NoteCellKind::Cpp,
+            "int main() { return 0; }"));
+
+    doc.cells()[1].set_title("Runnable example");
+
+    const std::filesystem::path file =
+        root / "stable" / "stable-ids.vixnote";
+
+    vix::note::NoteResult saveResult =
+        store.save(doc, file);
+
+    assert(saveResult.ok());
+
+    const std::string content =
+        read_file(file);
+
+    assert(content.find("id=\"intro-cell\"") != std::string::npos);
+    assert(content.find("id=\"run-cell\"") != std::string::npos);
+    assert(content.find("title=\"Runnable example\"") != std::string::npos);
+
+    vix::note::NoteDocument loaded =
+        store.load_or_throw(file);
+
+    assert(loaded.cell_count() == 2);
+    assert(loaded.cells()[0].id() == "intro-cell");
+    assert(loaded.cells()[1].id() == "run-cell");
+    assert(loaded.cells()[1].title() == "Runnable example");
   }
 
   std::filesystem::remove_all(root);

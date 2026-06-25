@@ -271,6 +271,54 @@ int main()
   }
 
   {
+    const std::filesystem::path assetDir =
+        root / "routes-custom-ui";
+
+    write_file(
+        assetDir / "index.html",
+        "<!doctype html><html><body>Routes Custom UI</body></html>");
+
+    write_file(
+        assetDir / "css" / "note.css",
+        ".routes-custom-ui { color: red; }");
+
+    write_file(
+        assetDir / "js" / "note.js",
+        "console.log('routes custom ui');");
+
+    vix::note::NoteRoutesOptions options;
+    options.assetDirectory = assetDir;
+    options.loadInstalledAssets = false;
+    options.keepEmbeddedAssetFallback = true;
+
+    vix::note::NoteRoutes routes(options);
+
+    vix::note::NoteRouteResponse index =
+        routes.get("/");
+
+    assert(index.ok());
+    assert(index.status == 200);
+    assert(index.contentType == "text/html; charset=utf-8");
+    assert(contains(index.body, "Routes Custom UI"));
+
+    vix::note::NoteRouteResponse css =
+        routes.get("/assets/note.css");
+
+    assert(css.ok());
+    assert(css.status == 200);
+    assert(css.contentType == "text/css; charset=utf-8");
+    assert(contains(css.body, ".routes-custom-ui"));
+
+    vix::note::NoteRouteResponse js =
+        routes.get("/assets/note.js");
+
+    assert(js.ok());
+    assert(js.status == 200);
+    assert(js.contentType == "application/javascript; charset=utf-8");
+    assert(contains(js.body, "routes custom ui"));
+  }
+
+  {
     vix::note::NoteRoutes routes;
 
     routes.assets().add_or_replace(

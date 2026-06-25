@@ -1,0 +1,24 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Reply Runtime Helpers
+
+Reply exposes small runtime helpers that are safe inside Vix Note.
+
+<!-- vixnote:cell id="cwd-helper" kind="reply" title="Current directory" -->
+```reply
+cwd()
+```
+
+<!-- vixnote:cell id="pid-helper" kind="reply" title="Process id" -->
+```reply
+pid()
+```
+
+<!-- vixnote:cell id="vix-object" kind="reply" title="Vix helper object" -->
+```reply
+Vix.cwd()
+Vix.pid()
+Vix.args()
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+These helpers make it easier to understand where a note is running.

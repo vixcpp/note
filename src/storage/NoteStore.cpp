@@ -174,6 +174,53 @@ namespace vix::note
         out += "\n\n";
       }
     }
+
+    std::string metadata_attribute_escape(const std::string &value)
+    {
+      std::string out;
+      out.reserve(value.size());
+
+      for (char c : value)
+      {
+        if (c == '"')
+        {
+          out += "&quot;";
+        }
+        else
+        {
+          out.push_back(c);
+        }
+      }
+
+      return out;
+    }
+
+    void append_cell_metadata_comment(
+        std::string &out,
+        const NoteCell &cell)
+    {
+      out += "<!-- vixnote:cell";
+
+      if (!cell.id().empty())
+      {
+        out += " id=\"";
+        out += metadata_attribute_escape(cell.id());
+        out += "\"";
+      }
+
+      out += " kind=\"";
+      out += std::string(to_string(cell.kind()));
+      out += "\"";
+
+      if (!cell.title().empty())
+      {
+        out += " title=\"";
+        out += metadata_attribute_escape(cell.title());
+        out += "\"";
+      }
+
+      out += " -->\n";
+    }
   }
 
   bool NoteLoadResult::has_error() const noexcept
@@ -330,6 +377,7 @@ namespace vix::note
     for (const NoteCell &cell : document.cells())
     {
       append_cell_separator(out);
+      append_cell_metadata_comment(out, cell);
 
       switch (cell.kind())
       {

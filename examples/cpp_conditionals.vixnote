@@ -1,0 +1,32 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Conditions in C++
+
+Conditions let a program choose what to do.
+
+<!-- vixnote:cell id="conditionals-cpp" kind="cpp" title="if / else example" -->
+```cpp
+#include <iostream>
+
+int main()
+{
+  int score = 82;
+
+  if (score >= 90)
+  {
+    std::cout << "Excellent" << std::endl;
+  }
+  else if (score >= 70)
+  {
+    std::cout << "Good" << std::endl;
+  }
+  else
+  {
+    std::cout << "Keep practicing" << std::endl;
+  }
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+`if`, `else if`, and `else` help the program react to different values.

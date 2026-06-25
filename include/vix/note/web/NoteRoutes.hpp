@@ -26,6 +26,7 @@
 #include <vix/note/web/NoteAssets.hpp>
 
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -169,6 +170,24 @@ namespace vix::note
      * Saving only works when the document has a non-empty path.
      */
     bool enableSave = true;
+
+    /**
+     * @brief Optional UI asset directory.
+     *
+     * When empty, Vix Note tries the environment and installed asset
+     * directories before falling back to embedded assets.
+     */
+    std::filesystem::path assetDirectory;
+
+    /**
+     * @brief Loads installed UI assets when available.
+     */
+    bool loadInstalledAssets = true;
+
+    /**
+     * @brief Keeps embedded UI assets as fallback.
+     */
+    bool keepEmbeddedAssetFallback = true;
 
     /**
      * @brief Kernel options used by route execution.
@@ -326,6 +345,11 @@ namespace vix::note
     NoteRouteResponse delete_request(std::string_view path);
 
   private:
+    /**
+     * @brief Synchronizes the asset registry from route options.
+     */
+    void sync_assets();
+
     /**
      * @brief Handles static asset requests.
      *

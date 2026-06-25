@@ -1,0 +1,19 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Reply Quick Cells
+
+Reply cells are useful for small interactive expressions inside a visual note.
+
+<!-- vixnote:cell id="math-reply" kind="reply" title="Quick math" -->
+```reply
+x = 1 + 2 * 3
+println("x =", x)
+```
+
+<!-- vixnote:cell id="string-reply" kind="reply" title="Quick text" -->
+```reply
+name = "Vix Note"
+println("Learning with", name)
+```
+
+<!-- vixnote:cell id="note" kind="markdown" -->
+Reply cells should stay small. For full terminal interaction, use `vix repl`.

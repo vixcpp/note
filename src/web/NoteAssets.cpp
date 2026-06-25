@@ -26,6 +26,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <cstdlib>
 
 namespace vix::note
 {
@@ -35,6 +36,45 @@ namespace vix::note
     {
       return value.size() >= suffix.size() &&
              value.substr(value.size() - suffix.size()) == suffix;
+    }
+
+    bool is_existing_directory(const std::filesystem::path &path)
+    {
+      if (path.empty())
+      {
+        return false;
+      }
+
+      std::error_code ec;
+
+      return std::filesystem::exists(path, ec) &&
+             !ec &&
+             std::filesystem::is_directory(path, ec) &&
+             !ec;
+    }
+
+    void add_unique_path(
+        std::vector<std::filesystem::path> &paths,
+        const std::filesystem::path &path)
+    {
+      if (path.empty())
+      {
+        return;
+      }
+
+      const std::filesystem::path normalized =
+          path.lexically_normal();
+
+      const auto it =
+          std::find(
+              paths.begin(),
+              paths.end(),
+              normalized);
+
+      if (it == paths.end())
+      {
+        paths.push_back(normalized);
+      }
     }
   }
 
@@ -51,6 +91,84 @@ namespace vix::note
   NoteAssets::NoteAssets(std::vector<NoteAsset> assets)
       : assets_(std::move(assets))
   {
+  }
+
+  std::filesystem::path note_installed_asset_directory()
+  {
+#ifdef VIX_NOTE_INSTALLED_ASSET_DIR
+    return std::filesystem::path(VIX_NOTE_INSTALLED_ASSET_DIR);
+#else
+    return {};
+#endif
+  }
+
+  std::vector<std::filesystem::path> note_asset_search_paths(
+      const NoteAssetResolveOptions &options)
+  {
+    std::vector<std::filesystem::path> paths;
+
+    add_unique_path(paths, options.customDirectory);
+
+    if (options.useEnvironmentDirectory)
+    {
+      const char *env = std::getenv("VIX_NOTE_ASSET_DIR");
+
+      if (env != nullptr && env[0] != '\0')
+      {
+        add_unique_path(paths, std::filesystem::path(env));
+      }
+    }
+
+    if (options.useInstalledDirectory)
+    {
+      add_unique_path(paths, note_installed_asset_directory());
+    }
+
+    return paths;
+  }
+
+  bool load_best_available_note_assets(
+      NoteAssets &assets,
+      const NoteAssetResolveOptions &options,
+      std::string &error)
+  {
+    error.clear();
+
+    NoteAssetDirectoryOptions directoryOptions;
+    directoryOptions.clearBeforeLoad = false;
+    directoryOptions.keepEmbeddedFallback = options.keepEmbeddedFallback;
+
+    const std::vector<std::filesystem::path> paths =
+        note_asset_search_paths(options);
+
+    std::string lastError;
+
+    for (const std::filesystem::path &path : paths)
+    {
+      if (!is_existing_directory(path))
+      {
+        continue;
+      }
+
+      std::string loadError;
+
+      if (assets.load_from_directory(path, directoryOptions, loadError))
+      {
+        return true;
+      }
+
+      if (!loadError.empty())
+      {
+        lastError = loadError;
+      }
+    }
+
+    if (!lastError.empty())
+    {
+      error = lastError;
+    }
+
+    return false;
   }
 
   const std::vector<NoteAsset> &NoteAssets::all() const noexcept

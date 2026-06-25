@@ -1,0 +1,24 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Reply JSON Values
+
+Reply can work with simple JSON-like values.
+
+<!-- vixnote:cell id="array-values" kind="reply" title="Arrays" -->
+```reply
+scores = [10, 20, 30]
+
+println("first score =", scores[0])
+println("scores count =", len(scores))
+```
+
+<!-- vixnote:cell id="object-values" kind="reply" title="Objects" -->
+```reply
+user = {"name":"Gaspard","language":"C++","active":true}
+
+println("name =", user.name)
+println("language =", user.language)
+println("active =", user.active)
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+This is useful for explaining structured data before moving to C++ structs or classes.

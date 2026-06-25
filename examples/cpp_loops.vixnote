@@ -1,0 +1,42 @@
+<!-- vixnote:cell id="intro" kind="markdown" -->
+# Loops in C++
+
+Loops repeat work without writing the same code many times.
+
+<!-- vixnote:cell id="for-loop-cpp" kind="cpp" title="for loop example" -->
+```cpp
+#include <iostream>
+
+int main()
+{
+  for (int i = 1; i <= 5; ++i)
+  {
+    std::cout << "Step " << i << std::endl;
+  }
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="while-loop-cpp" kind="cpp" title="while loop example" -->
+```cpp
+#include <iostream>
+
+int main()
+{
+  int count = 3;
+
+  while (count > 0)
+  {
+    std::cout << count << std::endl;
+    --count;
+  }
+
+  std::cout << "Done" << std::endl;
+
+  return 0;
+}
+```
+
+<!-- vixnote:cell id="takeaway" kind="markdown" -->
+Use `for` when you know how many times to repeat. Use `while` when repetition depends on a condition.

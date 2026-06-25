@@ -83,6 +83,32 @@ namespace vix::note
   };
 
   /**
+   * @brief Options used to resolve the best UI asset directory.
+   */
+  struct NoteAssetResolveOptions
+  {
+    /**
+     * @brief Optional custom asset directory provided by the caller.
+     */
+    std::filesystem::path customDirectory;
+
+    /**
+     * @brief Reads VIX_NOTE_ASSET_DIR when available.
+     */
+    bool useEnvironmentDirectory = true;
+
+    /**
+     * @brief Uses the compiled installed asset directory when available.
+     */
+    bool useInstalledDirectory = true;
+
+    /**
+     * @brief Keeps embedded assets as fallback when disk assets are incomplete.
+     */
+    bool keepEmbeddedFallback = true;
+  };
+
+  /**
    * @brief Registry for built-in and local Vix Note web assets.
    *
    * Vix Note keeps embedded assets as a fallback so the UI can start without
@@ -245,6 +271,42 @@ namespace vix::note
      */
     std::vector<NoteAsset> assets_;
   };
+
+  /**
+   * @brief Returns the compiled installed Vix Note asset directory.
+   *
+   * @return Installed asset directory, or an empty path when unavailable.
+   */
+  std::filesystem::path note_installed_asset_directory();
+
+  /**
+   * @brief Builds the ordered list of asset directories to try.
+   *
+   * Search order:
+   * - custom directory
+   * - VIX_NOTE_ASSET_DIR
+   * - installed asset directory
+   *
+   * @param options Resolve options.
+   * @return Candidate directories.
+   */
+  std::vector<std::filesystem::path> note_asset_search_paths(
+      const NoteAssetResolveOptions &options = {});
+
+  /**
+   * @brief Loads the first available disk asset directory into an asset registry.
+   *
+   * Embedded assets remain available when keepEmbeddedFallback is true.
+   *
+   * @param assets  Asset registry to update.
+   * @param options Resolve options.
+   * @param error   Human-readable error when loading fails.
+   * @return True when disk assets were loaded, false when fallback was used or loading failed.
+   */
+  bool load_best_available_note_assets(
+      NoteAssets &assets,
+      const NoteAssetResolveOptions &options,
+      std::string &error);
 
   /**
    * @brief Reads a text asset file from disk.
