@@ -1659,6 +1659,56 @@
   function enterEditMode() {
     if (state.selectedId) selectCell(state.selectedId, { edit: true });
   }
+
+  function exitEditMode(options = {}) {
+    const repaint = options.repaint !== false;
+
+    state.editing = false;
+
+    if (app) {
+      app.classList.remove("is-editing");
+      app.classList.add("is-command");
+    }
+
+    setText(sel.statusMode, "Command");
+
+    if (repaint) {
+      renderDocument(
+        {
+          ok: true,
+          document: state.document,
+        },
+        {
+          fullRepaint: true,
+        },
+      );
+    }
+  }
+
+  function toggleCellEdit(cellId) {
+    const id = String(cellId || "");
+
+    if (!id) {
+      return;
+    }
+
+    if (state.editing && state.selectedId === id) {
+      const cellEl = cellElById(id);
+
+      if (cellEl) {
+        localUpdateFromDom(cellEl);
+      }
+
+      exitEditMode();
+      return;
+    }
+
+    selectCell(id, {
+      edit: true,
+      focus: true,
+    });
+  }
+
   function enterCommandMode() {
     state.editing = false;
     const el = cellElById(state.selectedId);
@@ -2169,10 +2219,7 @@
         extension: ".vixnote",
       });
 
-      await loadDirectory(parentPath(d.path), {
-        silent: true,
-        force: false,
-      });
+      await loadExplorerForDocumentPath(d.path);
 
       setMessage("Note opened.", "success");
     } catch (error) {
@@ -2551,6 +2598,7 @@
 
       try {
         await openNotePath(path);
+        await loadExplorerForDocumentPath(path);
         return true;
       } catch (error) {
         removeTabState(path);
@@ -2832,7 +2880,8 @@
   }
 
   function fileIcon() {
-    return '<svg viewBox="0 0 24 24" class="vn-Tree__icon"><path d="M6 2h8l4 4v16H6V2zm7 1.5V7h3.5L13 3.5z"/></svg>';
+    // file / note sheet
+    return '<svg viewBox="0 0 24 24" class="vn-Tree__icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-6-6z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M13 3v6h6"/></svg>';
   }
 
   function dirIcon(entry) {
@@ -2841,10 +2890,12 @@
     const expanded = state.explorer.expandedDirs.has(path);
 
     if (loaded && expanded) {
-      return '<svg viewBox="0 0 24 24" class="vn-Tree__icon"><path d="M3 6h7l2 2h9l-2 10H5L3 6z"/></svg>';
+      // open folder
+      return '<svg viewBox="0 0 24 24" class="vn-Tree__icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3V7z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M3 10h18l-2 8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-.8L3 10z"/></svg>';
     }
 
-    return '<svg viewBox="0 0 24 24" class="vn-Tree__icon"><path d="M3 5h6l2 2h10v12H3V5z"/></svg>';
+    // closed folder
+    return '<svg viewBox="0 0 24 24" class="vn-Tree__icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M3 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"/></svg>';
   }
 
   function renderExplorer() {
@@ -3992,7 +4043,7 @@
       if (actionBtn) {
         const a = actionBtn.getAttribute("data-cell-action");
         if (a === "run") return void runCellById(id);
-        if (a === "edit") return void selectCell(id, { edit: true });
+        if (a === "edit") return void toggleCellEdit(id);
         if (a === "duplicate") return void duplicateCell(id);
         if (a === "up") return void moveCellById(id, "up");
         if (a === "down") return void moveCellById(id, "down");
@@ -4147,7 +4198,16 @@
 
         if (event.key === "Escape") {
           event.preventDefault();
-          enterCommandMode();
+
+          if (state.selectedId) {
+            const cellEl = cellElById(state.selectedId);
+
+            if (cellEl) {
+              localUpdateFromDom(cellEl);
+            }
+          }
+
+          exitEditMode();
           return;
         }
 

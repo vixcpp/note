@@ -517,7 +517,6 @@ input {
   background: var(--vn-color3);
   color: var(--vn-text1);
 }
-
 .vn-Panel__search {
   display: flex;
   align-items: center;
@@ -547,7 +546,29 @@ input {
   font-size: 12.5px;
   min-width: 0;
 }
+.vn-Menu__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: currentColor;
+}
+.vn-Menu__item:hover .vn-Menu__icon {
+  color: #fff;
+}
 
+.vn-Modal__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 10px;
+  color: var(--vn-brand0);
+  flex: 0 0 auto;
+}
+.vn-Modal__icon svg {
+  width: 20px;
+  height: 20px;
+}
 /* ---------- File tree ---------- */
 .vn-Tree {
   flex: 1 1 auto;

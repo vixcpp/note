@@ -220,14 +220,19 @@ namespace vix::note
         options.workingDirectory = context.effective_working_directory();
       }
 
-      for (const auto &includePath : context.includePaths)
+      /*
+       * Important:
+       * Keep generated C++ cells inside the project when a project context exists.
+       *
+       * A cell in /tmp/vix-note can find headers through -I, but compiled
+       * registry packages may still fail at link time because vix run no longer
+       * sees the source as part of the project workspace.
+       */
+      if (options.temporaryDirectory.empty() &&
+          !context.projectRoot.empty())
       {
-        if (includePath.empty())
-        {
-          continue;
-        }
-
-        options.runArgs.push_back("-I" + includePath.string());
+        options.temporaryDirectory =
+            context.projectRoot / ".vix" / "note" / "tmp";
       }
 
       return options;
@@ -284,6 +289,46 @@ namespace vix::note
       return true;
     }
 
+    bool path_contains_parent_reference(const std::filesystem::path &path)
+    {
+      for (const auto &part : path)
+      {
+        if (part == "..")
+        {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    std::string vix_run_file_argument(
+        const CppCellRunnerOptions &options,
+        const std::filesystem::path &file)
+    {
+      if (options.workingDirectory.empty())
+      {
+        return file.string();
+      }
+
+      std::error_code ec;
+
+      const std::filesystem::path relative =
+          std::filesystem::relative(
+              file,
+              options.workingDirectory,
+              ec);
+
+      if (!ec &&
+          !relative.empty() &&
+          !path_contains_parent_reference(relative))
+      {
+        return relative.generic_string();
+      }
+
+      return file.string();
+    }
+
     std::string make_base_run_command(
         const CppCellRunnerOptions &options,
         const std::filesystem::path &file)
@@ -310,13 +355,19 @@ namespace vix::note
       cmd << "VIX_COLOR=never ";
 #endif
 
+      const std::string runFile =
+          vix_run_file_argument(options, file);
+
       cmd << shell_quote(options.vixCommand)
           << " run "
-          << shell_quote(file.string());
+          << shell_quote(runFile);
 
-      for (const auto &arg : options.runArgs)
+      if (!options.runArgs.empty())
       {
-        cmd << " " << shell_quote(arg);
+        for (const auto &arg : options.runArgs)
+        {
+          cmd << " " << shell_quote(arg);
+        }
       }
 
       return cmd.str();

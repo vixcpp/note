@@ -696,6 +696,20 @@ namespace vix::note
 
       return out.str();
     }
+
+    bool should_hide_directory_entry(
+        const std::filesystem::directory_entry &entry)
+    {
+      const std::string name =
+          entry.path().filename().string();
+
+      return name == ".vix" ||
+             name == ".git" ||
+             name == ".vix-scripts" ||
+             name == "build" ||
+             name == "cmake-build-debug" ||
+             name == "cmake-build-release";
+    }
   }
 
   NoteRouteResponse NoteRouteResponse::text(int status, std::string body)
@@ -1950,6 +1964,11 @@ namespace vix::note
       if (ec)
       {
         break;
+      }
+
+      if (should_hide_directory_entry(*it))
+      {
+        continue;
       }
 
       entries.push_back(*it);

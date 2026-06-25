@@ -69,9 +69,14 @@ namespace vix::note
     std::filesystem::path temporaryDirectory;
 
     /**
-     * @brief Extra arguments passed to `vix run` after the generated file path.
+     * @brief Extra arguments passed directly to `vix run` after the generated file path.
+     *
+     * Example:
+     *   vix run .vix/note/tmp/cell.cpp --clean
+     *
+     * These are Vix CLI arguments, not program runtime arguments.
      */
-    std::vector<std::string> runArgs;
+    std::vector<std::string> runArgs{"--clean"};
 
     /**
      * @brief Keeps the generated temporary C++ file after execution.

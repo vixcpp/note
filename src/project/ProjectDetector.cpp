@@ -17,6 +17,8 @@
 #include <vix/note/project/ProjectDetector.hpp>
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -58,6 +60,108 @@ namespace vix::note
       return absolute.lexically_normal();
     }
 
+    std::string trim_copy(std::string value)
+    {
+      while (!value.empty() &&
+             (value.front() == ' ' ||
+              value.front() == '\t' ||
+              value.front() == '\n' ||
+              value.front() == '\r'))
+      {
+        value.erase(value.begin());
+      }
+
+      while (!value.empty() &&
+             (value.back() == ' ' ||
+              value.back() == '\t' ||
+              value.back() == '\n' ||
+              value.back() == '\r'))
+      {
+        value.pop_back();
+      }
+
+      return value;
+    }
+
+    std::string read_vix_json_include_field(const fs::path &manifest)
+    {
+      std::ifstream in(manifest, std::ios::binary);
+
+      if (!in.is_open())
+      {
+        return {};
+      }
+
+      std::ostringstream buffer;
+      buffer << in.rdbuf();
+
+      const std::string text = buffer.str();
+      const std::string key = "\"include\"";
+
+      const std::size_t pos = text.find(key);
+
+      if (pos == std::string::npos)
+      {
+        return {};
+      }
+
+      const std::size_t colon = text.find(':', pos + key.size());
+
+      if (colon == std::string::npos)
+      {
+        return {};
+      }
+
+      const std::size_t quoteBegin = text.find('"', colon + 1);
+
+      if (quoteBegin == std::string::npos)
+      {
+        return {};
+      }
+
+      const std::size_t quoteEnd = text.find('"', quoteBegin + 1);
+
+      if (quoteEnd == std::string::npos)
+      {
+        return {};
+      }
+
+      return trim_copy(
+          text.substr(
+              quoteBegin + 1,
+              quoteEnd - quoteBegin - 1));
+    }
+
+    void add_unique_include_path(
+        ProjectContext &context,
+        const fs::path &path)
+    {
+      if (!is_directory_path(path))
+      {
+        return;
+      }
+
+      const fs::path normalized =
+          absolute_normal_path(path);
+
+      for (const auto &existing : context.includePaths)
+      {
+        if (absolute_normal_path(existing) == normalized)
+        {
+          return;
+        }
+      }
+
+      context.includePaths.push_back(normalized);
+    }
+
+    void add_include_path_if_exists(
+        ProjectContext &context,
+        const fs::path &path)
+    {
+      add_unique_include_path(context, path);
+    }
+
     fs::path parent_or_self_directory(const fs::path &path)
     {
       if (path.empty())
@@ -88,6 +192,7 @@ namespace vix::note
     bool is_project_root(const fs::path &dir)
     {
       return exists_path(dir / "vix.app") ||
+             exists_path(dir / "vix.json") ||
              exists_path(dir / "CMakeLists.txt") ||
              exists_path(dir / ".vix") ||
              exists_path(dir / ".git");
@@ -143,6 +248,13 @@ namespace vix::note
         return {};
       }
 
+      const fs::path vixJson = root / "vix.json";
+
+      if (is_regular_file_path(vixJson))
+      {
+        return vixJson;
+      }
+
       const fs::path vixApp = root / "vix.app";
 
       if (is_regular_file_path(vixApp))
@@ -158,18 +270,6 @@ namespace vix::note
       }
 
       return {};
-    }
-
-    void add_include_path_if_exists(
-        ProjectContext &context,
-        const fs::path &path)
-    {
-      if (!is_directory_path(path))
-      {
-        return;
-      }
-
-      context.includePaths.push_back(path);
     }
 
     void add_deps_include_paths(
@@ -190,14 +290,31 @@ namespace vix::note
           break;
         }
 
-        if (!entry.is_directory())
+        std::error_code entryEc;
+
+        if (!entry.is_directory(entryEc) || entryEc)
         {
           continue;
         }
 
-        add_include_path_if_exists(
+        const fs::path packageRoot = entry.path();
+
+        add_unique_include_path(
             context,
-            entry.path() / "include");
+            packageRoot / "include");
+
+        const fs::path packageManifest =
+            packageRoot / "vix.json";
+
+        const std::string includeValue =
+            read_vix_json_include_field(packageManifest);
+
+        if (!includeValue.empty())
+        {
+          add_unique_include_path(
+              context,
+              packageRoot / includeValue);
+        }
       }
     }
   }
