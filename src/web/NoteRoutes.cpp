@@ -23,6 +23,8 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <filesystem>
+#include <system_error>
 
 namespace vix::note
 {
@@ -456,6 +458,23 @@ namespace vix::note
     {
       return doc.find_cell(id) != nullptr;
     }
+
+    bool is_vixnote_path(const std::filesystem::path &path)
+    {
+      return path.extension() == ".vixnote";
+    }
+
+    std::string default_title_from_path(const std::filesystem::path &path)
+    {
+      const std::string stem = path.stem().string();
+
+      if (!stem.empty())
+      {
+        return stem;
+      }
+
+      return "Untitled Note";
+    }
   }
 
   NoteRouteResponse NoteRouteResponse::text(int status, std::string body)
@@ -694,6 +713,45 @@ namespace vix::note
     }
 
     if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/document/new")
+    {
+      if (!options_.enableFileActions)
+      {
+        return NoteRouteResponse::json(
+            403,
+            "{\"ok\":false,\"error\":\"file actions disabled\"}");
+      }
+
+      return handle_document_new(request.body);
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/document/open")
+    {
+      if (!options_.enableFileActions)
+      {
+        return NoteRouteResponse::json(
+            403,
+            "{\"ok\":false,\"error\":\"file actions disabled\"}");
+      }
+
+      return handle_document_open(request.body);
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        request.path == "/api/directory/create")
+    {
+      if (!options_.enableFileActions)
+      {
+        return NoteRouteResponse::json(
+            403,
+            "{\"ok\":false,\"error\":\"file actions disabled\"}");
+      }
+
+      return handle_directory_create(request.body);
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
         request.path == "/api/cells")
     {
       if (!options_.enableEditing)
@@ -878,6 +936,128 @@ namespace vix::note
     return NoteRouteResponse::json(
         404,
         "{\"ok\":false,\"error\":\"api route not found\"}");
+  }
+
+  NoteRouteResponse NoteRoutes::handle_document_new(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{});
+
+    std::string title =
+        json_string_field(body, "title").value_or(std::string{});
+
+    if (pathText.empty())
+    {
+      return NoteRouteResponse::json(
+          400,
+          "{\"ok\":false,\"error\":\"missing note path\"}");
+    }
+
+    const std::filesystem::path path(pathText);
+
+    if (!is_vixnote_path(path))
+    {
+      return NoteRouteResponse::json(
+          400,
+          "{\"ok\":false,\"error\":\"note path must end with .vixnote\"}");
+    }
+
+    if (title.empty())
+    {
+      title = default_title_from_path(path);
+    }
+
+    NoteDocument document(title);
+    document.set_path(path.string());
+
+    document.add_cell(
+        NoteCell(
+            "intro",
+            NoteCellKind::Markdown,
+            "# " + title + "\n\nStart writing your lesson here."));
+
+    const NoteResult saved =
+        store_.save(document, path);
+
+    if (!saved.ok())
+    {
+      return NoteRouteResponse::json(
+          500,
+          "{\"ok\":false,\"error\":\"" + json_escape(saved.message()) + "\"}");
+    }
+
+    set_document(std::move(document));
+
+    return NoteRouteResponse::json(
+        200,
+        document_json());
+  }
+
+  NoteRouteResponse NoteRoutes::handle_document_open(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{});
+
+    if (pathText.empty())
+    {
+      return NoteRouteResponse::json(
+          400,
+          "{\"ok\":false,\"error\":\"missing note path\"}");
+    }
+
+    const std::filesystem::path path(pathText);
+
+    if (!is_vixnote_path(path))
+    {
+      return NoteRouteResponse::json(
+          400,
+          "{\"ok\":false,\"error\":\"note path must end with .vixnote\"}");
+    }
+
+    NoteLoadResult loaded =
+        store_.load(path);
+
+    if (!loaded.ok)
+    {
+      return NoteRouteResponse::json(
+          404,
+          "{\"ok\":false,\"error\":\"" + json_escape(loaded.error) + "\"}");
+    }
+
+    set_document(std::move(loaded.document));
+
+    return NoteRouteResponse::json(
+        200,
+        document_json());
+  }
+
+  NoteRouteResponse NoteRoutes::handle_directory_create(std::string_view body)
+  {
+    const std::string pathText =
+        json_string_field(body, "path").value_or(std::string{});
+
+    if (pathText.empty())
+    {
+      return NoteRouteResponse::json(
+          400,
+          "{\"ok\":false,\"error\":\"missing directory path\"}");
+    }
+
+    const std::filesystem::path path(pathText);
+
+    std::error_code ec;
+    std::filesystem::create_directories(path, ec);
+
+    if (ec)
+    {
+      return NoteRouteResponse::json(
+          500,
+          "{\"ok\":false,\"error\":\"" + json_escape(ec.message()) + "\"}");
+    }
+
+    return NoteRouteResponse::json(
+        200,
+        "{\"ok\":true,\"path\":\"" + json_escape(path.string()) + "\"}");
   }
 
   std::string NoteRoutes::document_json() const

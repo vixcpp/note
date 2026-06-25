@@ -172,6 +172,11 @@ namespace vix::note
     bool enableSave = true;
 
     /**
+     * @brief Enables local note file actions such as creating/opening notes.
+     */
+    bool enableFileActions = true;
+
+    /**
      * @brief Optional UI asset directory.
      *
      * When empty, Vix Note tries the environment and installed asset
@@ -365,6 +370,21 @@ namespace vix::note
      * @return Route response when the path is an API path.
      */
     std::optional<NoteRouteResponse> handle_api(const NoteRouteRequest &request);
+
+    /**
+     * @brief Creates a new .vixnote file and makes it the active document.
+     */
+    NoteRouteResponse handle_document_new(std::string_view body);
+
+    /**
+     * @brief Opens an existing .vixnote file and makes it the active document.
+     */
+    NoteRouteResponse handle_document_open(std::string_view body);
+
+    /**
+     * @brief Creates a directory on disk.
+     */
+    NoteRouteResponse handle_directory_create(std::string_view body);
 
     /**
      * @brief Serializes the current document into a JSON object.

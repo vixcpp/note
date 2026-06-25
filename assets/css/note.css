@@ -1,94 +1,88 @@
 /*
- * Vix Note — JupyterLab-faithful UI
- * Recreates the JupyterLab notebook look: menu bar, toolbar, left sidebar,
- * In[ ]/Out[ ] prompts, colored cell input collapser, code mirror gutter feel.
+ * Vix Note — notebook UI
+ * Visual executable notes for C++ and Vix.cpp: menu bar with dropdowns,
+ * notebook toolbar, resizable/collapsible sidebar, In[ ]/Out[ ] prompts,
+ * command palette, status bar.
  *
  * Copyright 2026, Gaspard Kirira. MIT License.
  */
 
 /* ============================================================
-   DESIGN TOKENS — JupyterLab light theme palette
+   DESIGN TOKENS — light notebook palette
    ============================================================ */
 :root {
   color-scheme: light;
 
-  /* Layout / chrome */
-  --jp-layout-color0: #ffffff;
-  --jp-layout-color1: #ffffff;
-  --jp-layout-color2: #f5f5f5; /* eee gray panels */
-  --jp-layout-color3: #e0e0e0;
-  --jp-layout-color4: #bdbdbd;
+  --vn-color0: #ffffff;
+  --vn-color1: #ffffff;
+  --vn-color2: #f5f5f5;
+  --vn-color3: #e6e6e6;
+  --vn-color4: #bdbdbd;
 
-  --jp-border-color0: #bdbdbd;
-  --jp-border-color1: #bdbdbd;
-  --jp-border-color2: #e0e0e0;
-  --jp-border-color3: #eeeeee;
+  --vn-border1: #bdbdbd;
+  --vn-border2: #e0e0e0;
+  --vn-border3: #eeeeee;
 
-  --jp-toolbar-bg: #ffffff;
-  --jp-toolbar-border: #e0e0e0;
-  --jp-menubar-bg: #f7f7f7;
+  --vn-toolbar-bg: #ffffff;
+  --vn-menubar-bg: #f7f7f7;
 
-  /* Text */
-  --jp-ui-font-color0: #000000;
-  --jp-ui-font-color1: #212121;
-  --jp-ui-font-color2: #616161;
-  --jp-ui-font-color3: #9e9e9e;
+  --vn-text0: #000000;
+  --vn-text1: #212121;
+  --vn-text2: #616161;
+  --vn-text3: #9e9e9e;
 
-  --jp-content-font-color1: #212121;
-  --jp-content-font-color2: #616161;
+  --vn-content1: #212121;
 
-  /* Brand — JupyterLab orange #F37726, kept as Vix amber accent */
-  --jp-brand-color0: #b2541a;
-  --jp-brand-color1: #f37726; /* jupyter orange */
-  --jp-brand-color2: #f9aa7c;
-  --jp-brand-color3: #fde0cd;
+  /* Vix amber/orange brand */
+  --vn-brand0: #b2541a;
+  --vn-brand1: #f37726;
+  --vn-brand2: #f9aa7c;
+  --vn-brand3: #fde0cd;
 
-  --jp-accent-color1: #1976d2; /* selected blue */
+  --vn-accent1: #1976d2;
 
   /* Cell prompts */
-  --jp-cell-prompt-width: 64px;
-  --jp-cell-prompt-color: #9e9e9e;
-  --jp-cell-prompt-not-active-color: #b0b0b0;
-  --jp-cell-editor-bg: #f5f5f5; /* code input background */
-  --jp-cell-editor-border: #cfcfcf;
-  --jp-cell-editor-active-bg: #ffffff;
-  --jp-cell-inprompt-color: #303f9f; /* In[]: indigo */
-  --jp-cell-outprompt-color: #d84315; /* Out[]: deep orange */
+  --vn-prompt-width: 64px;
+  --vn-prompt-not-active: #b0b0b0;
+  --vn-editor-bg: #f5f5f5;
+  --vn-editor-border: #cfcfcf;
+  --vn-editor-active-bg: #ffffff;
+  --vn-inprompt: #303f9f;
+  --vn-outprompt: #d84315;
 
-  /* Selection (the colored bar on the left of a selected cell) */
-  --jp-cell-collapser-width: 8px;
-  --jp-cell-collapser-selected: #1976d2;
-  --jp-cell-collapser-edit: #66bb6a; /* green = edit mode */
+  /* Cell selection bar */
+  --vn-collapser-width: 8px;
+  --vn-collapser-selected: #1976d2;
+  --vn-collapser-edit: #66bb6a;
 
   /* Outputs */
-  --jp-rendermime-error-bg: #fdd;
-  --jp-error-color1: #b71c1c;
-  --jp-stderr-bg: #fdf2f2;
+  --vn-error-bg: #ffdddd;
+  --vn-error: #b71c1c;
+  --vn-stderr-bg: #fdf2f2;
 
-  /* Code syntax (CodeMirror-ish) */
-  --jp-mirror-keyword: #c586c0; /* but for light we use the jupyter set */
-  --cm-keyword: #008000;
-  --cm-type: #1d6fb8;
-  --cm-string: #ba2121;
-  --cm-comment: #408080;
-  --cm-number: #098658;
-  --cm-preproc: #9c27b0;
-  --cm-function: #795548;
-  --cm-punct: #303030;
-  --cm-builtin: #008000;
+  /* Code syntax */
+  --vn-kw: #008000;
+  --vn-type: #1d6fb8;
+  --vn-str: #ba2121;
+  --vn-com: #408080;
+  --vn-num: #098658;
+  --vn-pre: #9c27b0;
+  --vn-fn: #795548;
+  --vn-punct: #303030;
 
-  /* Fonts */
-  --jp-ui-font:
+  --vn-ui-font:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --jp-content-font:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --jp-code-font:
+  --vn-code-font:
     "Menlo", "Consolas", "DejaVu Sans Mono", "Liberation Mono", monospace;
-  --jp-code-font-size: 13px;
-  --jp-code-line-height: 1.307;
+  --vn-code-size: 13px;
+  --vn-code-lh: 1.45;
 
-  --jp-toolbar-height: 36px;
-  --jp-menubar-height: 30px;
+  --vn-toolbar-h: 38px;
+  --vn-menubar-h: 32px;
+  --vn-statusbar-h: 24px;
+
+  /* sidebar width, JS-controlled */
+  --vn-sidebar-w: 250px;
 }
 
 * {
@@ -102,10 +96,10 @@ body {
 }
 
 body {
-  font-family: var(--jp-ui-font);
+  font-family: var(--vn-ui-font);
   font-size: 13px;
-  color: var(--jp-ui-font-color1);
-  background: var(--jp-layout-color2);
+  color: var(--vn-text1);
+  background: var(--vn-color2);
   overflow: hidden;
 }
 
@@ -119,126 +113,253 @@ input {
 /* ============================================================
    APP SHELL
    ============================================================ */
-.jp {
+.vn {
   display: flex;
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  background: var(--jp-layout-color2);
+  background: var(--vn-color2);
 }
 
-/* ---------- Menu bar ---------- */
-.jp-MenuBar {
+/* ============================================================
+   MENU BAR
+   ============================================================ */
+.vn-MenuBar {
   display: flex;
   align-items: center;
-  height: var(--jp-menubar-height);
-  padding: 0 8px;
-  background: var(--jp-menubar-bg);
-  border-bottom: 1px solid var(--jp-border-color2);
+  height: var(--vn-menubar-h);
+  padding: 0 6px;
+  background: var(--vn-menubar-bg);
+  border-bottom: 1px solid var(--vn-border2);
   user-select: none;
   flex: 0 0 auto;
+  position: relative;
+  z-index: 40;
 }
 
-.jp-MenuBar__brand {
+.vn-MenuBar__sidebarToggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  margin-right: 2px;
+}
+.vn-MenuBar__sidebarToggle:hover {
+  background: var(--vn-color3);
+}
+
+.vn-MenuBar__brand {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding-right: 10px;
-  margin-right: 4px;
+  padding: 0 10px 0 4px;
 }
 
-.jp-MenuBar__logo {
+.vn-MenuBar__logo {
   display: grid;
   place-items: center;
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  background: var(--jp-brand-color1);
+  background: var(--vn-brand1);
   color: #fff;
   font-weight: 800;
   font-size: 11px;
 }
 
-.jp-MenuBar__title {
+.vn-MenuBar__title {
   font-weight: 600;
   font-size: 12.5px;
-  color: var(--jp-ui-font-color1);
+  color: var(--vn-text1);
+  white-space: nowrap;
 }
 
-.jp-MenuBar__menus {
+.vn-MenuBar__menus {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  height: 100%;
 }
 
-.jp-MenuBar__menu {
+/* dropdown menu */
+.vn-Menu {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.vn-Menu__label {
   border: 0;
   background: transparent;
-  color: var(--jp-ui-font-color1);
-  padding: 0 8px;
-  height: var(--jp-menubar-height);
+  color: var(--vn-text1);
+  padding: 0 9px;
   cursor: pointer;
   font-size: 12.5px;
 }
-
-.jp-MenuBar__menu:hover {
-  background: var(--jp-layout-color3);
+.vn-Menu__label:hover,
+.vn-Menu.is-open .vn-Menu__label {
+  background: var(--vn-color3);
 }
 
-.jp-MenuBar__spacer {
+.vn-Menu__dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 230px;
+  padding: 4px;
+  background: var(--vn-color1);
+  border: 1px solid var(--vn-border1);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  z-index: 50;
+}
+.vn-Menu__dropdown[hidden] {
+  display: none;
+}
+
+.vn-Menu__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--vn-text1);
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.vn-Menu__item:hover {
+  background: var(--vn-accent1);
+  color: #fff;
+}
+.vn-Menu__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+.vn-Menu__icon svg {
+  width: 15px;
+  height: 15px;
+  fill: var(--vn-text2);
+  stroke: none;
+}
+.vn-Menu__item:hover .vn-Menu__icon svg {
+  fill: #fff;
+}
+/* push the hint to the far right; the label text node sits between */
+.vn-Menu__hint {
+  margin-left: auto;
+  color: var(--vn-text3);
+  font-size: 11px;
+  font-family: var(--vn-code-font);
+  white-space: nowrap;
+}
+.vn-Menu__item:hover .vn-Menu__hint {
+  color: rgba(255, 255, 255, 0.85);
+}
+.vn-Menu__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--vn-border2);
+}
+
+.vn-MenuBar__spacer {
   flex: 1 1 auto;
 }
 
-.jp-MenuBar__status {
+.vn-MenuBar__status {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding-right: 6px;
 }
 
-.jp-KernelName {
-  color: var(--jp-ui-font-color2);
+.vn-MenuBar__palette {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--vn-border1);
+  border-radius: 12px;
+  background: var(--vn-color1);
+  color: var(--vn-text2);
   font-size: 12px;
-  max-width: 220px;
+  cursor: pointer;
+}
+.vn-MenuBar__palette:hover {
+  border-color: var(--vn-brand1);
+  color: var(--vn-brand0);
+}
+.vn-MenuBar__palette .vn-icon {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.vn-KernelName {
+  color: var(--vn-text2);
+  font-size: 12px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.jp-KernelStatus {
+.vn-KernelStatus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--jp-ui-font-color2);
+  color: var(--vn-text2);
 }
 
-.jp-KernelStatus__dot {
+/* Reserve a fixed slot so Idle/Busy/Error swaps don't reflow the header */
+.vn-KernelStatus__text {
+  display: inline-block;
+  min-width: 42px;
+  text-align: left;
+}
+
+.vn-KernelStatus__dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  border: 1.5px solid var(--jp-ui-font-color3);
+  border: 1.5px solid var(--vn-text3);
   background: transparent;
+  flex: 0 0 auto;
   transition:
     background 0.15s,
     border-color 0.15s;
 }
 
-/* kernel states drive the dot */
-.jp[data-kernel="idle"] .jp-KernelStatus__dot {
+.vn[data-kernel="idle"] .vn-KernelStatus__dot,
+.vn[data-kernel="idle"] .vn-StatusBar__dot {
   border-color: #9e9e9e;
   background: transparent;
 }
-.jp[data-kernel="busy"] .jp-KernelStatus__dot {
+.vn[data-kernel="busy"] .vn-KernelStatus__dot,
+.vn[data-kernel="busy"] .vn-StatusBar__dot {
   border-color: #757575;
   background: #757575;
-  animation: jp-pulse 1s ease-in-out infinite;
+  animation: vn-pulse 1s ease-in-out infinite;
 }
-.jp[data-kernel="error"] .jp-KernelStatus__dot {
-  border-color: var(--jp-error-color1);
-  background: var(--jp-error-color1);
+.vn[data-kernel="error"] .vn-KernelStatus__dot,
+.vn[data-kernel="error"] .vn-StatusBar__dot {
+  border-color: var(--vn-error);
+  background: var(--vn-error);
 }
 
-@keyframes jp-pulse {
+@keyframes vn-pulse {
   0%,
   100% {
     opacity: 1;
@@ -248,153 +369,195 @@ input {
   }
 }
 
-/* ---------- Toolbar ---------- */
-.jp-Toolbar {
+/* ============================================================
+   TOOLBAR
+   ============================================================ */
+.vn-Toolbar {
   display: flex;
   align-items: center;
   gap: 1px;
-  height: var(--jp-toolbar-height);
+  height: var(--vn-toolbar-h);
   padding: 0 6px;
-  background: var(--jp-toolbar-bg);
-  border-bottom: 1px solid var(--jp-toolbar-border);
+  background: var(--vn-toolbar-bg);
+  border-bottom: 1px solid var(--vn-border2);
   flex: 0 0 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vn-Toolbar::-webkit-scrollbar {
+  display: none;
 }
 
-.jp-ToolbarButton {
+.vn-ToolbarButton {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: var(--jp-ui-font-color1);
   cursor: pointer;
+  flex: 0 0 auto;
 }
-
-.jp-ToolbarButton:hover {
-  background: var(--jp-layout-color3);
+.vn-ToolbarButton:hover {
+  background: var(--vn-color3);
 }
-
-.jp-ToolbarButton:active {
-  background: var(--jp-layout-color4);
+.vn-ToolbarButton:active {
+  background: var(--vn-color4);
 }
-
-.jp-ToolbarButton:disabled {
+.vn-ToolbarButton:disabled {
   opacity: 0.4;
   cursor: default;
   background: transparent;
 }
 
-.jp-icon {
+.vn-icon {
   width: 18px;
   height: 18px;
-  fill: var(--jp-ui-font-color2);
+  fill: var(--vn-text2);
 }
 
-.jp-Toolbar__sep {
+.vn-Toolbar__sep {
   width: 1px;
   height: 20px;
   margin: 0 5px;
-  background: var(--jp-border-color2);
+  background: var(--vn-border2);
+  flex: 0 0 auto;
 }
 
-.jp-CellTypeSelect select {
-  height: 26px;
+.vn-CellTypeSelect select {
+  height: 28px;
   padding: 0 22px 0 8px;
-  border: 1px solid var(--jp-border-color1);
-  border-radius: 3px;
-  background: var(--jp-layout-color1)
+  border: 1px solid var(--vn-border1);
+  border-radius: 4px;
+  background: var(--vn-color1)
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23616161'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")
     no-repeat right 4px center / 16px;
-  color: var(--jp-ui-font-color1);
+  color: var(--vn-text1);
   font-size: 12.5px;
   appearance: none;
   cursor: pointer;
 }
 
-.jp-Toolbar__grow {
+.vn-Toolbar__grow {
   flex: 1 1 auto;
 }
 
-.jp-Toolbar__filename {
-  color: var(--jp-ui-font-color2);
+.vn-Toolbar__filename {
+  color: var(--vn-text2);
   font-size: 12.5px;
   padding-right: 4px;
+  white-space: nowrap;
 }
 
-.jp-Toolbar__dirty {
-  color: var(--jp-brand-color1);
+.vn-Toolbar__dirty {
+  color: var(--vn-brand1);
   font-size: 16px;
   line-height: 1;
 }
 
 /* ============================================================
-   MAIN AREA — sidebar + notebook
+   MAIN AREA
    ============================================================ */
-.jp-Main {
+.vn-Main {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+  position: relative;
 }
 
 /* ---------- Sidebar ---------- */
-.jp-Sidebar {
-  width: 240px;
-  flex: 0 0 240px;
-  background: var(--jp-layout-color2);
-  border-right: 1px solid var(--jp-border-color2);
+.vn-Sidebar {
+  position: relative;
+  width: var(--vn-sidebar-w);
+  flex: 0 0 var(--vn-sidebar-w);
+  background: var(--vn-color2);
+  border-right: 1px solid var(--vn-border2);
+  display: flex;
+  min-height: 0;
+}
+
+.vn-Sidebar__inner {
+  flex: 1 1 auto;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* collapsed state */
+.vn.is-sidebar-collapsed .vn-Sidebar {
+  width: 0;
+  flex-basis: 0;
+  border-right: 0;
+  overflow: hidden;
+}
+.vn.is-sidebar-collapsed .vn-Sidebar__resizer {
+  display: none;
+}
+
+.vn-Sidebar__section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--vn-border3);
+}
+.vn-Sidebar__section--toc {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.jp-Sidebar__section {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--jp-border-color3);
-}
-
-.jp-Sidebar__section--toc {
-  flex: 1 1 auto;
-}
-
-.jp-Sidebar__heading {
+.vn-Sidebar__heading {
   margin: 0 0 8px;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--jp-ui-font-color3);
+  color: var(--vn-text3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.jp-Sidebar__name {
+.vn-Sidebar__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--vn-color3);
+  color: var(--vn-text2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.vn-Sidebar__name {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: var(--jp-ui-font-color1);
+  color: var(--vn-text1);
   word-break: break-word;
 }
 
-.jp-Sidebar__meta {
+.vn-Sidebar__meta {
   margin: 10px 0 0;
 }
-
-.jp-Sidebar__meta > div {
+.vn-Sidebar__meta > div {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   padding: 3px 0;
 }
-
-.jp-Sidebar__meta dt {
+.vn-Sidebar__meta dt {
   margin: 0;
-  color: var(--jp-ui-font-color3);
+  color: var(--vn-text3);
   font-size: 12px;
 }
-
-.jp-Sidebar__meta dd {
+.vn-Sidebar__meta dd {
   margin: 0;
-  color: var(--jp-ui-font-color1);
+  color: var(--vn-text1);
   font-size: 12px;
   font-weight: 600;
   max-width: 130px;
@@ -404,34 +567,55 @@ input {
   text-align: right;
 }
 
-.jp-Sidebar__buttons {
+.vn-Sidebar__buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
-
-.jp-Sidebar__buttons button {
-  border: 1px solid var(--jp-border-color1);
-  border-radius: 3px;
-  background: var(--jp-layout-color1);
-  color: var(--jp-ui-font-color1);
-  padding: 6px 4px;
+.vn-Sidebar__buttons button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--vn-border1);
+  border-radius: 4px;
+  background: var(--vn-color1);
+  color: var(--vn-text1);
+  padding: 6px 8px;
   font-size: 12px;
   cursor: pointer;
 }
-
-.jp-Sidebar__buttons button:hover {
-  border-color: var(--jp-brand-color1);
-  color: var(--jp-brand-color0);
+.vn-Sidebar__buttons button:hover {
+  border-color: var(--vn-brand1);
+  color: var(--vn-brand0);
 }
 
-.jp-Toc {
+.vn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.vn-dot--cpp {
+  background: var(--vn-type);
+}
+.vn-dot--reply {
+  background: var(--vn-brand1);
+}
+.vn-dot--md {
+  background: var(--vn-text3);
+}
+.vn-dot--html {
+  background: #00897b;
+}
+
+.vn-Toc {
+  flex: 1 1 auto;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-
-.jp-Toc__item {
+.vn-Toc__item {
   display: block;
   border: 0;
   background: transparent;
@@ -439,7 +623,7 @@ input {
   width: 100%;
   padding: 4px 6px;
   font-size: 12.5px;
-  color: var(--jp-ui-font-color2);
+  color: var(--vn-text2);
   cursor: pointer;
   border-radius: 3px;
   border-left: 2px solid transparent;
@@ -447,323 +631,338 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.jp-Toc__item:hover {
-  background: var(--jp-layout-color3);
-  color: var(--jp-ui-font-color1);
+.vn-Toc__item:hover {
+  background: var(--vn-color3);
+  color: var(--vn-text1);
 }
-
-.jp-Toc__item--h1 {
+.vn-Toc__item--h1 {
   padding-left: 6px;
   font-weight: 600;
 }
-.jp-Toc__item--h2 {
+.vn-Toc__item--h2 {
   padding-left: 18px;
 }
-.jp-Toc__item--h3 {
+.vn-Toc__item--h3 {
   padding-left: 30px;
   font-size: 12px;
 }
-
-.jp-Toc__empty {
+.vn-Toc__empty {
   margin: 0;
   font-size: 12px;
-  color: var(--jp-ui-font-color3);
+  color: var(--vn-text3);
   font-style: italic;
 }
 
-.jp-Sidebar__footer {
+.vn-Sidebar__footer {
   padding: 12px 14px;
   font-size: 11.5px;
-  color: var(--jp-ui-font-color3);
+  color: var(--vn-text3);
   line-height: 1.5;
 }
 
+/* resize handle */
+.vn-Sidebar__resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+}
+.vn-Sidebar__resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  transition: background 0.12s;
+}
+.vn-Sidebar__resizer:hover::after,
+.vn-Sidebar__resizer:focus-visible::after,
+.vn.is-resizing .vn-Sidebar__resizer::after {
+  background: var(--vn-brand1);
+  width: 2px;
+}
+.vn.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
 /* ---------- Notebook panel ---------- */
-.jp-NotebookPanel {
+.vn-NotebookPanel {
   flex: 1 1 auto;
   min-width: 0;
-  background: var(--jp-layout-color2);
+  background: var(--vn-color2);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 
-.jp-Notice {
+.vn-Notice {
   margin: 8px 12px 0;
   padding: 8px 12px;
-  border-radius: 3px;
+  border-radius: 4px;
   font-size: 12.5px;
   border: 1px solid transparent;
 }
-.jp-Notice--success {
+.vn-Notice--success {
   background: #e8f5e9;
   border-color: #c8e6c9;
   color: #2e7d32;
 }
-.jp-Notice--error {
+.vn-Notice--error {
   background: #fdecea;
   border-color: #f5c6cb;
   color: #c62828;
 }
-.jp-Notice--warning {
+.vn-Notice--warning {
   background: #fff8e1;
   border-color: #ffe082;
   color: #f57f17;
 }
-.jp-Notice--info {
+.vn-Notice--info {
   background: #e3f2fd;
   border-color: #bbdefb;
   color: #1565c0;
 }
 
-/* The actual scrolling notebook — white page centered like Jupyter */
-.jp-Notebook {
+.vn-Notebook {
   flex: 1 1 auto;
   max-width: 1100px;
   width: 100%;
   margin: 0 auto;
-  padding: 16px 12px 240px; /* big bottom pad like Jupyter */
+  padding: 16px 16px 240px;
   outline: none;
 }
 
-.jp-Notebook__loading {
+/* focus mode narrows the notebook */
+.vn.is-focus .vn-Notebook {
+  max-width: 760px;
+}
+
+.vn-Notebook__loading {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 40px;
-  color: var(--jp-ui-font-color2);
+  color: var(--vn-text2);
   font-size: 13px;
 }
 
-.jp-spinner {
+.vn-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--jp-border-color1);
-  border-top-color: var(--jp-brand-color1);
+  border: 2px solid var(--vn-border1);
+  border-top-color: var(--vn-brand1);
   border-radius: 50%;
-  animation: jp-spin 0.7s linear infinite;
+  animation: vn-spin 0.7s linear infinite;
 }
-
-@keyframes jp-spin {
+@keyframes vn-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.jp-Notebook__empty {
+.vn-Notebook__empty {
   margin: 30px 10px;
   padding: 40px;
-  border: 1px dashed var(--jp-border-color1);
-  border-radius: 4px;
+  border: 1px dashed var(--vn-border1);
+  border-radius: 6px;
   text-align: center;
-  color: var(--jp-ui-font-color2);
-  background: var(--jp-layout-color1);
+  color: var(--vn-text2);
+  background: var(--vn-color1);
 }
 
 /* ============================================================
-   CELLS — the heart of the Jupyter look
+   CELLS
    ============================================================ */
-.jp-Cell {
+.vn-Cell {
   position: relative;
   display: flex;
   padding: 4px 0;
-  margin: 0;
 }
 
-/* The colored left collapser bar (selection indicator) */
-.jp-Cell__collapser {
-  flex: 0 0 var(--jp-cell-collapser-width);
-  width: var(--jp-cell-collapser-width);
-  margin-right: 0;
+.vn-Cell__collapser {
+  flex: 0 0 var(--vn-collapser-width);
+  width: var(--vn-collapser-width);
   border-radius: 2px;
   background: transparent;
   cursor: pointer;
   transition: background 0.1s;
 }
-
-.jp-Cell.jp-mod-selected > .jp-Cell__collapser {
-  background: var(--jp-cell-collapser-selected);
+.vn-Cell.is-selected > .vn-Cell__collapser {
+  background: var(--vn-collapser-selected);
+}
+.vn-Cell.is-editing > .vn-Cell__collapser {
+  background: var(--vn-collapser-edit);
 }
 
-.jp-Cell.jp-mod-editing > .jp-Cell__collapser {
-  background: var(--jp-cell-collapser-edit);
+.vn-Cell.is-selected .vn-Cell__body {
+  box-shadow: inset 0 0 0 1px var(--vn-collapser-selected);
+}
+.vn-Cell.is-editing .vn-Cell__body {
+  box-shadow: inset 0 0 0 1px var(--vn-collapser-edit);
 }
 
-/* selected cell gets a subtle outline like Jupyter command mode */
-.jp-Cell.jp-mod-selected .jp-Cell__body {
-  box-shadow: inset 0 0 0 1px var(--jp-cell-collapser-selected);
-}
-.jp-Cell.jp-mod-editing .jp-Cell__body {
-  box-shadow: inset 0 0 0 1px var(--jp-cell-collapser-edit);
-}
-
-.jp-Cell__body {
+.vn-Cell__body {
   flex: 1 1 auto;
   min-width: 0;
   border-radius: 2px;
 }
 
-/* ---- Cell input row: [ In[ ]: prompt ][ editor ] ---- */
-.jp-InputArea {
+.vn-InputArea {
   display: flex;
   align-items: stretch;
 }
 
-.jp-InputPrompt {
-  flex: 0 0 var(--jp-cell-prompt-width);
-  width: var(--jp-cell-prompt-width);
+.vn-InputPrompt {
+  flex: 0 0 var(--vn-prompt-width);
+  width: var(--vn-prompt-width);
   padding: 6px 8px 6px 0;
   text-align: right;
-  color: var(--jp-cell-inprompt-color);
-  font-family: var(--jp-code-font);
+  color: var(--vn-inprompt);
+  font-family: var(--vn-code-font);
   font-size: 12px;
-  line-height: var(--jp-code-line-height);
+  line-height: var(--vn-code-lh);
   user-select: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.jp-InputPrompt--empty {
-  color: var(--jp-cell-prompt-not-active-color);
+.vn-InputPrompt--empty {
+  color: var(--vn-prompt-not-active);
 }
 
-/* code editor box */
-.jp-Editor {
+.vn-Editor {
   flex: 1 1 auto;
   min-width: 0;
-  border: 1px solid var(--jp-cell-editor-border);
-  border-radius: 2px;
-  background: var(--jp-cell-editor-bg);
+  border: 1px solid var(--vn-editor-border);
+  border-radius: 3px;
+  background: var(--vn-editor-bg);
   overflow: hidden;
 }
-
-.jp-Cell.jp-mod-editing .jp-Editor {
-  background: var(--jp-cell-editor-active-bg);
-  border-color: var(--jp-brand-color2);
+.vn-Cell.is-editing .vn-Editor {
+  background: var(--vn-editor-active-bg);
+  border-color: var(--vn-brand2);
 }
 
-/* The textarea that holds source. Highlight overlay sits behind it. */
-.jp-Editor__wrap {
+.vn-Editor__wrap {
   position: relative;
 }
 
-.jp-Editor__highlight,
-.jp-Editor textarea {
+.vn-Editor__highlight,
+.vn-Editor textarea {
   margin: 0;
   border: 0;
   padding: 6px 10px;
-  font-family: var(--jp-code-font);
-  font-size: var(--jp-code-font-size);
-  line-height: var(--jp-code-line-height);
+  font-family: var(--vn-code-font);
+  font-size: var(--vn-code-size);
+  line-height: var(--vn-code-lh);
   tab-size: 4;
   white-space: pre;
   word-wrap: normal;
-  overflow-wrap: normal;
 }
 
-.jp-Editor__highlight {
+.vn-Editor__highlight {
   position: absolute;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
-  color: var(--cm-punct);
+  color: var(--vn-punct);
   white-space: pre;
 }
 
-.jp-Editor textarea {
+.vn-Editor textarea {
   position: relative;
   display: block;
   width: 100%;
   min-height: 1.6em;
   resize: none;
   background: transparent;
-  color: transparent; /* text shown by highlight layer */
+  color: transparent;
   caret-color: #000;
   outline: none;
   overflow: hidden;
   white-space: pre;
 }
 
-/* For markdown / html / plain code cells where we don't tokenize,
-   show the text directly (no transparent trick) */
-.jp-Editor--plain textarea {
-  color: var(--jp-content-font-color1);
+.vn-Editor--plain textarea {
+  color: var(--vn-content1);
   caret-color: #000;
 }
-.jp-Editor--plain .jp-Editor__highlight {
+.vn-Editor--plain .vn-Editor__highlight {
   display: none;
 }
 
-/* ---- Output row: [ Out[ ]: prompt ][ outputs ] ---- */
-.jp-OutputArea {
+/* Output row */
+.vn-OutputArea {
   display: flex;
   margin-top: 2px;
 }
+.vn-OutputArea.is-collapsed .vn-OutputArea__list {
+  display: none;
+}
 
-.jp-OutputPrompt {
-  flex: 0 0 var(--jp-cell-prompt-width);
-  width: var(--jp-cell-prompt-width);
+.vn-OutputPrompt {
+  flex: 0 0 var(--vn-prompt-width);
+  width: var(--vn-prompt-width);
   padding: 6px 8px 6px 0;
   text-align: right;
-  color: var(--jp-cell-outprompt-color);
-  font-family: var(--jp-code-font);
+  color: var(--vn-outprompt);
+  font-family: var(--vn-code-font);
   font-size: 12px;
-  line-height: var(--jp-code-line-height);
+  line-height: var(--vn-code-lh);
   user-select: none;
 }
 
-.jp-OutputArea__list {
+.vn-OutputArea__list {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.jp-Output {
+.vn-Output {
   padding: 4px 10px;
-  font-family: var(--jp-code-font);
-  font-size: var(--jp-code-font-size);
-  line-height: var(--jp-code-line-height);
+  font-family: var(--vn-code-font);
+  font-size: var(--vn-code-size);
+  line-height: var(--vn-code-lh);
 }
-
-.jp-Output pre {
+.vn-Output pre {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.jp-Output--stdout {
-  color: var(--jp-content-font-color1);
+.vn-Output--stdout {
+  color: var(--vn-content1);
 }
-
-.jp-Output--stderr {
-  background: var(--jp-stderr-bg);
+.vn-Output--stderr {
+  background: var(--vn-stderr-bg);
   color: #5d4037;
 }
-
-.jp-Output--error,
-.jp-Output--compiler_error,
-.jp-Output--runtime_error {
-  background: var(--jp-rendermime-error-bg);
-  color: var(--jp-error-color1);
+.vn-Output--error,
+.vn-Output--compiler_error,
+.vn-Output--runtime_error {
+  background: var(--vn-error-bg);
+  color: var(--vn-error);
 }
-
-.jp-Output--hint,
-.jp-Output--info {
-  color: var(--jp-accent-color1);
+.vn-Output--hint,
+.vn-Output--info {
+  color: var(--vn-accent1);
 }
-
-.jp-Output--debug,
-.jp-Output--raw_log {
-  color: var(--jp-ui-font-color2);
+.vn-Output--debug,
+.vn-Output--raw_log {
+  color: var(--vn-text2);
 }
-
-.jp-Output--running {
-  color: var(--jp-ui-font-color2);
+.vn-Output--running {
+  color: var(--vn-text2);
   font-style: italic;
 }
 
-.jp-Output__kind {
+.vn-Output__kind {
   display: inline-block;
   margin-right: 8px;
   padding: 0 5px;
@@ -772,126 +971,123 @@ input {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  font-family: var(--jp-ui-font);
-  color: var(--jp-ui-font-color3);
+  font-family: var(--vn-ui-font);
+  color: var(--vn-text3);
   vertical-align: top;
 }
 
-/* ---- Markdown rendered cell (no In[] prompt, like Jupyter) ---- */
-.jp-MarkdownCell .jp-InputArea,
-.jp-HtmlCell .jp-InputArea {
-  /* still show prompt gutter space for alignment but blank */
-}
-
-.jp-RenderedMarkdown {
+/* Markdown / HTML rendered cells */
+.vn-RenderedMarkdown {
   flex: 1 1 auto;
   min-width: 0;
   padding: 4px 10px 8px 0;
-  color: var(--jp-content-font-color1);
+  color: var(--vn-content1);
   line-height: 1.6;
   cursor: text;
 }
-
-.jp-RenderedMarkdown h1,
-.jp-RenderedMarkdown h2,
-.jp-RenderedMarkdown h3 {
+.vn-RenderedMarkdown h1,
+.vn-RenderedMarkdown h2,
+.vn-RenderedMarkdown h3 {
   margin: 0.4em 0 0.3em;
   font-weight: 600;
   line-height: 1.25;
 }
-.jp-RenderedMarkdown h1 {
+.vn-RenderedMarkdown h1 {
   font-size: 1.8em;
-  border-bottom: 1px solid var(--jp-border-color2);
+  border-bottom: 1px solid var(--vn-border2);
   padding-bottom: 0.2em;
 }
-.jp-RenderedMarkdown h2 {
+.vn-RenderedMarkdown h2 {
   font-size: 1.4em;
 }
-.jp-RenderedMarkdown h3 {
+.vn-RenderedMarkdown h3 {
   font-size: 1.15em;
 }
-.jp-RenderedMarkdown p {
+.vn-RenderedMarkdown p {
   margin: 0.5em 0;
 }
-.jp-RenderedMarkdown code {
-  font-family: var(--jp-code-font);
+.vn-RenderedMarkdown code {
+  font-family: var(--vn-code-font);
   font-size: 0.9em;
-  background: var(--jp-layout-color2);
+  background: var(--vn-color2);
   padding: 0.1em 0.35em;
   border-radius: 3px;
 }
+.vn-RenderedMarkdown pre {
+  background: var(--vn-color2);
+  border: 1px solid var(--vn-border2);
+  border-radius: 4px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+.vn-RenderedMarkdown pre code {
+  background: transparent;
+  padding: 0;
+}
 
-.jp-RenderedHTML {
+.vn-RenderedHTML {
   flex: 1 1 auto;
   min-width: 0;
   padding: 4px 10px 8px 0;
-  color: var(--jp-content-font-color1);
+  color: var(--vn-content1);
   line-height: 1.6;
 }
 
-/* selected markdown cell shows the editor */
-.jp-Cell.jp-mod-editing .jp-RenderedMarkdown,
-.jp-Cell.jp-mod-editing .jp-RenderedHTML {
+.vn-Cell.is-editing .vn-RenderedMarkdown,
+.vn-Cell.is-editing .vn-RenderedHTML {
   display: none;
 }
-.jp-Cell:not(.jp-mod-editing) .jp-MarkdownCell .jp-InputArea,
-.jp-Cell:not(.jp-mod-editing) .jp-HtmlCell .jp-InputArea {
+.vn-Cell:not(.is-editing) .vn-MarkdownCell .vn-InputArea,
+.vn-Cell:not(.is-editing) .vn-HtmlCell .vn-InputArea {
   display: none;
 }
 
-/* ============================================================
-   SYNTAX TOKENS (highlight overlay spans)
-   ============================================================ */
+/* Syntax tokens */
 .tok-kw {
-  color: var(--cm-keyword);
+  color: var(--vn-kw);
   font-weight: 600;
 }
 .tok-type {
-  color: var(--cm-type);
+  color: var(--vn-type);
 }
 .tok-str {
-  color: var(--cm-string);
+  color: var(--vn-str);
 }
 .tok-com {
-  color: var(--cm-comment);
+  color: var(--vn-com);
   font-style: italic;
 }
 .tok-num {
-  color: var(--cm-number);
+  color: var(--vn-num);
 }
 .tok-pre {
-  color: var(--cm-preproc);
+  color: var(--vn-pre);
   font-weight: 600;
 }
 .tok-fn {
-  color: var(--cm-function);
-}
-.tok-builtin {
-  color: var(--cm-builtin);
+  color: var(--vn-fn);
 }
 .tok-punct {
-  color: var(--cm-punct);
+  color: var(--vn-punct);
 }
 
-/* ============================================================
-   Inline cell add bar (the "+" hover between cells, Jupyter-like)
-   ============================================================ */
-.jp-CellInsert {
+/* Inline "+" insert button between cells */
+.vn-CellInsert {
   position: relative;
   height: 0;
-  margin-left: calc(var(--jp-cell-collapser-width));
+  margin-left: var(--vn-collapser-width);
 }
-.jp-CellInsert__btn {
+.vn-CellInsert__btn {
   position: absolute;
   left: 50%;
   top: -10px;
   transform: translateX(-50%);
   width: 22px;
   height: 18px;
-  border: 1px solid var(--jp-border-color1);
+  border: 1px solid var(--vn-border1);
   border-radius: 9px;
-  background: var(--jp-layout-color1);
-  color: var(--jp-ui-font-color2);
+  background: var(--vn-color1);
+  color: var(--vn-text2);
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
@@ -901,36 +1097,34 @@ input {
   place-items: center;
   z-index: 2;
 }
-.jp-CellInsert:hover .jp-CellInsert__btn {
+.vn-CellInsert:hover .vn-CellInsert__btn {
   opacity: 1;
 }
-.jp-CellInsert__btn:hover {
-  border-color: var(--jp-brand-color1);
-  color: var(--jp-brand-color0);
+.vn-CellInsert__btn:hover {
+  border-color: var(--vn-brand1);
+  color: var(--vn-brand0);
 }
 
-/* ============================================================
-   Cell action buttons (right side on hover)
-   ============================================================ */
-.jp-Cell__toolbar {
+/* Cell hover toolbar */
+.vn-Cell__toolbar {
   position: absolute;
   top: 2px;
   right: 4px;
   display: flex;
   gap: 1px;
-  background: var(--jp-layout-color1);
-  border: 1px solid var(--jp-border-color2);
+  background: var(--vn-color1);
+  border: 1px solid var(--vn-border2);
   border-radius: 4px;
   padding: 1px;
   opacity: 0;
   transition: opacity 0.12s;
   z-index: 3;
 }
-.jp-Cell:hover .jp-Cell__toolbar,
-.jp-Cell.jp-mod-selected .jp-Cell__toolbar {
+.vn-Cell:hover .vn-Cell__toolbar,
+.vn-Cell.is-selected .vn-Cell__toolbar {
   opacity: 1;
 }
-.jp-Cell__toolbar button {
+.vn-Cell__toolbar button {
   display: grid;
   place-items: center;
   width: 24px;
@@ -940,53 +1134,343 @@ input {
   border-radius: 3px;
   cursor: pointer;
 }
-.jp-Cell__toolbar button:hover {
-  background: var(--jp-layout-color3);
+.vn-Cell__toolbar button:hover {
+  background: var(--vn-color3);
 }
-.jp-Cell__toolbar svg {
+.vn-Cell__toolbar svg {
   width: 15px;
   height: 15px;
-  fill: var(--jp-ui-font-color2);
+  fill: var(--vn-text2);
 }
 
-/* running cell pulse on the In prompt */
-.jp-Cell.jp-mod-running .jp-InputPrompt {
-  color: var(--jp-cell-outprompt-color);
+.vn-Cell.is-running .vn-InputPrompt {
+  color: var(--vn-outprompt);
 }
-.jp-Cell.jp-mod-running .jp-InputPrompt::after {
+.vn-Cell.is-running .vn-InputPrompt::after {
   content: " *";
 }
 
 /* ============================================================
-   Scrollbars — thin like JupyterLab
+   STATUS BAR
    ============================================================ */
-.jp-Sidebar::-webkit-scrollbar,
-.jp-NotebookPanel::-webkit-scrollbar {
+.vn-StatusBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--vn-statusbar-h);
+  padding: 0 12px;
+  background: var(--vn-menubar-bg);
+  border-top: 1px solid var(--vn-border2);
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--vn-text2);
+}
+.vn-StatusBar__left,
+.vn-StatusBar__right {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.vn-StatusBar__sep {
+  color: var(--vn-text3);
+}
+.vn-StatusBar__mode {
+  font-weight: 600;
+  color: var(--vn-text1);
+}
+.vn-StatusBar__kernel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.vn-StatusBar__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--vn-text3);
+  background: transparent;
+}
+.vn-StatusBar__btn {
+  border: 0;
+  background: transparent;
+  color: var(--vn-text2);
+  cursor: pointer;
+  font-size: 11.5px;
+  padding: 0;
+}
+.vn-StatusBar__btn:hover {
+  color: var(--vn-brand0);
+}
+
+/* ============================================================
+   COMMAND PALETTE
+   ============================================================ */
+.vn-Palette {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+.vn-Palette[hidden] {
+  display: none;
+}
+.vn-Palette__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+}
+.vn-Palette__box {
+  position: relative;
+  width: min(560px, calc(100% - 32px));
+  background: var(--vn-color1);
+  border: 1px solid var(--vn-border1);
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.vn-Palette__input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--vn-border2);
+  padding: 13px 16px;
+  font-size: 14px;
+  outline: none;
+  color: var(--vn-text1);
+}
+.vn-Palette__list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.vn-Palette__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--vn-text1);
+  font-size: 13px;
+}
+.vn-Palette__item:hover,
+.vn-Palette__item.is-active {
+  background: var(--vn-accent1);
+  color: #fff;
+}
+.vn-Palette__item .vn-Menu__icon svg {
+  fill: var(--vn-text2);
+}
+.vn-Palette__item:hover .vn-Menu__icon svg,
+.vn-Palette__item.is-active .vn-Menu__icon svg {
+  fill: #fff;
+}
+.vn-Palette__item .vn-Menu__hint {
+  margin-left: auto;
+  color: var(--vn-text3);
+}
+.vn-Palette__item:hover .vn-Menu__hint,
+.vn-Palette__item.is-active .vn-Menu__hint {
+  color: rgba(255, 255, 255, 0.85);
+}
+.vn-Palette__empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--vn-text3);
+  font-size: 13px;
+}
+
+/* ============================================================
+   MODAL (shortcuts / about)
+   ============================================================ */
+.vn-Modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.vn-Modal[hidden] {
+  display: none;
+}
+.vn-Modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+}
+.vn-Modal__box {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 80vh;
+  background: var(--vn-color1);
+  border: 1px solid var(--vn-border1);
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.vn-Modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--vn-border2);
+}
+.vn-Modal__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.vn-Modal__close {
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--vn-text2);
+  cursor: pointer;
+}
+.vn-Modal__close:hover {
+  color: var(--vn-text0);
+}
+.vn-Modal__body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vn-text1);
+}
+.vn-Modal__body kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 6px;
+  border: 1px solid var(--vn-border1);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--vn-color2);
+  font-family: var(--vn-code-font);
+  font-size: 11px;
+  text-align: center;
+}
+.vn-Shortcuts {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 18px;
+  align-items: center;
+}
+.vn-Shortcuts__group {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vn-text3);
+}
+
+/* ============================================================
+   SCROLLBARS
+   ============================================================ */
+.vn-Sidebar__inner::-webkit-scrollbar,
+.vn-Toc::-webkit-scrollbar,
+.vn-NotebookPanel::-webkit-scrollbar,
+.vn-Palette__list::-webkit-scrollbar,
+.vn-Modal__body::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-.jp-Sidebar::-webkit-scrollbar-thumb,
-.jp-NotebookPanel::-webkit-scrollbar-thumb {
+.vn-Sidebar__inner::-webkit-scrollbar-thumb,
+.vn-Toc::-webkit-scrollbar-thumb,
+.vn-NotebookPanel::-webkit-scrollbar-thumb,
+.vn-Palette__list::-webkit-scrollbar-thumb,
+.vn-Modal__body::-webkit-scrollbar-thumb {
   background: #c4c4c4;
-  border: 2px solid var(--jp-layout-color2);
+  border: 2px solid var(--vn-color2);
   border-radius: 6px;
 }
-.jp-Sidebar::-webkit-scrollbar-thumb:hover,
-.jp-NotebookPanel::-webkit-scrollbar-thumb:hover {
+.vn-Sidebar__inner::-webkit-scrollbar-thumb:hover,
+.vn-NotebookPanel::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
 
 /* ============================================================
-   Responsive
+   RESPONSIVE
    ============================================================ */
-@media (max-width: 880px) {
-  .jp-Sidebar {
+
+/* Tablet: sidebar becomes an overlay drawer */
+@media (max-width: 900px) {
+  .vn-Sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    z-index: 30;
+    width: min(var(--vn-sidebar-w), 80vw) !important;
+    flex-basis: auto;
+    box-shadow: 4px 0 18px rgba(0, 0, 0, 0.18);
+    transform: translateX(0);
+    transition: transform 0.18s ease;
+  }
+  .vn.is-sidebar-collapsed .vn-Sidebar {
+    transform: translateX(-100%);
+    width: min(var(--vn-sidebar-w), 80vw) !important;
+    border-right: 1px solid var(--vn-border2);
+  }
+  /* backdrop when drawer open */
+  .vn:not(.is-sidebar-collapsed) .vn-Main::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.25);
+    z-index: 25;
+  }
+  .vn-Sidebar__resizer {
     display: none;
   }
+}
+
+/* Phone: tighten chrome, hide menu labels, smaller prompts */
+@media (max-width: 620px) {
   :root {
-    --jp-cell-prompt-width: 52px;
+    --vn-prompt-width: 46px;
+    --vn-sidebar-w: 230px;
   }
-  .jp-MenuBar__menus {
+  .vn-MenuBar__menus {
+    display: none;
+  }
+  .vn-MenuBar__paletteText {
+    display: none;
+  }
+  .vn-MenuBar__palette {
+    padding: 0 8px;
+  }
+  .vn-KernelName {
+    display: none;
+  }
+  .vn-Notebook {
+    padding: 12px 8px 200px;
+  }
+  .vn-Toolbar__filename {
+    display: none;
+  }
+  .vn-StatusBar [data-status-position] {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .vn-MenuBar__title {
+    display: none;
+  }
+  .vn-StatusBar [data-status-kind] {
     display: none;
   }
 }

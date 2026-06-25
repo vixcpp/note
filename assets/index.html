@@ -12,145 +12,429 @@
   </head>
 
   <body>
-    <div class="jp" data-note-app>
+    <div class="vn" data-note-app data-kernel="idle">
       <!-- ============ TOP MENU BAR ============ -->
-      <header class="jp-MenuBar">
-        <div class="jp-MenuBar__brand">
-          <span class="jp-MenuBar__logo" aria-hidden="true">V</span>
-          <span class="jp-MenuBar__title">Vix Note</span>
+      <header class="vn-MenuBar">
+        <button
+          class="vn-MenuBar__sidebarToggle"
+          type="button"
+          data-action="toggle-sidebar"
+          title="Toggle sidebar"
+          aria-label="Toggle sidebar"
+        >
+          <svg viewBox="0 0 24 24" class="vn-icon">
+            <path d="M3 4h18v2H3V4zm0 7h12v2H3v-2zm0 7h18v2H3v-2z" />
+          </svg>
+        </button>
+
+        <div class="vn-MenuBar__brand">
+          <span class="vn-MenuBar__logo" aria-hidden="true">V</span>
+          <span class="vn-MenuBar__title">Vix Note</span>
         </div>
 
-        <nav class="jp-MenuBar__menus" aria-label="Menu">
-          <button type="button" class="jp-MenuBar__menu">File</button>
-          <button type="button" class="jp-MenuBar__menu">Edit</button>
-          <button type="button" class="jp-MenuBar__menu">View</button>
-          <button type="button" class="jp-MenuBar__menu">Run</button>
-          <button type="button" class="jp-MenuBar__menu">Kernel</button>
-          <button type="button" class="jp-MenuBar__menu">Help</button>
+        <nav class="vn-MenuBar__menus" aria-label="Main menu" data-menubar>
+          <div class="vn-Menu" data-menu="file">
+            <button type="button" class="vn-Menu__label" data-menu-button>
+              File
+            </button>
+            <div class="vn-Menu__dropdown" role="menu" hidden>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="add-cpp"
+              >
+                New C++ cell <span class="vn-Menu__hint">B</span>
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="add-markdown"
+              >
+                New Markdown cell
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="add-reply"
+              >
+                New Reply cell
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="add-html"
+              >
+                New HTML cell
+              </button>
+              <div class="vn-Menu__sep"></div>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="new-note"
+              >
+                New note
+              </button>
+
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="open-note"
+              >
+                Open note
+              </button>
+
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="new-folder"
+              >
+                New folder
+              </button>
+
+              <div class="vn-Menu__sep"></div>
+              <button type="button" class="vn-Menu__item" data-command="save">
+                Save note <span class="vn-Menu__hint">⌘S</span>
+              </button>
+              <button type="button" class="vn-Menu__item" data-command="reload">
+                Reload from disk
+              </button>
+            </div>
+          </div>
+
+          <div class="vn-Menu" data-menu="edit">
+            <button type="button" class="vn-Menu__label" data-menu-button>
+              Edit
+            </button>
+            <div class="vn-Menu__dropdown" role="menu" hidden>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="cut-cell"
+              >
+                Delete selected cell <span class="vn-Menu__hint">D D</span>
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="duplicate"
+              >
+                Duplicate selected cell
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="move-up"
+              >
+                Move cell up
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="move-down"
+              >
+                Move cell down
+              </button>
+              <div class="vn-Menu__sep"></div>
+              <button type="button" class="vn-Menu__item" data-command="to-cpp">
+                Change to C++ <span class="vn-Menu__hint">Y</span>
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="to-markdown"
+              >
+                Change to Markdown <span class="vn-Menu__hint">M</span>
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="to-reply"
+              >
+                Change to Reply <span class="vn-Menu__hint">R</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="vn-Menu" data-menu="view">
+            <button type="button" class="vn-Menu__label" data-menu-button>
+              View
+            </button>
+            <div class="vn-Menu__dropdown" role="menu" hidden>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="toggle-sidebar"
+              >
+                Toggle sidebar <span class="vn-Menu__hint">⌘B</span>
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="toggle-focus"
+              >
+                Toggle focus mode
+              </button>
+              <div class="vn-Menu__sep"></div>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="collapse-all"
+              >
+                Collapse all outputs
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="expand-all"
+              >
+                Expand all outputs
+              </button>
+            </div>
+          </div>
+
+          <div class="vn-Menu" data-menu="run">
+            <button type="button" class="vn-Menu__label" data-menu-button>
+              Run
+            </button>
+            <div class="vn-Menu__dropdown" role="menu" hidden>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="run-cell"
+              >
+                Run selected cell <span class="vn-Menu__hint">⌘↵</span>
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="run-advance"
+              >
+                Run and advance <span class="vn-Menu__hint">⇧↵</span>
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="run-all"
+              >
+                Run all cells
+              </button>
+              <div class="vn-Menu__sep"></div>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="clear-cell"
+              >
+                Clear selected output
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="clear-all"
+              >
+                Clear all outputs
+              </button>
+            </div>
+          </div>
+
+          <div class="vn-Menu" data-menu="kernel">
+            <button type="button" class="vn-Menu__label" data-menu-button>
+              Kernel
+            </button>
+            <div class="vn-Menu__dropdown" role="menu" hidden>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="restart"
+              >
+                Restart kernel
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="restart-run"
+              >
+                Restart and run all
+              </button>
+            </div>
+          </div>
+
+          <div class="vn-Menu" data-menu="help">
+            <button type="button" class="vn-Menu__label" data-menu-button>
+              Help
+            </button>
+            <div class="vn-Menu__dropdown" role="menu" hidden>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="shortcuts"
+              >
+                Keyboard shortcuts <span class="vn-Menu__hint">?</span>
+              </button>
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="palette"
+              >
+                Command palette <span class="vn-Menu__hint">⌘⇧P</span>
+              </button>
+              <div class="vn-Menu__sep"></div>
+              <button type="button" class="vn-Menu__item" data-command="about">
+                About Vix Note
+              </button>
+            </div>
+          </div>
         </nav>
 
-        <div class="jp-MenuBar__spacer"></div>
+        <div class="vn-MenuBar__spacer"></div>
 
-        <div class="jp-MenuBar__status">
-          <span class="jp-KernelName" data-note-project>No project</span>
-          <span
-            class="jp-KernelStatus"
-            data-note-kernel-dot
-            title="Kernel status"
+        <div class="vn-MenuBar__status">
+          <button
+            class="vn-MenuBar__palette"
+            type="button"
+            data-action="palette"
+            title="Command palette (Ctrl+Shift+P)"
+            aria-label="Command palette"
           >
-            <span class="jp-KernelStatus__dot"></span>
-            <span class="jp-KernelStatus__text" data-note-kernel>Idle</span>
+            <svg viewBox="0 0 24 24" class="vn-icon">
+              <path
+                d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+            </svg>
+            <span class="vn-MenuBar__paletteText">Commands</span>
+          </button>
+
+          <span class="vn-KernelName" data-note-project>No project</span>
+          <span class="vn-KernelStatus" title="Kernel status">
+            <span class="vn-KernelStatus__dot"></span>
+            <span class="vn-KernelStatus__text" data-note-kernel>Idle</span>
           </span>
         </div>
       </header>
 
       <!-- ============ NOTEBOOK TOOLBAR ============ -->
-      <div class="jp-Toolbar" role="toolbar" aria-label="Notebook toolbar">
+      <div class="vn-Toolbar" role="toolbar" aria-label="Notebook toolbar">
         <button
-          class="jp-ToolbarButton"
+          class="vn-ToolbarButton"
           type="button"
           data-action="save"
           title="Save (Ctrl+S)"
           aria-label="Save"
         >
-          <svg viewBox="0 0 24 24" class="jp-icon">
+          <svg viewBox="0 0 24 24" class="vn-icon">
             <path d="M5 3h11l3 3v15H5V3zm2 2v4h8V5H7zm0 7v6h10v-6H7z" />
           </svg>
         </button>
 
-        <span class="jp-Toolbar__sep"></span>
+        <span class="vn-Toolbar__sep"></span>
 
         <button
-          class="jp-ToolbarButton"
+          class="vn-ToolbarButton"
           type="button"
           data-action="insert-below"
-          title="Insert cell below"
+          title="Insert cell below (B)"
           aria-label="Insert cell below"
         >
-          <svg viewBox="0 0 24 24" class="jp-icon">
+          <svg viewBox="0 0 24 24" class="vn-icon">
             <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z" />
           </svg>
         </button>
 
         <button
-          class="jp-ToolbarButton"
+          class="vn-ToolbarButton"
           type="button"
           data-action="cut-cell"
-          title="Cut (delete) selected cell"
-          aria-label="Cut selected cell"
+          title="Delete selected cell (D D)"
+          aria-label="Delete cell"
         >
-          <svg viewBox="0 0 24 24" class="jp-icon">
-            <path
-              d="M9.64 7.64a3 3 0 10-1.42 1.42L11 12l-2.78 2.94a3 3 0 101.42 1.42L13 13.4l5 5h2v-1l-7.36-7.76L20 5V4h-2l-5.36 5.66L9.64 7.64zM6 6a1 1 0 110 2 1 1 0 010-2zm0 10a1 1 0 110 2 1 1 0 010-2z"
-            />
+          <svg viewBox="0 0 24 24" class="vn-icon">
+            <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" />
           </svg>
         </button>
 
         <button
-          class="jp-ToolbarButton"
+          class="vn-ToolbarButton"
+          type="button"
+          data-action="duplicate"
+          title="Duplicate cell"
+          aria-label="Duplicate cell"
+        >
+          <svg viewBox="0 0 24 24" class="vn-icon">
+            <path
+              d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"
+            />
+          </svg>
+        </button>
+
+        <span class="vn-Toolbar__sep"></span>
+
+        <button
+          class="vn-ToolbarButton"
           type="button"
           data-action="move-up"
           title="Move cell up"
           aria-label="Move cell up"
         >
-          <svg viewBox="0 0 24 24" class="jp-icon">
+          <svg viewBox="0 0 24 24" class="vn-icon">
             <path d="M12 7l6 6-1.4 1.4L12 9.8l-4.6 4.6L6 13l6-6z" />
           </svg>
         </button>
 
         <button
-          class="jp-ToolbarButton"
+          class="vn-ToolbarButton"
           type="button"
           data-action="move-down"
           title="Move cell down"
           aria-label="Move cell down"
         >
-          <svg viewBox="0 0 24 24" class="jp-icon">
+          <svg viewBox="0 0 24 24" class="vn-icon">
             <path d="M12 17l-6-6 1.4-1.4L12 14.2l4.6-4.6L18 11l-6 6z" />
           </svg>
         </button>
 
-        <span class="jp-Toolbar__sep"></span>
+        <span class="vn-Toolbar__sep"></span>
 
         <button
-          class="jp-ToolbarButton"
+          class="vn-ToolbarButton"
           type="button"
           data-action="run-cell"
-          title="Run the selected cell (Ctrl+Enter)"
+          title="Run selected cell (Ctrl+Enter)"
           aria-label="Run cell"
         >
-          <svg viewBox="0 0 24 24" class="jp-icon">
+          <svg viewBox="0 0 24 24" class="vn-icon">
             <path d="M8 5v14l11-7z" />
           </svg>
         </button>
 
         <button
-          class="jp-ToolbarButton"
+          class="vn-ToolbarButton"
           type="button"
           data-action="run-all"
           title="Run all cells"
           aria-label="Run all cells"
         >
-          <svg viewBox="0 0 24 24" class="jp-icon">
+          <svg viewBox="0 0 24 24" class="vn-icon">
             <path d="M5 5v14l8-7-8-7zm9 0v14l8-7-8-7z" />
           </svg>
         </button>
 
         <button
-          class="jp-ToolbarButton"
+          class="vn-ToolbarButton"
           type="button"
           data-action="restart"
-          title="Restart kernel (clears outputs)"
+          title="Restart kernel"
           aria-label="Restart"
         >
-          <svg viewBox="0 0 24 24" class="jp-icon">
+          <svg viewBox="0 0 24 24" class="vn-icon">
             <path d="M12 6V3L8 7l4 4V8a4 4 0 11-4 4H6a6 6 0 106-6z" />
           </svg>
         </button>
 
-        <span class="jp-Toolbar__sep"></span>
+        <span class="vn-Toolbar__sep"></span>
 
-        <div class="jp-CellTypeSelect">
+        <div class="vn-CellTypeSelect">
           <select data-action="toolbar-kind" aria-label="Cell type">
             <option value="">Code</option>
             <option value="cpp">C++</option>
@@ -160,80 +444,184 @@
           </select>
         </div>
 
-        <div class="jp-Toolbar__grow"></div>
+        <div class="vn-Toolbar__grow"></div>
 
-        <span class="jp-Toolbar__filename" data-note-document
+        <span class="vn-Toolbar__filename" data-note-document
           >Untitled.vixnote</span
         >
-        <span class="jp-Toolbar__dirty" data-note-state hidden>●</span>
+        <span
+          class="vn-Toolbar__dirty"
+          data-note-state
+          hidden
+          title="Unsaved changes"
+          >●</span
+        >
       </div>
 
       <!-- ============ MAIN AREA ============ -->
-      <div class="jp-Main">
-        <!-- LEFT ACTIVITY BAR + SIDEBAR -->
-        <aside class="jp-Sidebar" aria-label="Sidebar">
-          <div class="jp-Sidebar__section">
-            <p class="jp-Sidebar__heading">Notebook</p>
-            <p class="jp-Sidebar__name" data-note-title>Loading…</p>
-            <dl class="jp-Sidebar__meta">
-              <div>
-                <dt>Cells</dt>
-                <dd data-note-cell-count>0</dd>
-              </div>
-              <div>
-                <dt>Kernel</dt>
-                <dd data-note-kernel-2>Idle</dd>
-              </div>
-              <div>
-                <dt>Project</dt>
-                <dd data-note-project-2>—</dd>
-              </div>
-            </dl>
-          </div>
+      <div class="vn-Main">
+        <!-- SIDEBAR (resizable + collapsible) -->
+        <aside class="vn-Sidebar" aria-label="Sidebar" data-sidebar>
+          <div class="vn-Sidebar__inner">
+            <div class="vn-Sidebar__section">
+              <p class="vn-Sidebar__heading">Notebook</p>
+              <p class="vn-Sidebar__name" data-note-title>Loading…</p>
+              <dl class="vn-Sidebar__meta">
+                <div>
+                  <dt>Cells</dt>
+                  <dd data-note-cell-count>0</dd>
+                </div>
+                <div>
+                  <dt>Executed</dt>
+                  <dd data-note-exec-count>0</dd>
+                </div>
+                <div>
+                  <dt>Kernel</dt>
+                  <dd data-note-kernel-2>Idle</dd>
+                </div>
+                <div>
+                  <dt>Project</dt>
+                  <dd data-note-project-2>—</dd>
+                </div>
+              </dl>
+            </div>
 
-          <div class="jp-Sidebar__section">
-            <p class="jp-Sidebar__heading">Add cell</p>
-            <div class="jp-Sidebar__buttons">
-              <button type="button" data-action="add-cpp">C++</button>
-              <button type="button" data-action="add-reply">Reply</button>
-              <button type="button" data-action="add-markdown">Markdown</button>
-              <button type="button" data-action="add-html">HTML</button>
+            <div class="vn-Sidebar__section">
+              <p class="vn-Sidebar__heading">Add cell</p>
+              <div class="vn-Sidebar__buttons">
+                <button type="button" data-action="add-cpp">
+                  <span class="vn-dot vn-dot--cpp"></span>C++
+                </button>
+                <button type="button" data-action="add-reply">
+                  <span class="vn-dot vn-dot--reply"></span>Reply
+                </button>
+                <button type="button" data-action="add-markdown">
+                  <span class="vn-dot vn-dot--md"></span>Markdown
+                </button>
+                <button type="button" data-action="add-html">
+                  <span class="vn-dot vn-dot--html"></span>HTML
+                </button>
+              </div>
+            </div>
+
+            <div
+              class="vn-Sidebar__section vn-Sidebar__section--toc"
+              data-toc-panel
+            >
+              <p class="vn-Sidebar__heading">
+                Outline
+                <span class="vn-Sidebar__count" data-toc-count>0</span>
+              </p>
+              <nav class="vn-Toc" data-note-toc aria-label="Table of contents">
+                <p class="vn-Toc__empty">No headings yet.</p>
+              </nav>
+            </div>
+
+            <div class="vn-Sidebar__footer">
+              <p>Visual executable notes for C++ and Vix.cpp.</p>
             </div>
           </div>
 
-          <div class="jp-Sidebar__section jp-Sidebar__section--toc">
-            <p class="jp-Sidebar__heading">Outline</p>
-            <nav class="jp-Toc" data-note-toc aria-label="Table of contents">
-              <p class="jp-Toc__empty">No headings yet.</p>
-            </nav>
-          </div>
-
-          <div class="jp-Sidebar__footer">
-            <p>Visual executable notes for C++ and Vix.cpp.</p>
-          </div>
+          <div
+            class="vn-Sidebar__resizer"
+            data-sidebar-resizer
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            tabindex="0"
+            title="Drag to resize · double-click to reset"
+          ></div>
         </aside>
 
         <!-- NOTEBOOK PANEL -->
-        <main class="jp-NotebookPanel" id="workspace">
+        <main class="vn-NotebookPanel" id="workspace">
           <div
-            class="jp-Notice"
+            class="vn-Notice"
             data-note-message
             hidden
             aria-live="polite"
           ></div>
 
           <div
-            class="jp-Notebook"
+            class="vn-Notebook"
             data-note-cells
             aria-label="Vix Note cells"
             tabindex="0"
           >
-            <div class="jp-Notebook__loading">
-              <span class="jp-spinner" aria-hidden="true"></span>
+            <div class="vn-Notebook__loading">
+              <span class="vn-spinner" aria-hidden="true"></span>
               Loading note document…
             </div>
           </div>
         </main>
+      </div>
+
+      <!-- ============ STATUS BAR ============ -->
+      <footer class="vn-StatusBar" aria-label="Status bar">
+        <div class="vn-StatusBar__left">
+          <span class="vn-StatusBar__mode" data-status-mode>Command</span>
+          <span class="vn-StatusBar__sep">·</span>
+          <span data-status-position>Cell 0 of 0</span>
+        </div>
+        <div class="vn-StatusBar__right">
+          <span data-status-kind>—</span>
+          <span class="vn-StatusBar__sep">·</span>
+          <span class="vn-StatusBar__kernel">
+            <span class="vn-StatusBar__dot"></span>
+            <span data-status-kernel>Idle</span>
+          </span>
+          <span class="vn-StatusBar__sep">·</span>
+          <button
+            type="button"
+            class="vn-StatusBar__btn"
+            data-action="shortcuts"
+            title="Keyboard shortcuts"
+          >
+            ⌨ Shortcuts
+          </button>
+        </div>
+      </footer>
+
+      <!-- ============ COMMAND PALETTE (modal) ============ -->
+      <div
+        class="vn-Palette"
+        data-palette
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+      >
+        <div class="vn-Palette__backdrop" data-palette-close></div>
+        <div class="vn-Palette__box">
+          <input
+            type="text"
+            class="vn-Palette__input"
+            data-palette-input
+            placeholder="Type a command…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="vn-Palette__list" data-palette-list></div>
+        </div>
+      </div>
+
+      <!-- ============ SHORTCUTS / ABOUT (modal) ============ -->
+      <div class="vn-Modal" data-modal hidden role="dialog" aria-modal="true">
+        <div class="vn-Modal__backdrop" data-modal-close></div>
+        <div class="vn-Modal__box">
+          <header class="vn-Modal__head">
+            <h2 class="vn-Modal__title" data-modal-title>Title</h2>
+            <button
+              type="button"
+              class="vn-Modal__close"
+              data-modal-close
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </header>
+          <div class="vn-Modal__body" data-modal-body></div>
+        </div>
       </div>
     </div>
 
