@@ -62,6 +62,18 @@ namespace vix::note
     ProjectContext projectContext;
 
     /**
+     * @brief Enables project-aware C++ execution.
+     *
+     * When false, C++ cells run in an isolated temporary directory for speed.
+     * This is the default notebook mode.
+     *
+     * When true, cells are generated inside the detected project and executed from
+     * the project root, which allows registry dependencies and project-local
+     * headers/libraries to work, but can make the first run slower.
+     */
+    bool enableProjectContext = false;
+
+    /**
      * @brief Optional temporary root directory.
      *
      * When empty, the system temporary directory is used.
@@ -69,14 +81,15 @@ namespace vix::note
     std::filesystem::path temporaryDirectory;
 
     /**
-     * @brief Extra arguments passed directly to `vix run` after the generated file path.
+     * @brief Extra Vix CLI arguments passed after the generated file path.
      *
      * Example:
-     *   vix run .vix/note/tmp/cell.cpp --clean
+     *   vix run .vix/note/tmp/cell.cpp --preset dev
      *
      * These are Vix CLI arguments, not program runtime arguments.
+     * Avoid --clean for notebook cells because it disables incremental speed.
      */
-    std::vector<std::string> runArgs{"--clean"};
+    std::vector<std::string> runArgs{};
 
     /**
      * @brief Keeps the generated temporary C++ file after execution.

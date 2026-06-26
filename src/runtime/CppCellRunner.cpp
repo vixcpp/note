@@ -26,6 +26,8 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+#include <cstdint>
+#include <cstdlib>
 
 #ifndef _WIN32
 #include <sys/wait.h>
@@ -113,6 +115,44 @@ namespace vix::note
       return value.find(needle) != std::string::npos;
     }
 
+    std::string sanitize_file_stem(std::string value)
+    {
+      if (value.empty())
+      {
+        return "cell";
+      }
+
+      for (char &c : value)
+      {
+        const bool ok =
+            (c >= 'a' && c <= 'z') ||
+            (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') ||
+            c == '-' ||
+            c == '_';
+
+        if (!ok)
+        {
+          c = '-';
+        }
+      }
+
+      return value;
+    }
+
+    std::uint64_t fnv1a_hash(const std::string &value)
+    {
+      std::uint64_t hash = 14695981039346656037ULL;
+
+      for (unsigned char c : value)
+      {
+        hash ^= static_cast<std::uint64_t>(c);
+        hash *= 1099511628211ULL;
+      }
+
+      return hash;
+    }
+
     std::string lower_copy(std::string value)
     {
       for (char &c : value)
@@ -124,6 +164,23 @@ namespace vix::note
       }
 
       return value;
+    }
+
+    bool env_flag_enabled(const char *name)
+    {
+      const char *value = std::getenv(name);
+
+      if (value == nullptr || *value == '\0')
+      {
+        return false;
+      }
+
+      const std::string text = lower_copy(value);
+
+      return text != "0" &&
+             text != "false" &&
+             text != "off" &&
+             text != "no";
     }
 
     std::string strip_ansi_codes(const std::string &text)
@@ -175,6 +232,8 @@ namespace vix::note
 
     std::filesystem::path make_temp_cpp_file(
         const CppCellRunnerOptions &options,
+        const std::string &source,
+        const std::string &stableName,
         std::string &err)
     {
       err.clear();
@@ -200,34 +259,65 @@ namespace vix::note
         return {};
       }
 
-      const auto stamp =
-          std::chrono::steady_clock::now().time_since_epoch().count();
+      if (!stableName.empty())
+      {
+        return root / (sanitize_file_stem(stableName) + ".cpp");
+      }
 
-      return root / ("cell-" + std::to_string(stamp) + ".cpp");
+      const std::uint64_t hash =
+          fnv1a_hash(source);
+
+      return root / ("cell-" + std::to_string(hash) + ".cpp");
     }
 
     CppCellRunnerOptions effective_options(CppCellRunnerOptions options)
     {
       const ProjectContext &context = options.projectContext;
 
-      if (!context.enabled)
+      const bool projectMode =
+          options.enableProjectContext ||
+          env_flag_enabled("VIX_NOTE_PROJECT_CONTEXT") ||
+          env_flag_enabled("VIX_NOTE_REGISTRY_DEPS");
+
+      /*
+       * Fast notebook mode.
+       *
+       * By default, do not attach every C++ cell to the full project/registry
+       * context. This keeps normal learning cells fast and avoids paying the
+       * first-run registry/build cost when the user only wants to test small C++
+       * snippets.
+       */
+      if (!context.enabled || !projectMode)
       {
+        if (options.workingDirectory.empty())
+        {
+          std::error_code ec;
+
+          const std::filesystem::path root =
+              options.temporaryDirectory.empty()
+                  ? std::filesystem::temp_directory_path(ec) / "vix-note"
+                  : options.temporaryDirectory;
+
+          if (!ec)
+          {
+            options.workingDirectory = root;
+          }
+        }
+
         return options;
       }
 
+      /*
+       * Project/registry mode.
+       *
+       * Opt-in mode for cells that include registry libraries or project-local
+       * headers/libs. Slower on the first run, but required for linked packages.
+       */
       if (options.workingDirectory.empty())
       {
         options.workingDirectory = context.effective_working_directory();
       }
 
-      /*
-       * Important:
-       * Keep generated C++ cells inside the project when a project context exists.
-       *
-       * A cell in /tmp/vix-note can find headers through -I, but compiled
-       * registry packages may still fail at link time because vix run no longer
-       * sees the source as part of the project workspace.
-       */
       if (options.temporaryDirectory.empty() &&
           !context.projectRoot.empty())
       {
@@ -236,32 +326,6 @@ namespace vix::note
       }
 
       return options;
-    }
-
-    bool write_text_file(
-        const std::filesystem::path &path,
-        const std::string &content,
-        std::string &err)
-    {
-      err.clear();
-
-      std::ofstream out(path, std::ios::binary | std::ios::trunc);
-
-      if (!out.is_open())
-      {
-        err = "cannot write C++ cell file: " + path.string();
-        return false;
-      }
-
-      out << content;
-
-      if (!out.good())
-      {
-        err = "cannot write C++ cell file: " + path.string();
-        return false;
-      }
-
-      return true;
     }
 
     bool read_text_file(
@@ -286,6 +350,39 @@ namespace vix::note
       }
 
       out = buffer.str();
+      return true;
+    }
+
+    bool write_text_file_if_changed(
+        const std::filesystem::path &path,
+        const std::string &content,
+        std::string &err)
+    {
+      err.clear();
+
+      std::string existing;
+
+      if (read_text_file(path, existing) && existing == content)
+      {
+        return true;
+      }
+
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+
+      if (!out.is_open())
+      {
+        err = "cannot write C++ cell file: " + path.string();
+        return false;
+      }
+
+      out << content;
+
+      if (!out.good())
+      {
+        err = "cannot write C++ cell file: " + path.string();
+        return false;
+      }
+
       return true;
     }
 
@@ -736,15 +833,20 @@ namespace vix::note
         effective_options(options_);
 
     std::string err;
+
     const std::filesystem::path file =
-        make_temp_cpp_file(runOptions, err);
+        make_temp_cpp_file(
+            runOptions,
+            source,
+            {},
+            err);
 
     if (file.empty())
     {
       return NoteResult::failure(err, 1).add_error(err);
     }
 
-    if (!write_text_file(file, source, err))
+    if (!write_text_file_if_changed(file, source, err))
     {
       return NoteResult::failure(err, 1).add_error(err);
     }
@@ -818,7 +920,12 @@ namespace vix::note
     if (!runOptions.keepTemporaryFile)
     {
       std::error_code ec;
-      std::filesystem::remove(file, ec);
+
+      if (!runOptions.projectContext.enabled)
+      {
+        std::filesystem::remove(file, ec);
+      }
+
       std::filesystem::remove(stdoutFile, ec);
       std::filesystem::remove(stderrFile, ec);
     }
