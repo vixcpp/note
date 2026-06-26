@@ -16,16 +16,21 @@
 
 #include <vix/note/web/NoteServer.hpp>
 
+#include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <vector>
 #include <iostream>
 
 #ifdef _WIN32
@@ -41,6 +46,7 @@
 #include <cerrno>
 #include <netdb.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 #endif
 
@@ -543,6 +549,49 @@ namespace vix::note
       shutdown(socket, SHUT_RDWR);
 #endif
     }
+
+    void configure_client_socket(NoteSocket socket)
+    {
+      if (socket == invalid_socket_value)
+      {
+        return;
+      }
+
+#ifdef _WIN32
+      DWORD timeoutMs = 5000;
+
+      setsockopt(
+          socket,
+          SOL_SOCKET,
+          SO_RCVTIMEO,
+          reinterpret_cast<const char *>(&timeoutMs),
+          sizeof(timeoutMs));
+
+      setsockopt(
+          socket,
+          SOL_SOCKET,
+          SO_SNDTIMEO,
+          reinterpret_cast<const char *>(&timeoutMs),
+          sizeof(timeoutMs));
+#else
+      timeval timeout{};
+      timeout.tv_sec = 5;
+
+      setsockopt(
+          socket,
+          SOL_SOCKET,
+          SO_RCVTIMEO,
+          &timeout,
+          sizeof(timeout));
+
+      setsockopt(
+          socket,
+          SOL_SOCKET,
+          SO_SNDTIMEO,
+          &timeout,
+          sizeof(timeout));
+#endif
+    }
   }
 
   class NoteServerRuntime
@@ -558,9 +607,10 @@ namespace vix::note
     NoteServerRuntime(const NoteServerRuntime &) = delete;
     NoteServerRuntime &operator=(const NoteServerRuntime &) = delete;
 
-    void set_routes(NoteRoutes *routes) noexcept
+    void set_routes(NoteRoutes *routes, std::mutex *routeMutex) noexcept
     {
       routes_ = routes;
+      routeMutex_ = routeMutex;
     }
 
     bool running() const noexcept
@@ -570,6 +620,7 @@ namespace vix::note
 
     NoteResult start(
         NoteRoutes &routes,
+        std::mutex &routeMutex,
         std::string_view host,
         std::uint16_t port,
         bool logRequests)
@@ -596,15 +647,29 @@ namespace vix::note
       }
 
       routes_ = &routes;
+      routeMutex_ = &routeMutex;
       serverSocket_ = socket;
       running_.store(true);
       logRequests_ = logRequests;
 
-      worker_ =
+      const std::size_t workerCount = client_worker_count();
+
+      workers_.reserve(workerCount);
+
+      for (std::size_t i = 0; i < workerCount; ++i)
+      {
+        workers_.emplace_back(
+            [this]()
+            {
+              worker_loop();
+            });
+      }
+
+      acceptThread_ =
           std::thread(
               [this]()
               {
-                serve();
+                accept_loop();
               });
 
       return NoteResult::success("note server runtime started");
@@ -612,23 +677,23 @@ namespace vix::note
 
     NoteResult wait()
     {
-      if (!running() && !worker_.joinable())
+      if (!running() && !acceptThread_.joinable())
       {
         return NoteResult::success("note server already stopped");
       }
 
-      if (worker_.joinable())
-      {
-        worker_.join();
-      }
+      join_thread(acceptThread_);
+      join_workers();
 
       running_.store(false);
+      socket_platform_stop();
+
       return NoteResult::success("note server stopped");
     }
 
     NoteResult stop()
     {
-      if (!running() && !worker_.joinable())
+      if (!running() && !acceptThread_.joinable() && workers_.empty())
       {
         return NoteResult::success("note server already stopped");
       }
@@ -644,11 +709,12 @@ namespace vix::note
         serverSocket_ = invalid_socket_value;
       }
 
-      if (worker_.joinable() &&
-          worker_.get_id() != std::this_thread::get_id())
-      {
-        worker_.join();
-      }
+      clientQueueCv_.notify_all();
+      clientQueueSpaceCv_.notify_all();
+
+      join_thread(acceptThread_);
+      join_workers();
+      close_queued_clients();
 
       socket_platform_stop();
 
@@ -656,8 +722,24 @@ namespace vix::note
     }
 
   private:
-    void serve()
+    static std::size_t client_worker_count()
     {
+      const unsigned int hardware = std::thread::hardware_concurrency();
+      const std::size_t available = hardware == 0 ? 4 : hardware;
+
+      return std::clamp<std::size_t>(available, 2, 4);
+    }
+
+    static bool can_handle_without_route_lock(const NoteRouteRequest &request)
+    {
+      return request.method == NoteRouteMethod::Get &&
+             !is_note_api_path(request.path);
+    }
+
+    void accept_loop()
+    {
+      const NoteSocket listenSocket = serverSocket_;
+
       while (running())
       {
         sockaddr_storage clientAddress{};
@@ -666,7 +748,7 @@ namespace vix::note
 
         NoteSocket client =
             accept(
-                serverSocket_,
+                listenSocket,
                 reinterpret_cast<sockaddr *>(&clientAddress),
                 &clientAddressLength);
 
@@ -680,11 +762,77 @@ namespace vix::note
           break;
         }
 
-        handle_client(client);
-        close_note_socket(client);
+        configure_client_socket(client);
+        enqueue_client(client);
       }
 
       running_.store(false);
+      clientQueueCv_.notify_all();
+      clientQueueSpaceCv_.notify_all();
+    }
+
+    void enqueue_client(NoteSocket client)
+    {
+      std::unique_lock<std::mutex> lock(clientQueueMutex_);
+
+      clientQueueSpaceCv_.wait(
+          lock,
+          [this]()
+          {
+            return !running() || clientQueue_.size() < maxQueuedClients;
+          });
+
+      if (!running())
+      {
+        lock.unlock();
+        close_note_socket(client);
+        return;
+      }
+
+      clientQueue_.push_back(client);
+      clientQueueCv_.notify_one();
+    }
+
+    void worker_loop()
+    {
+      while (true)
+      {
+        NoteSocket client = invalid_socket_value;
+
+        {
+          std::unique_lock<std::mutex> lock(clientQueueMutex_);
+
+          clientQueueCv_.wait(
+              lock,
+              [this]()
+              {
+                return !clientQueue_.empty() || !running();
+              });
+
+          if (clientQueue_.empty())
+          {
+            if (!running())
+            {
+              break;
+            }
+
+            continue;
+          }
+
+          client = clientQueue_.front();
+          clientQueue_.pop_front();
+          clientQueueSpaceCv_.notify_one();
+        }
+
+        if (!running())
+        {
+          close_note_socket(client);
+          continue;
+        }
+
+        handle_client(client);
+        close_note_socket(client);
+      }
     }
 
     void handle_client(NoteSocket client)
@@ -708,7 +856,7 @@ namespace vix::note
         }
         else
         {
-          response = routes_->handle(request);
+          response = handle_route_request(request);
         }
       }
 
@@ -730,11 +878,70 @@ namespace vix::note
       (void)send_all(client, payload);
     }
 
+    NoteRouteResponse handle_route_request(const NoteRouteRequest &request)
+    {
+      // Static UI assets are read-only after start(), so they can be served
+      // without blocking behind a long-running API request. API routes share
+      // NoteRoutes, NoteKernel, NoteDocument, and NoteStore state and must be
+      // serialized until Vix Note grows a dedicated NoteJobManager for
+      // non-blocking cell execution. That future job manager should be local to
+      // Vix Note rather than wired directly to vix::async from this server.
+      if (can_handle_without_route_lock(request))
+      {
+        return routes_->handle(request);
+      }
+
+      if (routeMutex_ == nullptr)
+      {
+        return routes_->handle(request);
+      }
+
+      std::lock_guard<std::mutex> lock(*routeMutex_);
+      return routes_->handle(request);
+    }
+
+    static void join_thread(std::thread &thread)
+    {
+      if (thread.joinable() && thread.get_id() != std::this_thread::get_id())
+      {
+        thread.join();
+      }
+    }
+
+    void join_workers()
+    {
+      for (std::thread &worker : workers_)
+      {
+        join_thread(worker);
+      }
+
+      workers_.clear();
+    }
+
+    void close_queued_clients()
+    {
+      std::lock_guard<std::mutex> lock(clientQueueMutex_);
+
+      while (!clientQueue_.empty())
+      {
+        close_note_socket(clientQueue_.front());
+        clientQueue_.pop_front();
+      }
+    }
+
+    static constexpr std::size_t maxQueuedClients = 32;
+
     std::atomic<bool> running_{false};
     NoteSocket serverSocket_{invalid_socket_value};
     NoteRoutes *routes_{nullptr};
+    std::mutex *routeMutex_{nullptr};
     bool logRequests_ = false;
-    std::thread worker_;
+    std::thread acceptThread_;
+    std::vector<std::thread> workers_;
+    std::mutex clientQueueMutex_;
+    std::condition_variable clientQueueCv_;
+    std::condition_variable clientQueueSpaceCv_;
+    std::deque<NoteSocket> clientQueue_;
   };
 
   NoteServer::NoteServer()
@@ -771,14 +978,20 @@ namespace vix::note
   NoteServer::NoteServer(NoteServer &&other) noexcept
       : options_(std::move(other.options_)),
         routes_(std::move(other.routes_)),
+        routeMutex_(std::move(other.routeMutex_)),
         state_(other.state_),
         runtime_(std::move(other.runtime_))
   {
     other.state_ = NoteServerState::Stopped;
 
+    if (!other.routeMutex_)
+    {
+      other.routeMutex_ = std::make_shared<std::mutex>();
+    }
+
     if (runtime_)
     {
-      runtime_->set_routes(&routes_);
+      runtime_->set_routes(&routes_, routeMutex_.get());
     }
   }
 
@@ -793,14 +1006,20 @@ namespace vix::note
 
     options_ = std::move(other.options_);
     routes_ = std::move(other.routes_);
+    routeMutex_ = std::move(other.routeMutex_);
     state_ = other.state_;
     runtime_ = std::move(other.runtime_);
 
     other.state_ = NoteServerState::Stopped;
 
+    if (!other.routeMutex_)
+    {
+      other.routeMutex_ = std::make_shared<std::mutex>();
+    }
+
     if (runtime_)
     {
-      runtime_->set_routes(&routes_);
+      runtime_->set_routes(&routes_, routeMutex_.get());
     }
 
     return *this;
@@ -818,6 +1037,8 @@ namespace vix::note
       return NoteResult::failure("cannot change server options while running", 1)
           .add_error("cannot change server options while running");
     }
+
+    std::lock_guard<std::mutex> lock(*routeMutex_);
 
     options_ = std::move(options);
     routes_.set_options(options_.routeOptions);
@@ -868,6 +1089,7 @@ namespace vix::note
     NoteResult runtimeResult =
         runtime_->start(
             routes_,
+            *routeMutex_,
             options_.host,
             options_.port,
             options_.logRequests);
@@ -964,31 +1186,37 @@ namespace vix::note
 
   void NoteServer::set_document(NoteDocument document)
   {
+    std::lock_guard<std::mutex> lock(*routeMutex_);
     routes_.set_document(std::move(document));
   }
 
   NoteRouteResponse NoteServer::handle(const NoteRouteRequest &request)
   {
+    std::lock_guard<std::mutex> lock(*routeMutex_);
     return routes_.handle(request);
   }
 
   NoteRouteResponse NoteServer::get(std::string_view path)
   {
+    std::lock_guard<std::mutex> lock(*routeMutex_);
     return routes_.get(path);
   }
 
   NoteRouteResponse NoteServer::post(std::string_view path, std::string body)
   {
+    std::lock_guard<std::mutex> lock(*routeMutex_);
     return routes_.post(path, std::move(body));
   }
 
   NoteRouteResponse NoteServer::put(std::string_view path, std::string body)
   {
+    std::lock_guard<std::mutex> lock(*routeMutex_);
     return routes_.put(path, std::move(body));
   }
 
   NoteRouteResponse NoteServer::delete_request(std::string_view path)
   {
+    std::lock_guard<std::mutex> lock(*routeMutex_);
     return routes_.delete_request(path);
   }
 

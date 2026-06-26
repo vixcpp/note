@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -313,6 +314,11 @@ namespace vix::note
      * @brief Route resolver used by the server.
      */
     NoteRoutes routes_;
+
+    /**
+     * @brief Serializes API access to routes_, kernel_, and the active document.
+     */
+    std::shared_ptr<std::mutex> routeMutex_{std::make_shared<std::mutex>()};
 
     /**
      * @brief Current server state.

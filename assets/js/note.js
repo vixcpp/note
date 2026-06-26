@@ -2226,7 +2226,9 @@
       if (isMissingNoteError(error)) {
         removeTabState(path);
 
-        setMessage(`Removed missing note from tabs: ${path}`, "warning");
+        // Silent cleanup: a stale restored tab is internal UI state,
+        // not something that should interrupt the editor.
+        console.debug(`[Vix Note] Removed stale tab: ${path}`);
 
         if (state.activeTabPath) {
           await openNotePath(state.activeTabPath);
@@ -2241,7 +2243,6 @@
 
         return;
       }
-
       setMessage(error.message || "Failed to open note.", "error");
     } finally {
       setBusy(false);

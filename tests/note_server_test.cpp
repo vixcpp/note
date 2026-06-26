@@ -20,8 +20,10 @@
 #include <vix/note/web/NoteServer.hpp>
 
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -164,10 +166,9 @@ namespace
     return response;
   }
 
-  std::string http_request(
+  TestSocket connect_test_socket(
       std::string_view host,
-      std::uint16_t port,
-      const std::string &request)
+      std::uint16_t port)
   {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -217,6 +218,16 @@ namespace
     freeaddrinfo(addresses);
 
     assert(socket != invalid_test_socket);
+    return socket;
+  }
+
+  std::string http_request(
+      std::string_view host,
+      std::uint16_t port,
+      const std::string &request)
+  {
+    TestSocket socket = connect_test_socket(host, port);
+
     assert(send_all(socket, request));
 
     const std::string response = read_all(socket);
@@ -327,6 +338,49 @@ namespace
 
 int main()
 {
+  {
+    vix::note::NoteServerOptions options = make_server_options();
+
+    vix::note::NoteServer server(options);
+
+    assert(server.start().ok());
+
+    TestSocket slowClient =
+        connect_test_socket(options.host, options.port);
+
+    std::ostringstream partialRequest;
+
+    partialRequest << "GET /api/document HTTP/1.1\r\n";
+    partialRequest << "Host: "
+                   << options.host
+                   << "\r\n";
+
+    assert(send_all(slowClient, partialRequest.str()));
+
+    auto fastRequest =
+        std::async(
+            std::launch::async,
+            [&options]()
+            {
+              return http_get(options.host, options.port, "/");
+            });
+
+    if (fastRequest.wait_for(std::chrono::seconds(2)) !=
+        std::future_status::ready)
+    {
+      close_test_socket(slowClient);
+      assert(false && "server should respond while another client is mid-request");
+    }
+
+    const std::string indexResponse = fastRequest.get();
+
+    assert(contains(indexResponse, "HTTP/1.1 200 OK"));
+    assert(contains(indexResponse, "Vix Note"));
+
+    close_test_socket(slowClient);
+    assert(server.stop().ok());
+  }
+
   {
     assert(vix::note::to_string(vix::note::NoteServerState::Stopped) == "stopped");
     assert(vix::note::to_string(vix::note::NoteServerState::Running) == "running");
@@ -610,7 +664,7 @@ int main()
 
     assert(css.ok());
     assert(css.contentType == "text/css; charset=utf-8");
-    assert(contains(css.body, ".note-shell"));
+    assert(contains(css.body, "color-scheme: light"));
 
     vix::note::NoteRouteResponse js =
         server.get("/assets/note.js");
@@ -862,7 +916,7 @@ int main()
 
     assert(contains(cssResponse, "HTTP/1.1 200 OK"));
     assert(contains(cssResponse, "Content-Type: text/css; charset=utf-8"));
-    assert(contains(cssResponse, ".note-shell"));
+    assert(contains(cssResponse, "color-scheme: light"));
 
     const std::string documentResponse =
         http_get(options.host, options.port, "/api/document");
