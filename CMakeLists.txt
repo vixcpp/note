@@ -106,8 +106,7 @@ endif()
 
 target_include_directories(vix_note
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    $<BUILD_INTERFACE:${_VIX_REPLY_DIR}/include>
 )
 
 target_compile_features(vix_note PUBLIC cxx_std_20)
@@ -302,6 +301,11 @@ if(DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   )
 
+  install(
+    DIRECTORY "${_VIX_REPLY_DIR}/include/"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
+
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
     install(
       DIRECTORY assets/
@@ -328,6 +332,11 @@ if(VIX_NOTE_INSTALL AND NOT (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD))
 
   install(
     DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
+
+  install(
+    DIRECTORY "${_VIX_REPLY_DIR}/include/"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   )
 
