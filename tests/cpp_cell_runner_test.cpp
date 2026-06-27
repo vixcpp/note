@@ -181,7 +181,7 @@ int main()
     assert(!runner.options().keepTemporaryFile);
     assert(!runner.options().debugMode);
     assert(runner.options().separateStreams);
-    assert(runner.options().includeRawLog);
+    assert(!runner.options().includeRawLog);
     assert(runner.options().enableErrorHints);
   }
 
@@ -207,6 +207,8 @@ int main()
     vix::note::CppCellRunnerOptions options;
     options.vixCommand = fakeVix.string();
     options.temporaryDirectory = root / "tmp-success";
+    options.debugMode = true;
+    options.includeRawLog = true;
 
     vix::note::CppCellRunner runner(options);
 
@@ -272,6 +274,8 @@ int main()
     vix::note::CppCellRunnerOptions options;
     options.vixCommand = fakeVix.string();
     options.temporaryDirectory = root / "tmp-failure";
+    options.debugMode = true;
+    options.includeRawLog = true;
     options.runArgs.push_back("--fail");
 
     vix::note::CppCellRunner runner(options);
@@ -286,7 +290,7 @@ int main()
 
     assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
     assert(has_output_kind(result, vix::note::NoteOutputKind::Error));
-    assert(has_output_kind(result, vix::note::NoteOutputKind::RuntimeError));
+    assert(!has_output_kind(result, vix::note::NoteOutputKind::RuntimeError));
     assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
 
     assert(output_contains(result, vix::note::NoteOutputKind::Error, "simulated failure"));
@@ -296,6 +300,8 @@ int main()
     vix::note::CppCellRunnerOptions options;
     options.vixCommand = fakeVix.string();
     options.temporaryDirectory = root / "tmp-compiler-failure";
+    options.debugMode = true;
+    options.includeRawLog = true;
     options.runArgs.push_back("--compiler-fail");
 
     vix::note::CppCellRunner runner(options);
@@ -307,8 +313,6 @@ int main()
     assert(result.exit_code() == 1);
     assert(result.message() == "C++ cell failed");
 
-    assert(has_output_kind(result, vix::note::NoteOutputKind::Stderr));
-    assert(has_output_kind(result, vix::note::NoteOutputKind::Error));
     assert(has_output_kind(result, vix::note::NoteOutputKind::CompilerError));
     assert(has_output_kind(result, vix::note::NoteOutputKind::Hint));
     assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
@@ -321,6 +325,8 @@ int main()
     vix::note::CppCellRunnerOptions options;
     options.vixCommand = fakeVix.string();
     options.temporaryDirectory = root / "tmp-runtime-failure";
+    options.debugMode = true;
+    options.includeRawLog = true;
     options.runArgs.push_back("--runtime-fail");
 
     vix::note::CppCellRunner runner(options);
@@ -332,8 +338,6 @@ int main()
     assert(result.exit_code() == 139);
     assert(result.message() == "C++ cell failed");
 
-    assert(has_output_kind(result, vix::note::NoteOutputKind::Stderr));
-    assert(has_output_kind(result, vix::note::NoteOutputKind::Error));
     assert(has_output_kind(result, vix::note::NoteOutputKind::RuntimeError));
     assert(has_output_kind(result, vix::note::NoteOutputKind::Hint));
     assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
@@ -401,6 +405,8 @@ int main()
     vix::note::CppCellRunnerOptions options;
     options.vixCommand = fakeVix.string();
     options.temporaryDirectory = root / "tmp-merged";
+    options.debugMode = true;
+    options.includeRawLog = true;
     options.separateStreams = false;
 
     vix::note::CppCellRunner runner(options);

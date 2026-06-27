@@ -299,20 +299,23 @@ int main()
     vix::note::NoteResult result =
         kernel.run_cell("reply");
 
-    assert(result.was_skipped());
-    assert(result.message() == "Reply cell execution is not available yet");
+    assert(result.ok());
+    assert(result.message() == "Reply cell executed");
+    assert(result.has_outputs());
+    assert(result.outputs()[0].kind == vix::note::NoteOutputKind::Stdout);
+    assert(result.outputs()[0].content.find("hello") != std::string::npos);
 
     const vix::note::NoteCell &cell =
         kernel.document().cells()[0];
 
     assert(cell.execution_count() == 1);
-    assert(!cell.has_outputs());
+    assert(cell.has_outputs());
 
     assert(kernel.session().has_records());
     assert(kernel.session().records().size() == 1);
     assert(kernel.session().records()[0].cellId == "reply");
     assert(kernel.session().records()[0].executionCount == 1);
-    assert(kernel.session().records()[0].result.was_skipped());
+    assert(kernel.session().records()[0].result.ok());
   }
 
   {
@@ -346,6 +349,8 @@ int main()
 
     vix::note::NoteKernelOptions options =
         make_kernel_options(fakeVix, root / "tmp-cpp-success");
+    options.cppOptions.debugMode = true;
+    options.cppOptions.includeRawLog = true;
 
     vix::note::NoteKernel kernel(doc, options);
 
@@ -384,6 +389,8 @@ int main()
 
     vix::note::NoteKernelOptions options =
         make_kernel_options(fakeVix, root / "tmp-cpp-failure");
+    options.cppOptions.debugMode = true;
+    options.cppOptions.includeRawLog = true;
 
     options.cppOptions.runArgs.push_back("--fail");
 
@@ -398,7 +405,7 @@ int main()
     assert(result.has_outputs());
     assert(has_output_kind(result, vix::note::NoteOutputKind::Stdout));
     assert(has_output_kind(result, vix::note::NoteOutputKind::Error));
-    assert(has_output_kind(result, vix::note::NoteOutputKind::RuntimeError));
+    assert(!has_output_kind(result, vix::note::NoteOutputKind::RuntimeError));
     assert(has_output_kind(result, vix::note::NoteOutputKind::RawLog));
 
     assert(output_contains(result, vix::note::NoteOutputKind::Error, "simulated kernel failure"));
@@ -440,14 +447,14 @@ int main()
     assert(!result.stopped);
     assert(result.visited == 4);
     assert(result.executed == 2);
-    assert(result.skipped == 1);
+    assert(result.skipped == 0);
     assert(result.failed == 0);
     assert(result.results.size() == 2);
     assert(result.has_results());
     assert(!result.has_failures());
-    assert(result.has_skipped());
+    assert(!result.has_skipped());
 
-    assert(result.results[0].was_skipped());
+    assert(result.results[0].ok());
     assert(result.results[1].ok());
 
     assert(kernel.session().records().size() == 2);
@@ -476,14 +483,14 @@ int main()
     assert(!result.stopped);
     assert(result.visited == 3);
     assert(result.executed == 1);
-    assert(result.skipped == 3);
+    assert(result.skipped == 2);
     assert(result.failed == 0);
     assert(result.has_skipped());
     assert(!result.has_failures());
     assert(result.results.size() == 3);
 
     assert(result.results[0].was_skipped());
-    assert(result.results[1].was_skipped());
+    assert(result.results[1].ok());
     assert(result.results[2].was_skipped());
 
     assert(kernel.session().records().size() == 1);

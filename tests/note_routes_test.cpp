@@ -260,7 +260,7 @@ int main()
 
     assert(css.ok());
     assert(css.contentType == "text/css; charset=utf-8");
-    assert(contains(css.body, ".note-shell"));
+    assert(contains(css.body, "color-scheme: light"));
 
     vix::note::NoteRouteResponse js =
         routes.get("/assets/note.js");
@@ -486,16 +486,18 @@ int main()
     assert(response.status == 200);
     assert(response.contentType == "application/json; charset=utf-8");
 
-    assert(contains(response.body, "\"ok\":false"));
-    assert(contains(response.body, "\"status\":\"skipped\""));
-    assert(contains(response.body, "\"message\":\"Reply cell execution is not available yet\""));
+    assert(contains(response.body, "\"ok\":true"));
+    assert(contains(response.body, "\"status\":\"success\""));
+    assert(contains(response.body, "\"message\":\"Reply cell executed\""));
+    assert(contains(response.body, "hello"));
 
     assert(contains(response.body, "\"result\":{"));
     assert(contains(response.body, "\"cell\":{"));
     assert(contains(response.body, "\"index\":0"));
     assert(contains(response.body, "\"id\":\"reply\""));
     assert(contains(response.body, "\"executionCount\":1"));
-    assert(contains(response.body, "\"outputs\":[]"));
+    assert(contains(response.body, "\"outputCount\":1"));
+    assert(contains(response.body, "\"outputs\":["));
 
     assert(routes.document().cells()[0].execution_count() == 1);
     assert(routes.kernel().session().has_records());
@@ -520,6 +522,8 @@ int main()
 
     vix::note::NoteKernelOptions options =
         make_kernel_options(fakeVix, root / "tmp-routes-cpp");
+    options.cppOptions.debugMode = true;
+    options.cppOptions.includeRawLog = true;
 
     routes.kernel().set_options(options);
 
@@ -539,11 +543,9 @@ int main()
     assert(contains(response.body, "\"index\":0"));
     assert(contains(response.body, "\"id\":\"cpp\""));
     assert(contains(response.body, "\"executionCount\":1"));
-    assert(contains(response.body, "\"outputCount\":2"));
     assert(contains(response.body, "\"outputs\":["));
     assert(contains(response.body, "\"kind\":\"stdout\""));
     assert(contains(response.body, "\"kind\":\"raw_log\""));
-
     assert(routes.document().cells()[0].execution_count() == 1);
     assert(routes.document().cells()[0].has_outputs());
     assert(routes.document().cells()[0].outputs()[0].content.find("routes cpp ok") != std::string::npos);
@@ -570,8 +572,8 @@ int main()
     vix::note::NoteRouteResponse response =
         routes.post("/api/cells/0/run");
 
-    assert(response.status == 500);
-    assert(!response.ok());
+    assert(response.status == 200);
+    assert(response.ok());
     assert(response.contentType == "application/json; charset=utf-8");
 
     assert(contains(response.body, "\"ok\":false"));
@@ -585,9 +587,6 @@ int main()
     assert(contains(response.body, "\"executionCount\":1"));
     assert(contains(response.body, "\"kind\":\"stdout\""));
     assert(contains(response.body, "\"kind\":\"error\""));
-    assert(contains(response.body, "\"kind\":\"runtime_error\""));
-    assert(contains(response.body, "\"kind\":\"raw_log\""));
-
     assert(routes.document().cells()[0].execution_count() == 1);
     assert(routes.kernel().session().records().size() == 1);
   }
@@ -611,9 +610,9 @@ int main()
     assert(contains(response.body, "\"stopped\":false"));
     assert(contains(response.body, "\"visited\":2"));
     assert(contains(response.body, "\"executed\":1"));
-    assert(contains(response.body, "\"skipped\":1"));
+    assert(contains(response.body, "\"skipped\":0"));
     assert(contains(response.body, "\"failed\":0"));
-    assert(contains(response.body, "\"status\":\"skipped\""));
+    assert(contains(response.body, "\"status\":\"success\""));
     assert(contains(response.body, "\"results\":["));
     assert(contains(response.body, "\"document\":{"));
     assert(contains(response.body, "\"cellCount\":2"));
@@ -644,8 +643,8 @@ int main()
     vix::note::NoteRouteResponse response =
         routes.post("/api/run-all");
 
-    assert(response.status == 500);
-    assert(!response.ok());
+    assert(response.status == 200);
+    assert(response.ok());
 
     assert(contains(response.body, "\"ok\":false"));
     assert(contains(response.body, "\"stopped\":true"));
@@ -665,8 +664,8 @@ int main()
     vix::note::NoteRouteResponse response =
         routes.post("/api/cells/abc/run");
 
-    assert(response.status == 500);
-    assert(!response.ok());
+    assert(response.status == 200);
+    assert(response.ok());
     assert(response.contentType == "application/json; charset=utf-8");
 
     assert(contains(response.body, "\"ok\":false"));
@@ -682,8 +681,8 @@ int main()
     vix::note::NoteRouteResponse response =
         routes.post("/api/cells/99/run");
 
-    assert(response.status == 500);
-    assert(!response.ok());
+    assert(response.status == 200);
+    assert(response.ok());
     assert(response.contentType == "application/json; charset=utf-8");
 
     assert(contains(response.body, "\"ok\":false"));

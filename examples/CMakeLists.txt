@@ -12,11 +12,17 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-set(VIX_NOTE_EXAMPLE_FILES
-  hello.vixnote
-  learning_cpp.vixnote
-  vix_ui_note.vixnote
+file(GLOB VIX_NOTE_EXAMPLE_FILES
+  CONFIGURE_DEPENDS
+  RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/*.vixnote"
 )
+
+list(SORT VIX_NOTE_EXAMPLE_FILES)
+
+if(NOT VIX_NOTE_EXAMPLE_FILES)
+  message(FATAL_ERROR "[note/examples] no .vixnote example files found in: ${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 
 set(VIX_NOTE_EXAMPLES_OUTPUT_DIR
   "${CMAKE_CURRENT_BINARY_DIR}/vixnote"

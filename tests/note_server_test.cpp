@@ -757,11 +757,12 @@ int main()
     assert(response.status == 200);
     assert(response.contentType == "application/json; charset=utf-8");
 
-    assert(contains(response.body, "\"ok\":false"));
+    assert(contains(response.body, "\"ok\":true"));
     assert(contains(response.body, "\"result\":{"));
     assert(contains(response.body, "\"cell\":{"));
-    assert(contains(response.body, "\"status\":\"skipped\""));
-    assert(contains(response.body, "\"message\":\"Reply cell execution is not available yet\""));
+    assert(contains(response.body, "\"status\":\"success\""));
+    assert(contains(response.body, "\"message\":\"Reply cell executed\""));
+    assert(contains(response.body, "hello"));
     assert(contains(response.body, "\"executionCount\":1"));
 
     assert(server.document().cells()[0].execution_count() == 1);
@@ -786,9 +787,9 @@ int main()
     assert(contains(response.body, "\"ok\":true"));
     assert(contains(response.body, "\"visited\":2"));
     assert(contains(response.body, "\"executed\":1"));
-    assert(contains(response.body, "\"skipped\":1"));
+    assert(contains(response.body, "\"skipped\":0"));
     assert(contains(response.body, "\"failed\":0"));
-    assert(contains(response.body, "\"status\":\"skipped\""));
+    assert(contains(response.body, "\"status\":\"success\""));
     assert(contains(response.body, "\"document\":{"));
     assert(contains(response.body, "\"cellCount\":2"));
 
@@ -958,9 +959,9 @@ int main()
     assert(contains(runAllResponse, "\"ok\":true"));
     assert(contains(runAllResponse, "\"visited\":2"));
     assert(contains(runAllResponse, "\"executed\":1"));
-    assert(contains(runAllResponse, "\"skipped\":1"));
+    assert(contains(runAllResponse, "\"skipped\":0"));
     assert(contains(runAllResponse, "\"failed\":0"));
-    assert(contains(runAllResponse, "\"status\":\"skipped\""));
+    assert(contains(runAllResponse, "\"status\":\"success\""));
     assert(contains(runAllResponse, "\"document\":{"));
     assert(contains(runAllResponse, "\"cellCount\":2"));
     assert(contains(runAllResponse, "\"executionCount\":1"));
