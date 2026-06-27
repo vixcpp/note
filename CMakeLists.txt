@@ -106,7 +106,8 @@ endif()
 
 target_include_directories(vix_note
   PUBLIC
-    $<BUILD_INTERFACE:${_VIX_REPLY_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 target_compile_features(vix_note PUBLIC cxx_std_20)
@@ -178,8 +179,8 @@ if(EXISTS "${_VIX_REPLY_DIR}/CMakeLists.txt")
   target_sources(vix_note PRIVATE ${VIX_NOTE_REPLY_SOURCES})
 
   target_include_directories(vix_note
-    PRIVATE
-      "${_VIX_REPLY_DIR}/include"
+    PUBLIC
+      $<BUILD_INTERFACE:${_VIX_REPLY_DIR}/include>
   )
 
   target_compile_definitions(vix_note
