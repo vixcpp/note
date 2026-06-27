@@ -64,6 +64,7 @@ env:
     git
     curl
     ca-certificates
+    nlohmann-json3-dev
   BUILD_JOBS: 2
   VIX_GIT_BRANCH: dev
 
