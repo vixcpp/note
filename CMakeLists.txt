@@ -183,6 +183,28 @@ if(EXISTS "${_VIX_REPLY_DIR}/CMakeLists.txt")
       $<BUILD_INTERFACE:${_VIX_REPLY_DIR}/include>
   )
 
+  find_package(nlohmann_json CONFIG QUIET)
+
+  if(nlohmann_json_FOUND)
+    target_link_libraries(vix_note
+      PRIVATE
+        nlohmann_json::nlohmann_json
+    )
+  else()
+    find_path(VIX_NOTE_NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp)
+
+    if(VIX_NOTE_NLOHMANN_JSON_INCLUDE_DIR)
+      target_include_directories(vix_note
+        PRIVATE
+          "${VIX_NOTE_NLOHMANN_JSON_INCLUDE_DIR}"
+      )
+    else()
+      message(FATAL_ERROR
+        "[note] missing nlohmann/json.hpp required by embedded reply runtime"
+      )
+    endif()
+  endif()
+
   target_compile_definitions(vix_note
     PRIVATE
       VIX_NOTE_HAS_REPLY=1
