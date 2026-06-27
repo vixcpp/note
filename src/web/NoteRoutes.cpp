@@ -1122,10 +1122,17 @@ namespace vix::note
       const std::optional<std::size_t> index =
           json_size_field(request.body, "index");
 
-      const bool inserted =
-          index
-              ? doc.insert_cell(*index, std::move(cell))
-              : (doc.add_cell(std::move(cell)), true);
+      bool inserted = false;
+
+      if (index)
+      {
+        inserted = doc.insert_cell(*index, std::move(cell));
+      }
+      else
+      {
+        doc.add_cell(std::move(cell));
+        inserted = true;
+      }
 
       if (!inserted)
       {
