@@ -13,10 +13,15 @@
  *   POST   /api/document/new          { path, title }
  *   POST   /api/document/open         { path }
  *   POST   /api/directory/create      { path }
+ *   POST   /api/directory/list        { path }
+ *   POST   /api/path/delete           { path, recursive }
+ *   POST   /api/path/rename           { path, newName }
  *
  * Goals: one cell = one DOM node (no duplication), stable status bar,
- * custom modals (no native prompt()), VS Code-style activity bar +
- * explorer + open tabs, a notebook toolbar scoped to the editor zone.
+ * VS Code-style activity bar + explorer + open tabs, a notebook toolbar
+ * scoped to the editor zone, and — new in this revision — VS Code-style
+ * INLINE creation of files and folders directly inside the explorer tree
+ * (no modal pop-ups for "New note" / "New folder").
  *
  * No framework, no external dependency, vanilla JS only.
  *
@@ -37,7 +42,7 @@
     sidebarCollapsed: false,
     sidebarWidth: 260,
     focusMode: false,
-    activePanel: "explorer", // explorer | tabs
+    activePanel: "explorer", // explorer | problems
     // Explorer entries are loaded from the local backend directory API.
     // Tabs stay session-local because open editor buffers are UI state.
     explorer: {
@@ -54,9 +59,21 @@
 
       // Directory paths visually expanded in the tree.
       expandedDirs: new Set(["."]),
+
+      // VS Code-style inline create. Null when no draft is active.
+      // { kind: 'file'|'dir', parentPath: string, error: string|null }
+      draft: null,
     },
     tabs: [], // [{ path, title, dirty, doc? }]
     activeTabPath: null,
+
+    // Diagnostics / Problems. A pure projection of NoteResult outputs for the
+    // active note. Never persisted: diagnostics belong to the live run only.
+    diagnostics: {
+      status: "idle", // idle | running | success | failed
+      items: [], // [{ id, cellId, cellLabel, severity, kind, message, ts }]
+      byCell: new Map(), // cellId -> count of error-severity items
+    },
   };
 
   const DEFAULT_SIDEBAR_WIDTH = 260;
@@ -68,8 +85,6 @@
 
   const sel = {
     cells: "[data-note-cells]",
-    title: "[data-note-title]",
-    document: "[data-note-document]",
     project: "[data-note-project]",
     cellCount: "[data-note-cell-count]",
     execCount: "[data-note-exec-count]",
@@ -86,8 +101,13 @@
     explorerCount: "[data-explorer-count]",
     explorerSearch: "[data-explorer-search]",
     tabsBar: "[data-tabs-bar]",
-    openTabsList: "[data-open-tabs-list]",
-    openTabsCount: "[data-open-tabs-count]",
+    problemsList: "[data-problems-list]",
+    problemsCount: "[data-problems-count]",
+    problemsSummary: "[data-problems-summary]",
+    problemsSummaryText: "[data-problems-summary-text]",
+    problemsBadge: "[data-activity-problems-badge]",
+    statusProblems: "[data-status-problems]",
+    statusProblemsCount: "[data-status-problems-count]",
   };
 
   const $ = (s, root = document) => root.querySelector(s);
@@ -124,33 +144,132 @@
     return String(n).padStart(2, "0");
   }
 
-  function suggestedNotePath(dir = null) {
+  function suggestedNoteName() {
     const d = new Date();
-
     const stamp =
       `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}` +
       `_${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
-
-    const folder = normalizeExplorerPath(
-      dir ||
-        state.explorer.selectedDirPath ||
-        state.explorer.currentPath ||
-        parentPath(currentDocPath()) ||
-        ".",
-    );
-
-    if (!folder || folder === ".") {
-      return `note_${stamp}.vixnote`;
-    }
-
-    return `${folder}/note_${stamp}.vixnote`;
+    return `note_${stamp}.vixnote`;
   }
+
   function baseName(path) {
     return (
       String(path || "")
         .split(/[\\/]/)
         .pop() || String(path || "")
     );
+  }
+
+  function stripExtension(name) {
+    const base = baseName(name);
+    const dot = base.lastIndexOf(".");
+    return dot > 0 ? base.slice(0, dot) : base;
+  }
+
+  function titleFromFileName(name) {
+    const stem = stripExtension(name).replace(/[_-]+/g, " ").trim();
+    if (!stem) return "New Note";
+    return stem.replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function noteTitleFromPath(path) {
+    return titleFromFileName(baseName(path));
+  }
+
+  function defaultIntroSource(title) {
+    return `# ${title}\n\nStart writing your lesson here.`;
+  }
+
+  function isDefaultIntroSource(source, title) {
+    const text = String(source || "").trim();
+
+    return (
+      text === `# ${title}\n\nStart writing your lesson here.` ||
+      text === `# ${title}\n\nStart writing your note here.`
+    );
+  }
+
+  async function retitleActiveDocumentAfterRename(oldPath, newPath, type) {
+    if (type !== "file") {
+      return;
+    }
+
+    if (!String(newPath || "").endsWith(".vixnote")) {
+      return;
+    }
+
+    if (!state.document) {
+      return;
+    }
+
+    if (
+      normalizeExplorerPath(state.document.path) !==
+      normalizeExplorerPath(oldPath)
+    ) {
+      return;
+    }
+
+    const oldTitle = noteTitleFromPath(oldPath);
+    const newTitle = noteTitleFromPath(newPath);
+    const currentTitle = String(state.document.title || "").trim();
+
+    /*
+     * Only auto-retitle notes that still use the generated title.
+     * If the user gave the note a custom title, do not overwrite it.
+     */
+    if (currentTitle && currentTitle !== oldTitle) {
+      state.document.path = newPath;
+      document.title = `${currentTitle} · Vix Note`;
+      return;
+    }
+
+    state.document.path = newPath;
+    state.document.title = newTitle;
+
+    document.title = `${newTitle} · Vix Note`;
+
+    const tab = activeTab();
+    if (tab) {
+      tab.title = newTitle;
+    }
+
+    const first = cells()[0];
+
+    if (
+      first &&
+      normalizeKind(first.kind) === "markdown" &&
+      isDefaultIntroSource(first.source, oldTitle)
+    ) {
+      first.source = defaultIntroSource(newTitle);
+
+      await api(`/api/cells/${encodeURIComponent(first.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          kind: first.kind,
+          source: first.source,
+        }),
+      });
+    }
+
+    await api("/api/document/update", {
+      method: "POST",
+      body: JSON.stringify({
+        title: newTitle,
+        save: true,
+      }),
+    });
+
+    renderDocument(
+      {
+        ok: true,
+        document: state.document,
+      },
+      {
+        fullRepaint: true,
+      },
+    );
+
+    persistTabs();
   }
 
   function kindLabel(kind) {
@@ -216,6 +335,10 @@
     if (kind === "success" || kind === "info") {
       messageTimer = setTimeout(() => setMessage(""), 2600);
     }
+  }
+
+  function clearMessageQuietly() {
+    setMessage("");
   }
 
   function setBusy(busy) {
@@ -373,14 +496,15 @@
       });
     }
 
-    if (normalized && normalized.endsWith(".vixnote")) {
-      touchExplorerEntry(normalized, "file", baseName(normalized), {
-        modified: Date.now(),
-        openable: true,
-        extension: ".vixnote",
-      });
-    }
-
+    /*
+     * Important:
+     * Do NOT create a fake explorer file here.
+     *
+     * The explorer must only show files returned by /api/directory/list
+     * or files explicitly created/opened through the backend.
+     *
+     * Unsaved notes live only in the editor/tabs, not in the disk explorer.
+     */
     renderExplorer();
   }
 
@@ -494,6 +618,20 @@
     );
   }
 
+  function isVirtualUnsavedDocument(doc) {
+    const path = normalizeExplorerPath(doc?.path || "");
+    const title = String(doc?.title || "")
+      .trim()
+      .toLowerCase();
+
+    return (
+      !path ||
+      path === "untitled.vixnote" ||
+      path === "untitled" ||
+      title === "tmp"
+    );
+  }
+
   function buildExplorerTreeRows(parent = ".", depth = 0, rows = []) {
     const parentPathValue = normalizeExplorerPath(parent);
 
@@ -510,6 +648,9 @@
         ...root,
         depth: 0,
       });
+
+      // Draft directly under root renders right after the root row.
+      pushDraftRowIfMatches(".", 1, rows);
     }
 
     if (
@@ -530,11 +671,32 @@
       });
 
       if (child.type === "dir" && state.explorer.expandedDirs.has(path)) {
+        // Draft directly inside this expanded directory renders as the
+        // first child row of the directory.
+        pushDraftRowIfMatches(path, depth + 2, rows);
         buildExplorerTreeRows(path, depth + 1, rows);
+      } else if (child.type === "dir") {
+        // Collapsed directory: still allow a draft inside it (it forces
+        // an expand when the draft is started, so this is mostly defensive).
+        pushDraftRowIfMatches(path, depth + 2, rows);
       }
     }
 
     return rows;
+  }
+
+  function pushDraftRowIfMatches(parentPathValue, depth, rows) {
+    const draft = state.explorer.draft;
+    if (!draft) return;
+    if (normalizeExplorerPath(draft.parentPath) !== parentPathValue) return;
+
+    rows.push({
+      isDraft: true,
+      draftKind: draft.kind,
+      path: `__draft__:${parentPathValue}`,
+      type: draft.kind === "dir" ? "dir" : "file",
+      depth,
+    });
   }
 
   function explorerTreeRows() {
@@ -552,6 +714,7 @@
     /*
      * Search mode: show matching entries with their natural depth.
      * This keeps search simple while normal mode stays a real tree.
+     * Inline drafts are not shown while filtering.
      */
     return Array.from(state.explorer.entries.values())
       .filter(shouldShowEntry)
@@ -1074,8 +1237,6 @@
     state.kernel = "idle";
     state.activeTabPath = null;
 
-    setText(sel.title, "No open note");
-    setText(sel.document, "No open notes");
     setText(sel.cellCount, "0");
     setText(sel.execCount, "0");
     setText(sel.statusPosition, "Cell 0 of 0");
@@ -1083,6 +1244,8 @@
     setText(sel.statusMode, "Command");
 
     document.title = "Vix Note";
+
+    if (state.diagnostics) clearDiagnostics();
 
     renderEmpty(
       "No open note. Open a note from the explorer or create a new one.",
@@ -1165,7 +1328,6 @@
         desired.push([insertBarOf(prev), prev]);
         existing.delete(id);
       } else if (prev && state.editing && state.selectedId === id) {
-        // Editing this cell: keep its textarea, just refresh outputs.
         patchCellOutputs(prev, cell);
         prev.dataset.sig = sig;
         desired.push([insertBarOf(prev), prev]);
@@ -1175,7 +1337,6 @@
         const bar = nodes[0];
         const cellEl = nodes[1];
         if (cellEl && cellEl.dataset) cellEl.dataset.sig = sig;
-        // Remove the stale node (and its bar) before re-inserting fresh.
         if (prev) {
           const oldBar = insertBarOf(prev);
           if (oldBar) oldBar.remove();
@@ -1186,15 +1347,12 @@
       }
     }
 
-    // Remove any leftover nodes that are no longer in the model.
     for (const [, el] of existing) {
       const bar = insertBarOf(el);
       if (bar) bar.remove();
       el.remove();
     }
 
-    // Re-order to match desired sequence. appendChild moves existing nodes
-    // (no clone), preserving textarea + caret on reused cells.
     const frag = document.createDocumentFragment();
     for (const [bar, cellEl] of desired) {
       if (bar) frag.appendChild(bar);
@@ -1215,30 +1373,22 @@
     const count = Number(doc.cellCount || (doc.cells ? doc.cells.length : 0));
     const project = doc.project || null;
 
-    setText(sel.title, title);
-    setText(sel.document, baseName(doc.path) || `${title}.vixnote`);
     setText(sel.project, projectLabel(project));
     setText(sel.cellCount, String(count));
     setText(sel.execCount, String(executedCount()));
     document.title = `${title} · Vix Note`;
 
-    // Keep tab + explorer state in sync with the now-active document.
-    if (doc.path) {
+    if (doc.path && !isVirtualUnsavedDocument(doc)) {
       syncActiveTab({
         ...doc,
         title,
       });
 
-      touchExplorerEntry(doc.path, "file", baseName(doc.path), {
-        openable: true,
-        extension: ".vixnote",
-      });
-
-      renderExplorer();
       renderOpenTabs();
       renderTabsBar();
+    } else {
+      renderTabsBar();
     }
-
     const container = $(sel.cells);
     if (!container) return;
     const list = cells();
@@ -1271,6 +1421,14 @@
     autosizeAll();
     syncToolbarKind();
     updateStatusBar();
+
+    // Cells may have been added/removed/reordered; prune stale diagnostics
+    // and re-apply problem badges to the freshly painted cells.
+    if (state.diagnostics && state.diagnostics.items.length) {
+      recomputeDiagnosticsState();
+    } else {
+      refreshCellProblemBadges();
+    }
   }
 
   /* ==========================================================
@@ -1306,37 +1464,22 @@
 
   function updateHighlight(textarea) {
     const wrap = textarea.closest(".vn-Editor__wrap");
-
-    if (!wrap) {
-      return;
-    }
-
+    if (!wrap) return;
     const hl = $("[data-highlight]", wrap);
-
-    if (!hl) {
-      return;
-    }
-
+    if (!hl) return;
     const cellEl = textarea.closest(".vn-Cell");
     const kind = cellEl ? cellEl.dataset.kind : "cpp";
-
     hl.innerHTML = tokenizeCode(textarea.value, kind);
   }
 
   function syncScroll(textarea) {
     const wrap = textarea.closest(".vn-Editor__wrap");
-
-    if (!wrap) {
-      return;
-    }
-
+    if (!wrap) return;
     const hl = $("[data-highlight]", wrap);
-
     if (hl) {
       hl.scrollTop = textarea.scrollTop;
       hl.scrollLeft = textarea.scrollLeft;
     }
-
     updateLineFocus(textarea);
   }
 
@@ -1347,7 +1490,6 @@
     const lines = before.split("\n");
     const line = lines.length;
     const column = lines[lines.length - 1].length + 1;
-
     return { line, column };
   }
 
@@ -1358,24 +1500,14 @@
 
   function updateLineFocus(textarea) {
     const wrap = textarea.closest(".vn-Editor__wrap");
-
-    if (!wrap) {
-      return;
-    }
-
+    if (!wrap) return;
     const focus = $("[data-line-focus]", wrap);
-
-    if (!focus) {
-      return;
-    }
-
+    if (!focus) return;
     const info = textareaLineInfo(textarea);
     const style = window.getComputedStyle(textarea);
     const lineHeight = Number.parseFloat(style.lineHeight) || 22;
     const paddingTop = Number.parseFloat(style.paddingTop) || 0;
-
     const top = paddingTop + (info.line - 1) * lineHeight - textarea.scrollTop;
-
     focus.style.transform = `translateY(${top}px)`;
     focus.style.height = `${lineHeight}px`;
   }
@@ -1387,33 +1519,20 @@
     updateCursorStatus(textarea);
 
     const cellEl = textarea.closest(".vn-Cell");
-
-    if (!cellEl) {
-      return;
-    }
+    if (!cellEl) return;
 
     const cell = findCell(cellEl.dataset.cellId);
-
-    if (cell) {
-      cell.source = textarea.value;
-    }
+    if (cell) cell.source = textarea.value;
 
     setDirty(true);
 
     const kind = cellEl.dataset.kind;
-
     if (kind === "markdown") {
       const rendered = $("[data-rendered]", cellEl);
-
-      if (rendered) {
-        rendered.innerHTML = renderMarkdown(textarea.value);
-      }
+      if (rendered) rendered.innerHTML = renderMarkdown(textarea.value);
     } else if (kind === "html") {
       const rendered = $("[data-rendered]", cellEl);
-
-      if (rendered) {
-        rendered.innerHTML = String(textarea.value || "");
-      }
+      if (rendered) rendered.innerHTML = String(textarea.value || "");
     }
   }
 
@@ -1421,14 +1540,9 @@
     const value = textarea.value;
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-
     let lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
     let lineEnd = value.indexOf("\n", end);
-
-    if (lineEnd === -1) {
-      lineEnd = value.length;
-    }
-
+    if (lineEnd === -1) lineEnd = value.length;
     return { lineStart, lineEnd, start, end };
   }
 
@@ -1439,10 +1553,8 @@
 
     if (start === end) {
       textarea.value = value.slice(0, start) + EDITOR_INDENT + value.slice(end);
-
       textarea.selectionStart = textarea.selectionEnd =
         start + EDITOR_INDENT.length;
-
       markTextareaChanged(textarea);
       return;
     }
@@ -1454,11 +1566,9 @@
 
     textarea.value =
       value.slice(0, lineStart) + indented + value.slice(lineEnd);
-
     textarea.selectionStart = start + EDITOR_INDENT.length;
     textarea.selectionEnd =
       end + EDITOR_INDENT.length * selected.split("\n").length;
-
     markTextareaChanged(textarea);
   }
 
@@ -1474,60 +1584,30 @@
     const outdented = lines
       .map((line, index) => {
         let remove = 0;
-
-        if (line.startsWith(EDITOR_INDENT)) {
-          remove = EDITOR_INDENT.length;
-        } else if (line.startsWith("\t")) {
-          remove = 1;
-        } else if (line.startsWith(" ")) {
-          remove = 1;
-        }
-
-        if (index === 0) {
-          removedBeforeStart = remove;
-        }
-
+        if (line.startsWith(EDITOR_INDENT)) remove = EDITOR_INDENT.length;
+        else if (line.startsWith("\t")) remove = 1;
+        else if (line.startsWith(" ")) remove = 1;
+        if (index === 0) removedBeforeStart = remove;
         removedTotal += remove;
-
         return line.slice(remove);
       })
       .join("\n");
 
     textarea.value =
       value.slice(0, lineStart) + outdented + value.slice(lineEnd);
-
     textarea.selectionStart = Math.max(lineStart, start - removedBeforeStart);
     textarea.selectionEnd = Math.max(
       textarea.selectionStart,
       end - removedTotal,
     );
-
     markTextareaChanged(textarea);
-  }
-
-  function lineBoundsAtCursor(textarea) {
-    const value = textarea.value;
-    const cursor = textarea.selectionStart;
-
-    const start = value.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
-    let end = value.indexOf("\n", cursor);
-
-    if (end === -1) {
-      end = value.length;
-    }
-
-    return { start, end };
   }
 
   function toggleCommentTextarea(textarea) {
     const cellEl = textarea.closest(".vn-Cell");
     const kind = normalizeKind(cellEl ? cellEl.dataset.kind : "cpp");
-
     const marker = kind === "html" ? null : kind === "markdown" ? "> " : "// ";
-
-    if (!marker) {
-      return;
-    }
+    if (!marker) return;
 
     const value = textarea.value;
     const { lineStart, lineEnd, start, end } = selectedLineRange(textarea);
@@ -1542,40 +1622,30 @@
 
     const next = lines
       .map((line) => {
-        if (line.trim() === "") {
-          return line;
-        }
-
+        if (line.trim() === "") return line;
         const indent = line.match(/^\s*/)?.[0] || "";
-
         if (allCommented) {
           const afterIndent = line.slice(indent.length);
-
           if (afterIndent.startsWith(marker)) {
             delta -= marker.length;
             return indent + afterIndent.slice(marker.length);
           }
-
           if (afterIndent.startsWith(marker.trim())) {
             delta -= marker.trim().length;
             return (
               indent + afterIndent.slice(marker.trim().length).replace(/^ /, "")
             );
           }
-
           return line;
         }
-
         delta += marker.length;
         return indent + marker + line.slice(indent.length);
       })
       .join("\n");
 
     textarea.value = value.slice(0, lineStart) + next + value.slice(lineEnd);
-
     textarea.selectionStart = start;
     textarea.selectionEnd = Math.max(start, end + delta);
-
     markTextareaChanged(textarea);
   }
 
@@ -1586,22 +1656,14 @@
 
     let pos = 0;
     let lineIndex = 0;
-
     for (; lineIndex < lines.length; ++lineIndex) {
       const nextPos = pos + lines[lineIndex].length + 1;
-
-      if (cursor < nextPos) {
-        break;
-      }
-
+      if (cursor < nextPos) break;
       pos = nextPos;
     }
 
     const target = lineIndex + direction;
-
-    if (target < 0 || target >= lines.length) {
-      return;
-    }
+    if (target < 0 || target >= lines.length) return;
 
     const currentLine = lines[lineIndex];
     lines[lineIndex] = lines[target];
@@ -1611,14 +1673,11 @@
 
     const movedBy =
       direction < 0 ? -(lines[lineIndex].length + 1) : lines[target].length + 1;
-
     const nextCursor = Math.max(
       0,
       Math.min(textarea.value.length, cursor + movedBy),
     );
-
     textarea.selectionStart = textarea.selectionEnd = nextCursor;
-
     markTextareaChanged(textarea);
   }
 
@@ -1662,51 +1721,30 @@
 
   function exitEditMode(options = {}) {
     const repaint = options.repaint !== false;
-
     state.editing = false;
-
     if (app) {
       app.classList.remove("is-editing");
       app.classList.add("is-command");
     }
-
     setText(sel.statusMode, "Command");
-
     if (repaint) {
       renderDocument(
-        {
-          ok: true,
-          document: state.document,
-        },
-        {
-          fullRepaint: true,
-        },
+        { ok: true, document: state.document },
+        { fullRepaint: true },
       );
     }
   }
 
   function toggleCellEdit(cellId) {
     const id = String(cellId || "");
-
-    if (!id) {
-      return;
-    }
-
+    if (!id) return;
     if (state.editing && state.selectedId === id) {
       const cellEl = cellElById(id);
-
-      if (cellEl) {
-        localUpdateFromDom(cellEl);
-      }
-
+      if (cellEl) localUpdateFromDom(cellEl);
       exitEditMode();
       return;
     }
-
-    selectCell(id, {
-      edit: true,
-      focus: true,
-    });
+    selectCell(id, { edit: true, focus: true });
   }
 
   function enterCommandMode() {
@@ -1729,13 +1767,99 @@
     if (el) el.scrollIntoView({ block: "nearest" });
   }
 
+  function toolbarKindLabel(kind) {
+    switch (normalizeKind(kind)) {
+      case "cpp":
+        return "C++";
+      case "reply":
+        return "Reply";
+      case "markdown":
+        return "Markdown";
+      case "html":
+        return "HTML";
+      default:
+        return "C++";
+    }
+  }
+
+  function closeToolbarKindMenu() {
+    const button = $(sel.toolbarKind);
+    const menu = $("[data-toolbar-kind-menu]");
+    const root = $("[data-cell-type-select]");
+
+    if (button) {
+      button.setAttribute("aria-expanded", "false");
+    }
+
+    if (menu) {
+      menu.setAttribute("hidden", "");
+    }
+
+    if (root) {
+      root.classList.remove("is-open");
+    }
+  }
+  function toggleToolbarKindMenu() {
+    const button = $(sel.toolbarKind);
+    const menu = $("[data-toolbar-kind-menu]");
+    const root = $("[data-cell-type-select]");
+
+    if (!button || !menu) {
+      return;
+    }
+
+    const nextOpen = menu.hasAttribute("hidden");
+
+    if (nextOpen) {
+      menu.removeAttribute("hidden");
+    } else {
+      menu.setAttribute("hidden", "");
+    }
+
+    button.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+
+    if (root) {
+      root.classList.toggle("is-open", nextOpen);
+    }
+  }
+
+  function setToolbarKind(kind, options = {}) {
+    const nextKind = ["cpp", "reply", "markdown", "html"].includes(
+      normalizeKind(kind),
+    )
+      ? normalizeKind(kind)
+      : "cpp";
+
+    const button = $(sel.toolbarKind);
+    const label = $("[data-toolbar-kind-label]");
+
+    if (button) {
+      button.dataset.kind = nextKind;
+    }
+
+    if (label) {
+      label.textContent = toolbarKindLabel(nextKind);
+    }
+
+    for (const option of $all("[data-kind-option]")) {
+      const active = option.dataset.kindOption === nextKind;
+      option.classList.toggle("is-active", active);
+      option.setAttribute("aria-selected", active ? "true" : "false");
+    }
+
+    if (options.applyToCell !== false && state.selectedId) {
+      changeKind(state.selectedId, nextKind);
+    }
+  }
+
   function syncToolbarKind() {
-    const select = $(sel.toolbarKind);
-    if (!select) return;
     const cell = findCell(state.selectedId);
-    if (!cell) return;
-    const k = normalizeKind(cell.kind);
-    select.value = ["cpp", "reply", "markdown", "html"].includes(k) ? k : "";
+    const kind = cell ? normalizeKind(cell.kind) : currentToolbarKind();
+
+    setToolbarKind(
+      ["cpp", "reply", "markdown", "html"].includes(kind) ? kind : "cpp",
+      { applyToCell: false },
+    );
   }
 
   /* ==========================================================
@@ -1764,11 +1888,7 @@
    * ======================================================== */
   function setDirty(dirty) {
     const tab = activeTab();
-
-    if (tab) {
-      tab.dirty = !!dirty;
-    }
-
+    if (tab) tab.dirty = !!dirty;
     persistTabs();
     renderOpenTabs();
     renderTabsBar();
@@ -1854,6 +1974,7 @@
     cellEl.classList.add("is-running");
     setMessage("");
     setKernel("busy");
+    setDiagnosticsRunning();
 
     const codeCell = $(".vn-CodeCell", cellEl);
     if (codeCell) {
@@ -1894,6 +2015,10 @@
       }
 
       const status = normalizeKind(result?.result?.status);
+
+      // Project the result into diagnostics for this cell.
+      setCellDiagnostics(id, result?.result);
+
       if (status === "failure") {
         setKernel("error");
         setMessage(
@@ -1910,6 +2035,8 @@
     } catch (error) {
       setKernel("error");
       setMessage(error.message || "Failed to run cell.", "error");
+      state.diagnostics.status = "failed";
+      renderProblems();
       setTimeout(() => setKernel("idle"), 1200);
     } finally {
       const el = cellElById(id);
@@ -1921,6 +2048,7 @@
     setMessage("");
     setBusy(true);
     setKernel("busy");
+    setDiagnosticsRunning();
     try {
       for (const el of $all(".vn-Cell")) {
         try {
@@ -1933,6 +2061,10 @@
         { allowErrorResponse: true },
       );
       if (result.document) renderDocument(result.document);
+
+      // Project every cell result into diagnostics in one pass.
+      setRunAllDiagnostics(result);
+
       if (result.ok) {
         setKernel("idle");
         setMessage(`Ran ${result.executed || 0} cell(s).`, "success");
@@ -1948,6 +2080,8 @@
     } catch (error) {
       setKernel("error");
       setMessage(error.message || "Failed to run all cells.", "error");
+      state.diagnostics.status = "failed";
+      renderProblems();
       setTimeout(() => setKernel("idle"), 1200);
     } finally {
       setBusy(false);
@@ -2018,7 +2152,6 @@
     const cellEl = cellElById(id);
     const cell = findCell(id);
     if (!cellEl || !cell) return;
-    // Already the same kind? Nothing to do (avoids needless repaint).
     if (normalizeKind(cell.kind) === normalizeKind(newKind)) {
       selectCell(id, { edit: false });
       return;
@@ -2032,9 +2165,6 @@
         method: "PUT",
         body: JSON.stringify({ kind: cell.kind, source: cell.source }),
       });
-      // Force a clean repaint of the affected cell only. We pass the updated
-      // document and let reconcile rebuild the single cell whose signature
-      // changed (kind flips the signature), so no duplication can occur.
       if (result.document) {
         state.selectedId = String(id);
         renderDocument(result.document);
@@ -2057,9 +2187,34 @@
           await pushCell(el);
         } catch (_) {}
       }
-      await api("/api/document/save", { method: "POST" });
+      const saved = await api("/api/document/save", { method: "POST" });
+      const savedDoc =
+        unwrapDocument(saved?.document || saved) || state.document;
+
+      if (savedDoc && savedDoc.path) {
+        state.document = savedDoc;
+
+        touchExplorerEntry(savedDoc.path, "file", baseName(savedDoc.path), {
+          modified: Date.now(),
+          openable: true,
+          extension: ".vixnote",
+        });
+
+        openTab(savedDoc.path, documentDisplayTitle(savedDoc));
+        state.activeTabPath = normalizeExplorerPath(savedDoc.path);
+
+        await loadDirectory(parentPath(savedDoc.path), {
+          silent: true,
+          force: true,
+        });
+
+        renderExplorer();
+        renderTabsBar();
+        renderOpenTabs();
+      }
+
       setDirty(false);
-      setMessage("Note saved.", "success");
+      clearMessageQuietly();
     } catch (error) {
       setMessage(error.message || "Failed to save note.", "error");
       setDirty(true);
@@ -2069,109 +2224,216 @@
   }
 
   /* ==========================================================
-   * File actions (modals instead of prompt())
+   * VS Code-style INLINE create (files + folders)
+   *
+   * No modal: a single input row appears inside the tree, right where
+   * the new entry will live. Enter commits, Escape / blur cancels.
    * ======================================================== */
-  async function newNote(dir = null) {
-    const initialFolder = normalizeExplorerPath(
-      dir ||
-        state.explorer.selectedDirPath ||
-        state.explorer.currentPath ||
-        parentPath(currentDocPath()) ||
-        ".",
+
+  // The folder a new entry should be created in, given the current
+  // selection. If a file is selected, we use its parent folder, exactly
+  // like VS Code.
+  function inlineCreateParent(explicitDir) {
+    if (explicitDir != null) {
+      return normalizeExplorerPath(explicitDir);
+    }
+
+    const selected = normalizeExplorerPath(
+      state.explorer.selectedDirPath || ".",
     );
+    const entry = state.explorer.entries.get(selected);
 
-    const data = await showModalForm({
-      title: "New note",
-      fields: [
-        {
-          name: "folder",
-          label: "Folder",
-          type: "select",
-          value: initialFolder,
-          options: knownDirectories().map((path) => ({
-            value: path,
-            label: path === "." ? ". / current directory" : path,
-          })),
-          hint: "Choose where the note will be created",
-        },
-        {
-          name: "filename",
-          label: "File name",
-          value: baseName(suggestedNotePath(initialFolder)),
-          placeholder: "intro.vixnote",
-          hint: "Only the file name, not the full path",
-        },
-        {
-          name: "title",
-          label: "Title",
-          value: "New Note",
-          placeholder: "Intro to C++",
-        },
-      ],
-      confirm: "Create",
+    if (entry && entry.type === "file") {
+      return parentPath(selected);
+    }
+
+    return selected || ".";
+  }
+
+  async function startInlineCreate(kind, explicitDir = null) {
+    // Search mode hides drafts; clear the filter so the row is visible.
+    const search = $(sel.explorerSearch);
+    if (search && search.value) {
+      search.value = "";
+    }
+
+    const parent = inlineCreateParent(explicitDir);
+
+    // Make sure the parent is expanded and loaded so the draft row has a
+    // place to live and we can validate duplicates against real entries.
+    if (parent !== ".") {
+      state.explorer.expandedDirs.add(parent);
+    }
+
+    state.explorer.selectedDirPath = parent;
+    state.explorer.currentPath = parent;
+    state.explorer.draft = { kind, parentPath: parent, error: null };
+
+    // Ensure the activity bar shows the explorer panel.
+    if (state.activePanel !== "explorer" || state.sidebarCollapsed) {
+      setPanel("explorer");
+    }
+
+    // Load the directory contents silently (so duplicate detection works),
+    // then render and focus the inline input.
+    if (parent !== "." && !state.explorer.loadedDirs.has(parent)) {
+      await loadDirectory(parent, { silent: true, force: false });
+    } else {
+      renderExplorer();
+    }
+
+    focusDraftInput();
+  }
+
+  function cancelInlineCreate() {
+    if (!state.explorer.draft) return;
+    state.explorer.draft = null;
+    renderExplorer();
+  }
+
+  function focusDraftInput() {
+    // Defer to the next frame so the freshly-rendered input exists.
+    requestAnimationFrame(() => {
+      const input = $(".vn-Tree__input");
+      if (!input) return;
+      input.focus();
+      input.select();
     });
+  }
 
-    if (!data) {
+  function validateDraftName(rawName) {
+    const draft = state.explorer.draft;
+    if (!draft) return { ok: false };
+
+    let name = String(rawName || "")
+      .trim()
+      .replaceAll("\\", "/");
+    name = baseName(name);
+
+    if (!name) {
+      return { ok: false, error: "A name is required." };
+    }
+
+    if (/[<>:"|?*]/.test(name)) {
+      return { ok: false, error: "Name contains invalid characters." };
+    }
+
+    if (draft.kind === "file" && !name.endsWith(".vixnote")) {
+      name = `${name}.vixnote`;
+    }
+
+    const path = joinExplorerPath(draft.parentPath, name);
+    if (!path) {
+      return { ok: false, error: "Invalid name." };
+    }
+
+    const existing = state.explorer.entries.get(normalizeExplorerPath(path));
+    if (existing) {
+      return {
+        ok: false,
+        error:
+          draft.kind === "dir"
+            ? "A folder with that name already exists."
+            : "A file with that name already exists.",
+      };
+    }
+
+    return { ok: true, name, path };
+  }
+
+  async function commitInlineCreate(rawName) {
+    const draft = state.explorer.draft;
+    if (!draft) return;
+
+    const result = validateDraftName(rawName);
+    if (!result.ok) {
+      // Empty name + Enter = silently cancel, like VS Code.
+      if (!String(rawName || "").trim()) {
+        cancelInlineCreate();
+        return;
+      }
+      draft.error = result.error || "Invalid name.";
+      renderExplorer();
+      focusDraftInput();
       return;
     }
 
-    const folder = normalizeExplorerPath(data.folder || ".");
-    let filename = String(data.filename || "").trim();
+    const { name, path } = result;
+    const kind = draft.kind;
 
-    if (!filename) {
-      return;
-    }
-
-    filename = filename.replaceAll("\\", "/");
-
-    // Important: the filename field must stay a filename.
-    // If the user pasted a full path, keep only the last segment.
-    filename = baseName(filename);
-
-    if (!filename.endsWith(".vixnote")) {
-      setMessage("Note file name must end with .vixnote", "error");
-      return;
-    }
-
-    const path = folder === "." ? filename : `${folder}/${filename}`;
-
-    const title = String(data.title || "").trim() || "New Note";
+    // Clear the draft now; the optimistic entry + backend call take over.
+    state.explorer.draft = null;
 
     setBusy(true);
     setMessage("");
 
     try {
-      const doc = await api("/api/document/new", {
-        method: "POST",
-        body: JSON.stringify({ path, title }),
-      });
+      if (kind === "dir") {
+        await api("/api/directory/create", {
+          method: "POST",
+          body: JSON.stringify({ path }),
+        });
 
-      const d = unwrapDocument(doc);
+        touchExplorerEntry(path, "dir", baseName(path), {
+          modified: Date.now(),
+          openable: false,
+        });
 
-      openTab(d.path, d.title);
-      state.selectedId = null;
-      renderDocument(doc, { fullRepaint: true });
-      setDirty(false);
+        state.explorer.expandedDirs.add(parentPath(path));
+        state.explorer.expandedDirs.add(path);
+        state.explorer.selectedDirPath = path;
 
-      touchExplorerEntry(d.path, "file", baseName(d.path), {
-        modified: Date.now(),
-        openable: true,
-        extension: ".vixnote",
-      });
+        await loadDirectory(parentPath(path), { silent: true, force: true });
+        clearMessageQuietly();
+      } else {
+        const title = titleFromFileName(name);
+        const doc = await api("/api/document/new", {
+          method: "POST",
+          body: JSON.stringify({ path, title }),
+        });
+        const d = unwrapDocument(doc);
 
-      await loadDirectory(parentPath(d.path), {
-        silent: true,
-        force: true,
-      });
+        openTab(d.path, d.title || title);
+        state.selectedId = null;
+        renderDocument(doc, { fullRepaint: true });
+        setDirty(false);
 
-      setMessage(`Note created: ${d.path}`, "success");
+        touchExplorerEntry(d.path, "file", baseName(d.path), {
+          modified: Date.now(),
+          openable: true,
+          extension: ".vixnote",
+        });
+
+        state.explorer.selectedDirPath = parentPath(d.path);
+        await loadDirectory(parentPath(d.path), { silent: true, force: true });
+        clearMessageQuietly();
+      }
     } catch (error) {
-      setMessage(error.message || "Failed to create note.", "error");
+      setMessage(
+        error.message ||
+          (kind === "dir"
+            ? "Failed to create folder."
+            : "Failed to create note."),
+        "error",
+      );
     } finally {
       setBusy(false);
+      renderExplorer();
     }
   }
 
+  // Public entry points used by toolbar buttons, menus and context menus.
+  function newNote(dir = null) {
+    return startInlineCreate("file", dir);
+  }
+  function newFolder(parentDir = null) {
+    return startInlineCreate("dir", parentDir);
+  }
+
+  /* ==========================================================
+   * Open note — kept as a lightweight modal (it takes a path, not a
+   * new name in the tree, so inline editing doesn't apply here).
+   * ======================================================== */
   async function openNote(prefill) {
     const data = await showModalForm({
       title: "Open note",
@@ -2192,20 +2454,27 @@
     await openNotePath(path);
   }
 
-  async function openNotePath(path) {
+  async function openNotePath(path, options = {}) {
+    const silent = !!options.silent;
     if (!path) return;
     if (!path.endsWith(".vixnote")) {
       setMessage("Note path must end with .vixnote", "error");
       return;
     }
     setBusy(true);
-    setMessage("");
+
+    if (!silent) {
+      setMessage("");
+    }
     try {
       const doc = await api("/api/document/open", {
         method: "POST",
         body: JSON.stringify({ path }),
       });
       const d = unwrapDocument(doc);
+
+      // Diagnostics belong to a single note; reset when loading another.
+      clearDiagnostics();
 
       openTab(d.path, documentDisplayTitle(d));
       state.selectedId = null;
@@ -2220,27 +2489,21 @@
       });
 
       await loadExplorerForDocumentPath(d.path);
-
-      setMessage("Note opened.", "success");
+      if (!silent) {
+        // Opening a note is a navigation action, not a success event.
+        // Keep the editor clean.
+        setMessage("");
+      }
     } catch (error) {
       if (isMissingNoteError(error)) {
         removeTabState(path);
-
-        // Silent cleanup: a stale restored tab is internal UI state,
-        // not something that should interrupt the editor.
         console.debug(`[Vix Note] Removed stale tab: ${path}`);
-
         if (state.activeTabPath) {
-          await openNotePath(state.activeTabPath);
+          await openNotePath(state.activeTabPath, { silent: true });
         } else {
           clearEditorNoOpenNote();
-
-          await loadDirectory(".", {
-            silent: true,
-            force: true,
-          });
+          await loadDirectory(".", { silent: true, force: true });
         }
-
         return;
       }
       setMessage(error.message || "Failed to open note.", "error");
@@ -2249,91 +2512,12 @@
     }
   }
 
-  async function newFolder(parentDir = null) {
-    const initialFolder = normalizeExplorerPath(
-      parentDir ||
-        state.explorer.selectedDirPath ||
-        state.explorer.currentPath ||
-        ".",
-    );
-
-    const data = await showModalForm({
-      title: "New folder",
-      fields: [
-        {
-          name: "folder",
-          label: "Parent folder",
-          type: "select",
-          value: initialFolder,
-          options: knownDirectories().map((path) => ({
-            value: path,
-            label: path === "." ? ". / project root" : path,
-          })),
-          hint: "Choose where the folder will be created",
-        },
-        {
-          name: "name",
-          label: "Folder name",
-          value: "",
-          placeholder: "phase1",
-          hint: "Only the folder name, not the full path",
-        },
-      ],
-      confirm: "Create",
-    });
-
-    if (!data) {
-      return;
-    }
-
-    const folder = normalizeExplorerPath(data.folder || ".");
-    const name = String(data.name || "").trim();
-
-    if (!name) {
-      return;
-    }
-
-    const path = joinExplorerPath(folder, name);
-
-    if (!path) {
-      return;
-    }
-
-    setBusy(true);
-    setMessage("");
-
-    try {
-      await api("/api/directory/create", {
-        method: "POST",
-        body: JSON.stringify({ path }),
-      });
-
-      touchExplorerEntry(path, "dir", baseName(path), {
-        modified: Date.now(),
-        openable: false,
-      });
-
-      state.explorer.expandedDirs.add(folder);
-      state.explorer.selectedDirPath = path;
-      state.explorer.currentPath = folder;
-
-      await loadDirectory(folder, {
-        silent: true,
-        force: true,
-      });
-
-      setMessage(`Folder created: ${path}`, "success");
-    } catch (error) {
-      setMessage(error.message || "Failed to create folder.", "error");
-    } finally {
-      setBusy(false);
-    }
-  }
+  /* ==========================================================
+   * Delete / rename
+   * ======================================================== */
   async function deletePath(path, options = {}) {
     if (!path) return;
-
     const recursive = !!options.recursive;
-
     setBusy(true);
     setMessage("");
 
@@ -2354,7 +2538,6 @@
       state.explorer.entries.delete(normalizeExplorerPath(path));
 
       const prefix = `${normalizeExplorerPath(path)}/`;
-
       for (const key of Array.from(state.explorer.entries.keys())) {
         if (key.startsWith(prefix)) {
           state.explorer.entries.delete(key);
@@ -2364,10 +2547,7 @@
       state.explorer.loadedDirs.delete(normalizeExplorerPath(path));
       state.explorer.expandedDirs.delete(normalizeExplorerPath(path));
 
-      await loadDirectory(parentPath(path), {
-        silent: true,
-        force: true,
-      });
+      await loadDirectory(parentPath(path), { silent: true, force: true });
 
       if (deletedActiveDocument) {
         state.tabs = state.tabs.filter((tab) => {
@@ -2375,11 +2555,9 @@
             normalizeExplorerPath(tab.path) !== normalizeExplorerPath(path)
           );
         });
-
         state.activeTabPath = state.tabs.length ? state.tabs[0].path : null;
-
         if (state.activeTabPath) {
-          await openNotePath(state.activeTabPath);
+          await openNotePath(state.activeTabPath, { silent: true });
         } else {
           state.document = null;
           state.selectedId = null;
@@ -2390,8 +2568,7 @@
       renderExplorer();
       renderOpenTabs();
       renderTabsBar();
-
-      setMessage(`Deleted: ${path}`, "success");
+      clearMessageQuietly();
     } catch (error) {
       setMessage(error.message || "Failed to delete path.", "error");
     } finally {
@@ -2399,41 +2576,51 @@
     }
   }
 
-  async function renamePath(path, type = "file") {
-    const oldPath = normalizeExplorerPath(path);
-    const oldName = baseName(oldPath);
-
-    const data = await showModalForm({
-      title: type === "dir" ? "Rename folder" : "Rename file",
-      fields: [
-        {
-          name: "newName",
-          label: "New name",
-          value: oldName,
-          placeholder: oldName,
-          hint:
-            type === "file"
-              ? "Keep the .vixnote extension for note files"
-              : "Only the folder name, not the full path",
-        },
-      ],
-      confirm: "Rename",
+  // Rename is also inline (VS Code style): an input replaces the row label.
+  async function startInlineRename(path, type = "file") {
+    const normalized = normalizeExplorerPath(path);
+    cancelInlineCreate();
+    state.explorer.rename = {
+      path: normalized,
+      type,
+      error: null,
+    };
+    renderExplorer();
+    requestAnimationFrame(() => {
+      const input = $(".vn-Tree__input--rename");
+      if (!input) return;
+      input.focus();
+      // Select the name without the extension, like VS Code.
+      const value = input.value;
+      const dot = value.lastIndexOf(".");
+      if (type === "file" && dot > 0) {
+        input.setSelectionRange(0, dot);
+      } else {
+        input.select();
+      }
     });
+  }
 
-    if (!data) {
-      return;
-    }
+  function cancelInlineRename() {
+    if (!state.explorer.rename) return;
+    state.explorer.rename = null;
+    renderExplorer();
+  }
 
-    let newName = String(data.newName || "").trim();
+  async function commitInlineRename(rawName) {
+    const ren = state.explorer.rename;
+    if (!ren) return;
 
-    if (!newName) {
-      return;
-    }
+    const oldPath = ren.path;
+    const type = ren.type;
 
-    newName = newName.replaceAll("\\", "/");
+    let newName = String(rawName || "")
+      .trim()
+      .replaceAll("\\", "/");
     newName = baseName(newName);
 
-    if (!newName) {
+    if (!newName || newName === baseName(oldPath)) {
+      cancelInlineRename();
       return;
     }
 
@@ -2442,20 +2629,28 @@
       oldPath.endsWith(".vixnote") &&
       !newName.endsWith(".vixnote")
     ) {
-      setMessage("Renamed note must keep the .vixnote extension.", "error");
+      newName = `${newName}.vixnote`;
+    }
+
+    const newPathOptimistic = joinExplorerPath(parentPath(oldPath), newName);
+    if (state.explorer.entries.has(normalizeExplorerPath(newPathOptimistic))) {
+      ren.error = "A file or folder with that name already exists.";
+      renderExplorer();
+      requestAnimationFrame(() => {
+        const input = $(".vn-Tree__input--rename");
+        if (input) input.focus();
+      });
       return;
     }
 
+    state.explorer.rename = null;
     setBusy(true);
     setMessage("");
 
     try {
       const result = await api("/api/path/rename", {
         method: "POST",
-        body: JSON.stringify({
-          path: oldPath,
-          newName,
-        }),
+        body: JSON.stringify({ path: oldPath, newName }),
       });
 
       if (!result || result.ok === false) {
@@ -2466,14 +2661,11 @@
         result.newPath || joinExplorerPath(parentPath(oldPath), newName),
       );
 
-      // Remove old entry.
       const oldEntry = state.explorer.entries.get(oldPath);
       state.explorer.entries.delete(oldPath);
 
-      // Rename children in frontend state when a directory is renamed.
       const oldPrefix = `${oldPath}/`;
       const newPrefix = `${newPath}/`;
-
       for (const [key, entry] of Array.from(state.explorer.entries.entries())) {
         if (key.startsWith(oldPrefix)) {
           const renamedChildPath = normalizeExplorerPath(
@@ -2483,10 +2675,7 @@
           state.explorer.entries.set(renamedChildPath, {
             ...entry,
             path: renamedChildPath,
-            title:
-              entry.type === "file"
-                ? baseName(renamedChildPath)
-                : baseName(renamedChildPath),
+            title: baseName(renamedChildPath),
           });
         }
       }
@@ -2501,54 +2690,70 @@
         extension: type === "file" ? ".vixnote" : "",
       });
 
-      // Update expanded/loading state.
       if (state.explorer.loadedDirs.has(oldPath)) {
         state.explorer.loadedDirs.delete(oldPath);
         state.explorer.loadedDirs.add(newPath);
       }
-
       if (state.explorer.expandedDirs.has(oldPath)) {
         state.explorer.expandedDirs.delete(oldPath);
         state.explorer.expandedDirs.add(newPath);
       }
-
       if (state.explorer.selectedDirPath === oldPath) {
         state.explorer.selectedDirPath = newPath;
       }
-
       if (state.explorer.currentPath === oldPath) {
         state.explorer.currentPath = newPath;
       }
 
-      // Update tabs if an opened note was renamed.
       for (const tab of state.tabs) {
         if (tab.path === oldPath) {
+          const oldTitle = noteTitleFromPath(oldPath);
+          const newTitle = noteTitleFromPath(newPath);
+
           tab.path = newPath;
-          tab.title = baseName(newPath);
+
+          if (
+            !tab.title ||
+            tab.title === baseName(oldPath) ||
+            tab.title === oldTitle
+          ) {
+            tab.title = newTitle;
+          }
         }
       }
-
       if (state.activeTabPath === oldPath) {
         state.activeTabPath = newPath;
       }
+      await retitleActiveDocumentAfterRename(oldPath, newPath, type);
 
-      if (state.document && state.document.path === oldPath) {
-        state.document.path = newPath;
-        setText(sel.document, baseName(newPath));
-      }
-
-      await loadDirectory(parentPath(newPath), {
-        silent: true,
-        force: true,
-      });
+      await loadDirectory(parentPath(newPath), { silent: true, force: true });
 
       renderExplorer();
       renderOpenTabs();
       renderTabsBar();
-
-      setMessage(`Renamed: ${oldPath} → ${newPath}`, "success");
+      clearMessageQuietly();
     } catch (error) {
-      setMessage(error.message || "Failed to rename path.", "error");
+      state.explorer.rename = {
+        path: oldPath,
+        type,
+        error:
+          error.message || "Path not found. Save the note before renaming it.",
+      };
+
+      renderExplorer();
+
+      requestAnimationFrame(() => {
+        const input = $(".vn-Tree__input--rename");
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      });
+
+      setMessage(
+        error.message || "Path not found. Save the note before renaming it.",
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -2576,10 +2781,17 @@
     if (oa) oa.remove();
     const cell = findCell(id);
     if (cell) cell.outputs = [];
+    // Drop this cell's diagnostics too.
+    state.diagnostics.items = state.diagnostics.items.filter(
+      (d) => d.cellId !== String(id),
+    );
+    recomputeDiagnosticsState();
+    renderProblems();
   }
   function clearAllOutputs() {
     for (const cell of cells()) cell.outputs = [];
     for (const oa of $all(".vn-OutputArea")) oa.remove();
+    clearDiagnostics();
     setMessage("Outputs cleared from view.", "info");
   }
 
@@ -2598,7 +2810,19 @@
       const path = state.activeTabPath || state.tabs[0].path;
 
       try {
-        await openNotePath(path);
+        const before = state.activeTabPath;
+
+        await openNotePath(path, { silent: true });
+
+        if (
+          !state.document ||
+          normalizeExplorerPath(currentDocPath()) !==
+            normalizeExplorerPath(path)
+        ) {
+          removeTabState(path);
+          continue;
+        }
+
         await loadExplorerForDocumentPath(path);
         return true;
       } catch (error) {
@@ -2607,13 +2831,25 @@
     }
 
     clearEditorNoOpenNote();
-
-    await loadDirectory(".", {
-      silent: true,
-      force: true,
-    });
-
+    await loadDirectory(".", { silent: true, force: true });
     return false;
+  }
+
+  function isStartupScratchDocument(doc) {
+    if (!doc) return true;
+
+    const title = String(doc.title || "")
+      .trim()
+      .toLowerCase();
+    const path = normalizeExplorerPath(doc.path || "").toLowerCase();
+    const list = Array.isArray(doc.cells) ? doc.cells : [];
+    const firstSource = String(list[0]?.source || "").toLowerCase();
+
+    return (
+      title === "tmp" &&
+      (path === "untitled.vixnote" || path === "untitled") &&
+      firstSource.includes("start writing your note here")
+    );
   }
 
   /* ==========================================================
@@ -2621,36 +2857,36 @@
    * ======================================================== */
   async function loadDocument() {
     setMessage("");
-
     const restored = restorePersistedTabs();
 
     if (restored) {
       renderOpenTabs();
       renderTabsBar();
-
       if (state.activeTabPath) {
         const ok = await restoreFirstAvailableTab();
-
-        if (ok) {
-          setKernel("idle");
-        }
-
+        if (ok) setKernel("idle");
         return;
       }
-
       clearEditorNoOpenNote();
-
-      await loadDirectory(".", {
-        silent: true,
-        force: true,
-      });
-
+      await loadDirectory(".", { silent: true, force: true });
       return;
     }
 
     try {
       const doc = await api("/api/document");
       const d = unwrapDocument(doc);
+
+      if (isStartupScratchDocument(d)) {
+        clearEditorNoOpenNote();
+
+        await loadDirectory(".", {
+          silent: true,
+          force: true,
+        });
+
+        setKernel("idle");
+        return;
+      }
 
       if (d && d.path && !state.activeTabPath) {
         openTab(d.path, documentDisplayTitle(d));
@@ -2671,11 +2907,7 @@
       setKernel("error");
       setMessage(error.message || "Failed to load note document.", "error");
       renderEmpty("Unable to load the note document.");
-
-      await loadDirectory(".", {
-        silent: true,
-        force: true,
-      });
+      await loadDirectory(".", { silent: true, force: true });
     }
   }
 
@@ -2684,10 +2916,7 @@
    * ======================================================== */
   function touchExplorerEntry(path, type, title, options = {}) {
     const normalized = normalizeExplorerPath(path);
-
-    if (!normalized) {
-      return;
-    }
+    if (!normalized) return;
 
     const existing = state.explorer.entries.get(normalized);
 
@@ -2702,20 +2931,13 @@
       size: options.size ?? (existing && existing.size) ?? 0,
     });
 
-    // Ensure parent folders appear too.
     if (normalized !== ".") {
       const parts = normalized.split("/");
       parts.pop();
-
       let acc = "";
-
       for (const part of parts) {
-        if (!part) {
-          continue;
-        }
-
+        if (!part) continue;
         acc = acc ? `${acc}/${part}` : part;
-
         if (!state.explorer.entries.has(acc)) {
           state.explorer.entries.set(acc, {
             path: acc,
@@ -2750,18 +2972,13 @@
       const name = String(
         entry.name || baseName(entry.path || "") || "",
       ).trim();
-
-      if (!name) {
-        continue;
-      }
+      if (!name) continue;
 
       let path;
-
       if (dirPath === ".") {
         path = normalizeExplorerPath(entry.path || name);
       } else {
         const rawPath = normalizeExplorerPath(entry.path || name);
-
         if (rawPath === dirPath || rawPath.startsWith(`${dirPath}/`)) {
           path = rawPath;
         } else {
@@ -2769,12 +2986,9 @@
         }
       }
 
-      if (!path || path === dirPath) {
-        continue;
-      }
+      if (!path || path === dirPath) continue;
 
       const type = entry.type === "dir" ? "dir" : "file";
-
       touchExplorerEntry(path, type, name || baseName(path), {
         modified: Number(entry.modified || 0),
         openable: !!entry.openable,
@@ -2796,11 +3010,7 @@
     }
 
     state.explorer.loadingPath = dirPath;
-
-    if (!silent) {
-      setMessage(`Loading ${dirPath}…`, "info");
-    }
-
+    if (!silent) setMessage(`Loading ${dirPath}…`, "info");
     renderExplorer();
 
     try {
@@ -2815,10 +3025,7 @@
 
       state.explorer.currentPath = dirPath;
       mergeDirectoryList(payload, dirPath);
-
-      if (!silent) {
-        setMessage("Explorer refreshed.", "success");
-      }
+      if (!silent) setMessage("Explorer refreshed.", "success");
     } catch (error) {
       if (!silent) {
         setMessage(error.message || "Failed to load directory.", "error");
@@ -2831,57 +3038,16 @@
 
   async function refreshExplorer(path = ".") {
     const dirPath = normalizeExplorerPath(path || ".");
-
+    state.explorer.draft = null;
+    state.explorer.rename = null;
     state.explorer.entries.clear();
     state.explorer.loadedDirs.clear();
     state.explorer.expandedDirs.clear();
     state.explorer.expandedDirs.add(".");
-
-    await loadDirectory(dirPath, {
-      force: true,
-      silent: false,
-    });
-  }
-
-  function explorerEntries() {
-    const filter = (
-      ($(sel.explorerSearch) && $(sel.explorerSearch).value) ||
-      ""
-    )
-      .trim()
-      .toLowerCase();
-
-    let list = Array.from(state.explorer.entries.values()).filter(
-      shouldShowEntry,
-    );
-
-    if (filter) {
-      list = list.filter((e) => {
-        return (
-          String(e.path || "")
-            .toLowerCase()
-            .includes(filter) ||
-          String(e.title || "")
-            .toLowerCase()
-            .includes(filter)
-        );
-      });
-    }
-
-    // Folders first, then files; alpha within.
-    list.sort((a, b) => {
-      if (a.type !== b.type) {
-        return a.type === "dir" ? -1 : 1;
-      }
-
-      return String(a.path || "").localeCompare(String(b.path || ""));
-    });
-
-    return list;
+    await loadDirectory(dirPath, { force: true, silent: false });
   }
 
   function fileIcon() {
-    // file / note sheet
     return '<svg viewBox="0 0 24 24" class="vn-Tree__icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-6-6z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M13 3v6h6"/></svg>';
   }
 
@@ -2891,32 +3057,109 @@
     const expanded = state.explorer.expandedDirs.has(path);
 
     if (loaded && expanded) {
-      // open folder
       return '<svg viewBox="0 0 24 24" class="vn-Tree__icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3V7z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M3 10h18l-2 8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-.8L3 10z"/></svg>';
     }
-
-    // closed folder
     return '<svg viewBox="0 0 24 24" class="vn-Tree__icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M3 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"/></svg>';
+  }
+
+  function draftIcon(kind) {
+    return kind === "dir"
+      ? '<svg viewBox="0 0 24 24" class="vn-Tree__icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M3 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"/></svg>'
+      : fileIcon();
+  }
+
+  function draftRowHtml(row) {
+    const draft = state.explorer.draft;
+    const isDir = draft.kind === "dir";
+    const placeholder = isDir ? "new-folder" : "new-note.vixnote";
+    const defaultValue = isDir ? "" : suggestedNoteName();
+    const errorAttr = draft.error ? " has-error" : "";
+    const errorHtml = draft.error
+      ? `<span class="vn-Tree__inputError">${escapeHtml(draft.error)}</span>`
+      : "";
+    const hint = isDir ? "Enter to create folder" : "Enter to create note";
+
+    return `
+    <div
+      class="vn-Tree__row vn-Tree__row--draft"
+      style="--depth:${Number(row.depth || 0)}"
+    >
+      <span class="vn-Tree__chevron"></span>
+      ${draftIcon(draft.kind)}
+
+      <div class="vn-Tree__inputWrap">
+        <input
+          class="vn-Tree__input${errorAttr}"
+          type="text"
+          data-tree-input
+          value="${escapeHtml(defaultValue)}"
+          placeholder="${escapeHtml(placeholder)}"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <span class="vn-Tree__inputHint">${escapeHtml(hint)}</span>
+        ${errorHtml}
+      </div>
+    </div>`;
+  }
+
+  function renameRowHtml(row) {
+    const ren = state.explorer.rename;
+    const errorAttr = ren.error ? " has-error" : "";
+    const errorHtml = ren.error
+      ? `<span class="vn-Tree__inputError">${escapeHtml(ren.error)}</span>`
+      : "";
+    const icon = row.type === "dir" ? dirIcon(row) : fileIcon();
+    const chevron =
+      row.type === "dir"
+        ? `<span class="vn-Tree__chevron">${
+            state.explorer.expandedDirs.has(normalizeExplorerPath(row.path))
+              ? "▾"
+              : "▸"
+          }</span>`
+        : `<span class="vn-Tree__chevron"></span>`;
+
+    return `
+      <div
+        class="vn-Tree__row vn-Tree__row--rename"
+        style="--depth:${Number(row.depth || 0)}"
+      >
+        ${chevron}
+        ${icon}
+       <div class="vn-Tree__inputWrap">
+          <input
+            class="vn-Tree__input vn-Tree__input--rename${errorAttr}"
+            type="text"
+            data-tree-rename-input
+            value="${escapeHtml(baseName(row.path))}"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <span class="vn-Tree__inputHint">Enter to rename</span>
+          ${errorHtml}
+        </div>
+      </div>`;
   }
 
   function renderExplorer() {
     const listEl = $(sel.explorerList);
-
-    if (!listEl) {
-      return;
-    }
+    if (!listEl) return;
 
     const entries = explorerTreeRows();
     const loadingPath = state.explorer.loadingPath;
+    const renamePath = state.explorer.rename
+      ? normalizeExplorerPath(state.explorer.rename.path)
+      : null;
 
-    setText(sel.explorerCount, String(entries.length));
+    // Count excludes the draft pseudo-row.
+    const realCount = entries.filter((e) => !e.isDraft).length;
+    setText(sel.explorerCount, String(realCount));
 
-    if (loadingPath && !entries.length) {
+    if (loadingPath && !entries.length && !state.explorer.draft) {
       listEl.innerHTML = `
       <p class="vn-Tree__empty">
         Loading ${escapeHtml(loadingPath)}…
-      </p>
-    `;
+      </p>`;
       return;
     }
 
@@ -2924,25 +3167,30 @@
       listEl.innerHTML = `
       <p class="vn-Tree__empty">
         No notes found. Create one with <strong>New note</strong> or refresh the explorer.
-      </p>
-    `;
+      </p>`;
       return;
     }
 
     listEl.innerHTML = entries
       .map((e) => {
+        if (e.isDraft) {
+          return draftRowHtml(e);
+        }
+
         const path = normalizeExplorerPath(e.path);
+
+        if (renamePath && path === renamePath) {
+          return renameRowHtml(e);
+        }
+
         const active =
           e.type === "file" && path === state.activeTabPath ? " is-active" : "";
-
         const loading =
           e.type === "dir" && path === loadingPath ? " is-loading" : "";
-
         const meta =
           e.type === "file"
             ? `<span class="vn-Tree__meta">${escapeHtml(relativeTime(entryModified(e)))}</span>`
             : "";
-
         const icon = e.type === "dir" ? dirIcon(e) : fileIcon();
         const depth = Number(e.depth || 0);
         const expanded = state.explorer.expandedDirs.has(path);
@@ -2973,8 +3221,7 @@
             title="More actions"
             aria-label="More actions"
           >⋯</button>
-        </div>
-      `;
+        </div>`;
       })
       .join("");
   }
@@ -2989,21 +3236,14 @@
           dirty: false,
         })),
       };
-
       localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(payload));
-    } catch (_) {
-      // Ignore storage failures. Tabs still work in memory.
-    }
+    } catch (_) {}
   }
 
   function restorePersistedTabs() {
     try {
       const raw = localStorage.getItem(TABS_STORAGE_KEY);
-
-      if (!raw) {
-        return false;
-      }
-
+      if (!raw) return false;
       const payload = JSON.parse(raw);
       const tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
 
@@ -3037,14 +3277,9 @@
     try {
       localStorage.setItem(
         TABS_STORAGE_KEY,
-        JSON.stringify({
-          activeTabPath: null,
-          tabs: [],
-        }),
+        JSON.stringify({ activeTabPath: null, tabs: [] }),
       );
-    } catch (_) {
-      // Ignore storage failures.
-    }
+    } catch (_) {}
   }
 
   /* ==========================================================
@@ -3055,53 +3290,38 @@
   }
 
   function openTab(path, title) {
-    if (!path) {
-      return;
-    }
-
+    if (!path) return;
     const normalized = normalizeExplorerPath(path);
     let tab = state.tabs.find((t) => t.path === normalized);
-
     if (!tab) {
       tab = {
         path: normalized,
         title: title || baseName(normalized),
         dirty: false,
       };
-
       state.tabs.push(tab);
     } else if (title) {
       tab.title = title;
     }
-
     state.activeTabPath = normalized;
-
     persistTabs();
     renderOpenTabs();
     renderTabsBar();
   }
 
   function syncActiveTab(doc) {
-    if (!doc || !doc.path) {
-      return;
-    }
-
+    if (!doc || !doc.path) return;
     const title = documentDisplayTitle(doc);
-
     if (state.activeTabPath !== doc.path) {
       openTab(doc.path, title);
     } else {
       const tab = activeTab();
-
-      if (tab) {
-        tab.title = title;
-      }
+      if (tab) tab.title = title;
     }
   }
 
   async function switchTab(path) {
     if (!path || path === state.activeTabPath) return;
-    // Warn if leaving an unsaved tab.
     if (isDirty()) {
       const proceed = await showModalConfirm({
         title: "Unsaved changes",
@@ -3119,13 +3339,9 @@
   async function closeTab(path) {
     const normalized = normalizeExplorerPath(path);
     const idx = state.tabs.findIndex((t) => t.path === normalized);
-
-    if (idx < 0) {
-      return;
-    }
+    if (idx < 0) return;
 
     const tab = state.tabs[idx];
-
     if (tab.dirty) {
       const proceed = await showModalConfirm({
         title: "Close tab",
@@ -3133,17 +3349,13 @@
         confirm: "Close tab",
         danger: true,
       });
-
-      if (!proceed) {
-        return;
-      }
+      if (!proceed) return;
     }
 
     state.tabs.splice(idx, 1);
 
     if (state.activeTabPath === normalized) {
       const next = state.tabs[idx] || state.tabs[idx - 1] || null;
-
       if (next) {
         state.activeTabPath = next.path;
         persistTabs();
@@ -3187,34 +3399,290 @@
       .join("");
   }
 
-  function renderOpenTabs() {
-    const listEl = $(sel.openTabsList);
-    setText(sel.openTabsCount, String(state.tabs.length));
+  /* ==========================================================
+   * Diagnostics / Problems
+   *
+   * Diagnostics are a pure projection of NoteResult outputs. The runtime
+   * already classifies outputs (compiler_error, runtime_error, error, stderr,
+   * hint); we only read those, attach the owning cell, and render them.
+   *
+   * Severity mapping:
+   *   compiler_error / runtime_error / error / stderr -> "error"
+   *   hint                                            -> "hint"
+   *   everything else (stdout, debug, raw_log, text, html, ...) -> ignored
+   * ======================================================== */
+  const DIAGNOSTIC_SEVERITY = {
+    compiler_error: "error",
+    runtime_error: "error",
+    error: "error",
+    stderr: "error",
+    hint: "hint",
+  };
+
+  let diagnosticSeq = 0;
+
+  function severityForOutputKind(kind) {
+    return DIAGNOSTIC_SEVERITY[normalizeKind(kind)] || null;
+  }
+
+  function cellLabelFor(cellId) {
+    const cell = findCell(cellId);
+    if (cell && cell.title) return String(cell.title);
+    const idx = cellIndex(cellId);
+    if (idx >= 0) return `Cell ${idx + 1}`;
+    return String(cellId || "cell");
+  }
+
+  // Build diagnostics from a single NoteResult-like object for a known cell.
+  function diagnosticsFromResult(result, cellId) {
+    const outputs = Array.isArray(result?.outputs) ? result.outputs : [];
+    const items = [];
+    for (const out of outputs) {
+      const severity = severityForOutputKind(out.kind);
+      if (!severity) continue;
+      const message = String(out.content ?? "").trim();
+      if (!message) continue;
+      items.push({
+        id: `diag-${++diagnosticSeq}`,
+        cellId: String(cellId),
+        cellLabel: cellLabelFor(cellId),
+        severity,
+        kind: normalizeKind(out.kind),
+        message,
+        ts: Date.now(),
+      });
+    }
+    return items;
+  }
+
+  // Replace diagnostics for a single cell (used after running one cell).
+  function setCellDiagnostics(cellId, result) {
+    const id = String(cellId);
+    state.diagnostics.items = state.diagnostics.items.filter(
+      (d) => d.cellId !== id,
+    );
+    const fresh = diagnosticsFromResult(result, id);
+    state.diagnostics.items.push(...fresh);
+    recomputeDiagnosticsState();
+    renderProblems();
+  }
+
+  // Rebuild all diagnostics from a run-all kernel result. results[] follows
+  // the order of executable cells, so we zip against the document skipping
+  // non-executable cells.
+  function setRunAllDiagnostics(runResult) {
+    const results = Array.isArray(runResult?.results) ? runResult.results : [];
+    const executable = cells().filter((c) => isCodeKind(c.kind));
+    state.diagnostics.items = [];
+    const n = Math.min(results.length, executable.length);
+    for (let i = 0; i < n; i++) {
+      const cell = executable[i];
+      const items = diagnosticsFromResult(results[i], cell.id);
+      state.diagnostics.items.push(...items);
+    }
+    recomputeDiagnosticsState();
+    renderProblems();
+  }
+
+  function clearDiagnostics() {
+    state.diagnostics.items = [];
+    state.diagnostics.status = "idle";
+    state.diagnostics.byCell = new Map();
+    renderProblems();
+    refreshCellProblemBadges();
+  }
+
+  function setDiagnosticsRunning() {
+    state.diagnostics.status = "running";
+    renderProblems();
+  }
+
+  function recomputeDiagnosticsState() {
+    // Drop diagnostics whose cell no longer exists.
+    state.diagnostics.items = state.diagnostics.items.filter(
+      (d) => findCell(d.cellId) !== null,
+    );
+
+    const byCell = new Map();
+    let errorCount = 0;
+    for (const d of state.diagnostics.items) {
+      if (d.severity === "error") {
+        errorCount++;
+        byCell.set(d.cellId, (byCell.get(d.cellId) || 0) + 1);
+      }
+    }
+    state.diagnostics.byCell = byCell;
+    state.diagnostics.status = errorCount > 0 ? "failed" : "success";
+
+    refreshCellProblemBadges();
+  }
+
+  function errorDiagnosticCount() {
+    return state.diagnostics.items.filter((d) => d.severity === "error").length;
+  }
+
+  const PROBLEM_ICONS = {
+    error:
+      '<svg viewBox="0 0 24 24" class="vn-Problem__icon" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 9l6 6M15 9l-6 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    hint: '<svg viewBox="0 0 24 24" class="vn-Problem__icon" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 11v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1" fill="currentColor"/></svg>',
+  };
+
+  function firstMessageLine(message) {
+    const line = String(message || "").split(/\r?\n/)[0] || "";
+    return line.length > 160 ? `${line.slice(0, 159)}…` : line;
+  }
+
+  function renderProblems() {
+    const errorCount = errorDiagnosticCount();
+    const total = state.diagnostics.items.length;
+    const status = state.diagnostics.status;
+
+    // Panel header count + status-bar count + activity badge.
+    setText(sel.problemsCount, String(errorCount));
+    setText(sel.statusProblemsCount, String(errorCount));
+
+    const badge = $(sel.problemsBadge);
+    if (badge) {
+      if (errorCount > 0) {
+        badge.hidden = false;
+        badge.textContent = String(errorCount > 99 ? "99+" : errorCount);
+      } else {
+        badge.hidden = true;
+      }
+    }
+
+    const statusBtn = $(sel.statusProblems);
+    if (statusBtn) {
+      statusBtn.classList.toggle("has-errors", errorCount > 0);
+    }
+
+    // Summary line.
+    const summary = $(sel.problemsSummary);
+    const summaryText = $(sel.problemsSummaryText);
+    if (summary) summary.setAttribute("data-state", status);
+    if (summaryText) {
+      if (status === "running") {
+        summaryText.textContent = "Running…";
+      } else if (errorCount > 0) {
+        summaryText.textContent =
+          errorCount === 1 ? "1 problem found" : `${errorCount} problems found`;
+      } else if (status === "success") {
+        summaryText.textContent = "No problems — last run succeeded";
+      } else {
+        summaryText.textContent = "No problems detected";
+      }
+    }
+
+    // List body.
+    const listEl = $(sel.problemsList);
     if (!listEl) return;
-    if (!state.tabs.length) {
-      listEl.innerHTML = `<p class="vn-Tree__empty">No open notes.</p>`;
+
+    if (status === "running" && !total) {
+      listEl.innerHTML = `
+        <div class="vn-Problems__loading">
+          <span class="vn-spinner" aria-hidden="true"></span>
+          Running cells…
+        </div>`;
       return;
     }
-    listEl.innerHTML = state.tabs
-      .map((t) => {
-        const active = t.path === state.activeTabPath ? " is-active" : "";
-        return `<div class="vn-Tree__row${active}" data-tab-path="${escapeHtml(t.path)}" tabindex="0">
-            ${fileIcon()}
-            <span class="vn-Tree__label" title="${escapeHtml(t.path)}">${escapeHtml(t.title)}</span>
-            ${t.dirty ? '<span class="vn-Tab__dot"></span>' : ""}
-            <button class="vn-Tree__menuBtn" type="button" data-tab-close="${escapeHtml(t.path)}" title="Close" aria-label="Close">×</button>
-          </div>`;
-      })
-      .join("");
+
+    if (!total) {
+      listEl.innerHTML = `
+        <p class="vn-Tree__empty">
+          No problems detected. Run a C++ or Reply cell to see compiler
+          and runtime diagnostics here.
+        </p>`;
+      return;
+    }
+
+    // Group items by cell, errors first within each group.
+    const groups = new Map();
+    for (const d of state.diagnostics.items) {
+      if (!groups.has(d.cellId)) groups.set(d.cellId, []);
+      groups.get(d.cellId).push(d);
+    }
+
+    const runningClass = status === "running" ? " is-stale" : "";
+
+    const rows = [];
+    for (const [cellId, items] of groups) {
+      items.sort((a, b) => {
+        if (a.severity !== b.severity) return a.severity === "error" ? -1 : 1;
+        return a.ts - b.ts;
+      });
+      const label = cellLabelFor(cellId);
+      rows.push(
+        `<div class="vn-Problems__group${runningClass}">
+           <button class="vn-Problems__groupHead" type="button" data-problem-goto="${escapeHtml(cellId)}" title="Go to ${escapeHtml(label)}">
+             <svg viewBox="0 0 24 24" class="vn-Problems__cellIcon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-6-6z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M13 3v6h6"/></svg>
+             <span class="vn-Problems__cellName">${escapeHtml(label)}</span>
+             <span class="vn-Problems__cellCount">${items.length}</span>
+           </button>
+           ${items
+             .map(
+               (d) => `
+             <button
+               class="vn-Problem vn-Problem--${escapeHtml(d.severity)}"
+               type="button"
+               data-problem-goto="${escapeHtml(d.cellId)}"
+               title="${escapeHtml(firstMessageLine(d.message))}"
+             >
+               ${PROBLEM_ICONS[d.severity] || PROBLEM_ICONS.error}
+               <span class="vn-Problem__body">
+                 <span class="vn-Problem__message">${escapeHtml(firstMessageLine(d.message))}</span>
+                 <span class="vn-Problem__kind">${escapeHtml(d.kind.replace(/_/g, " "))}</span>
+               </span>
+             </button>`,
+             )
+             .join("")}
+         </div>`,
+      );
+    }
+
+    listEl.innerHTML = rows.join("");
+  }
+
+  // Small red dot on cells that currently have error diagnostics.
+  function refreshCellProblemBadges() {
+    for (const el of $all(".vn-Cell")) {
+      const id = el.dataset.cellId;
+      const hasError = state.diagnostics.byCell.get(id) > 0;
+      el.classList.toggle("has-problem", !!hasError);
+    }
+  }
+
+  // Navigate from a diagnostic to its cell.
+  function gotoCellFromDiagnostic(cellId) {
+    const id = String(cellId);
+
+    if (!findCell(id)) {
+      setMessage("That cell no longer exists.", "warning");
+      return;
+    }
+
+    selectCell(id, { edit: false });
+
+    const el = cellElById(id);
+
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }
+
+  // Compatibility shim: older call sites invoke renderOpenTabs() after tab
+  // changes. The Open Tabs panel is gone (folded into the main tab bar), so
+  // this now only refreshes the tab bar. Kept as a named function so we don't
+  // have to touch every call site.
+  function renderOpenTabs() {
+    renderTabsBar();
   }
 
   /* ==========================================================
-   * Activity bar (Explorer / Open tabs)
+   * Activity bar (Explorer / Problems)
    * ======================================================== */
   function renderActivityBar() {
     for (const b of $all("[data-activity]")) {
       const activity = b.dataset.activity;
-
       b.classList.toggle(
         "is-active",
         !state.sidebarCollapsed && state.activePanel === activity,
@@ -3225,11 +3693,9 @@
   function setPanel(panel) {
     state.activePanel = panel;
     state.sidebarCollapsed = false;
-
     for (const p of $all("[data-panel]")) {
       p.hidden = p.dataset.panel !== panel;
     }
-
     app.classList.remove("is-sidebar-collapsed");
     renderActivityBar();
   }
@@ -3252,15 +3718,23 @@
       setPanel("explorer");
       return;
     }
-
     if (state.activePanel === "explorer") {
       state.sidebarCollapsed = true;
       app.classList.add("is-sidebar-collapsed");
       renderActivityBar();
       return;
     }
-
     setPanel("explorer");
+  }
+  // Alias kept for the keyboard shortcut and menu command.
+  function toggleSidebar(forceCollapsed) {
+    if (forceCollapsed === true) {
+      state.sidebarCollapsed = true;
+      app.classList.add("is-sidebar-collapsed");
+      renderActivityBar();
+      return;
+    }
+    toggleExplorerSidebar();
   }
   function toggleFocus() {
     state.focusMode = !state.focusMode;
@@ -3377,9 +3851,11 @@
    * Command registry
    * ======================================================== */
   function currentToolbarKind() {
-    const s = $(sel.toolbarKind);
-    const v = s ? s.value : "";
-    return v || "cpp";
+    const button = $(sel.toolbarKind);
+    const value = button ? button.dataset.kind : "cpp";
+    const kind = normalizeKind(value);
+
+    return ["cpp", "reply", "markdown", "html"].includes(kind) ? kind : "cpp";
   }
   function targetId() {
     return state.selectedId;
@@ -3475,7 +3951,10 @@
       label: "Show Explorer",
       run: () => setPanel("explorer"),
     },
-    "show-tabs": { label: "Show Open Tabs", run: () => setPanel("tabs") },
+    "show-problems": {
+      label: "Show Problems",
+      run: () => setPanel("problems"),
+    },
     refresh: { label: "Refresh explorer", run: () => refreshExplorer() },
     shortcuts: {
       label: "Keyboard shortcuts",
@@ -3492,6 +3971,7 @@
 
   /* ==========================================================
    * Modal system (forms + confirm + info)
+   * Kept for Open note, confirmations, shortcuts and about only.
    * ======================================================== */
   function modalEls() {
     return {
@@ -3529,7 +4009,6 @@
       const hint = f.hint
         ? `<span class="vn-Form__hint">${escapeHtml(f.hint)}</span>`
         : "";
-
       if (f.type === "select") {
         return `<label class="vn-Form__field">
           <span class="vn-Form__label">${escapeHtml(f.label)}</span>
@@ -3540,7 +4019,6 @@
                 const label = String(option.label ?? option);
                 const selected =
                   value === String(f.value || "") ? " selected" : "";
-
                 return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
               })
               .join("")}
@@ -3548,7 +4026,6 @@
           ${hint}
         </label>`;
       }
-
       return `<label class="vn-Form__field">
         <span class="vn-Form__label">${escapeHtml(f.label)}</span>
         <input class="vn-Form__input" name="${escapeHtml(f.name)}" value="${escapeHtml(f.value || "")}" placeholder="${escapeHtml(f.placeholder || "")}" autocomplete="off" spellcheck="false" />
@@ -3563,16 +4040,10 @@
 
       const form = $("[data-modal-form]", m.body);
       const firstInput =
-        $('input[name="filename"]', form) ||
-        $('input[name="path"]', form) ||
-        $("input, textarea, select", form);
-
+        $('input[name="path"]', form) || $("input, textarea, select", form);
       if (firstInput) {
         firstInput.focus();
-
-        if (typeof firstInput.select === "function") {
-          firstInput.select();
-        }
+        if (typeof firstInput.select === "function") firstInput.select();
       }
 
       const done = (val) => {
@@ -3669,6 +4140,11 @@
       ["Move line", "Alt + ↑ · Alt + ↓"],
       ["Run cell", "Ctrl/⌘ + Enter"],
       ["Run and advance", "Shift + Enter"],
+      ["Explorer", ""],
+      ["New note (inline)", "Ctrl/⌘ + N"],
+      ["New folder (inline)", "Ctrl/⌘ + Shift + N"],
+      ["Rename selected", "F2"],
+      ["Commit / cancel inline name", "Enter · Esc"],
       ["Global", ""],
       ["Save note", "Ctrl/⌘ + S"],
       ["Toggle sidebar", "Ctrl/⌘ + B"],
@@ -3694,9 +4170,48 @@
   function showAbout() {
     showModalInfo(
       "About Vix Note",
-      `<p><strong>Vix Note</strong> — visual executable notes for learning C++ and Vix.cpp faster.</p>
-       <p>Explanations, C++ cells, Reply cells, HTML cells, outputs and project context live together in one document.</p>
-       <p style="color:var(--vn-text3)">Part of the Vix.cpp ecosystem · MIT License · © 2026 Gaspard Kirira.</p>`,
+      `<div class="vn-About">
+      <div class="vn-About__hero">
+        <div class="vn-About__logo" aria-hidden="true">V</div>
+        <div>
+          <h2>Vix Note</h2>
+          <p>Visual executable notes for learning C++ and Vix.cpp faster.</p>
+        </div>
+      </div>
+
+      <p>
+        Vix Note is a local notebook workspace for writing notes, running C++
+        examples, testing Vix.cpp code, and keeping the result in the same
+        document.
+      </p>
+
+      <div class="vn-About__section">
+        <h3>What you can do</h3>
+        <ul>
+          <li>Write explanations with Markdown cells.</li>
+          <li>Run C++ cells through <code>vix run</code>.</li>
+          <li>Use Reply cells for small scripts and quick tests.</li>
+          <li>Add HTML cells when you need rendered content.</li>
+          <li>See outputs, errors, and diagnostics directly in the note.</li>
+        </ul>
+      </div>
+
+      <div class="vn-About__section">
+        <h3>Workspace</h3>
+        <ul>
+          <li>Create notes and folders from the explorer.</li>
+          <li>Open multiple notes with tabs.</li>
+          <li>Use the Problems panel to find failed cells faster.</li>
+          <li>Run notes in project context when local headers or dependencies are needed.</li>
+        </ul>
+      </div>
+
+      <p class="vn-About__meta">
+        Vix Note is part of the Vix.cpp ecosystem.
+        Built for local C++ learning and development.
+        MIT License. Copyright 2026, Gaspard Kirira.
+      </p>
+    </div>`,
     );
   }
 
@@ -3724,7 +4239,6 @@
     document.body.appendChild(menu);
     contextMenuEl = menu;
 
-    // position within viewport
     const rect = menu.getBoundingClientRect();
     const px = Math.min(x, window.innerWidth - rect.width - 8);
     const py = Math.min(y, window.innerHeight - rect.height - 8);
@@ -3743,8 +4257,17 @@
 
   function fileContextItems(path) {
     return [
-      { id: "open", label: "Open", run: () => openNotePath(path) },
-      { id: "rename", label: "Rename", run: () => renamePath(path, "file") },
+      {
+        id: "open",
+        label: "Open",
+        run: () => openNotePath(path, { silent: true }),
+      },
+      { sep: true },
+      {
+        id: "rename",
+        label: "Rename…",
+        run: () => startInlineRename(path, "file"),
+      },
       {
         id: "delete",
         label: "Delete",
@@ -3755,41 +4278,27 @@
           }
         },
       },
-      {
-        id: "download",
-        label: "Download",
-        run: () => notAvailable("Download"),
-      },
     ];
   }
   function dirContextItems(path) {
     return [
-      { id: "new-note", label: "New note inside", run: () => newNote(path) },
+      { id: "new-note", label: "New note", run: () => newNote(path) },
+      { id: "new-folder", label: "New folder", run: () => newFolder(path) },
+      { sep: true },
       {
-        id: "new-folder",
-        label: "New folder inside",
-        run: () => newFolder(path),
+        id: "rename",
+        label: "Rename…",
+        run: () => startInlineRename(path, "dir"),
       },
-      { id: "rename", label: "Rename", run: () => renamePath(path, "dir") },
       {
         id: "delete",
-        label: "Delete empty folder",
-        danger: true,
-        run: async () => {
-          if (await confirmDelete(baseName(path), "dir")) {
-            await deletePath(path, { recursive: false });
-          }
-        },
-      },
-      {
-        id: "delete-recursive",
-        label: "Delete folder recursively",
+        label: "Delete",
         danger: true,
         run: async () => {
           const ok = await showModalConfirm({
-            title: "Delete folder recursively",
-            body: `Delete “${escapeHtml(path)}” and everything inside it from disk? This cannot be undone from Vix Note.`,
-            confirm: "Delete everything",
+            title: "Delete folder",
+            body: `Delete folder “${escapeHtml(baseName(path))}” and everything inside it from disk? This cannot be undone from Vix Note.`,
+            confirm: "Delete",
             danger: true,
           });
 
@@ -3801,15 +4310,41 @@
     ];
   }
 
-  function notAvailable(what) {
-    setMessage(`${what} is not available yet.`, "warning");
-  }
-
   /* ==========================================================
    * Wiring: header toolbar actions
    * ======================================================== */
   function bindActions() {
     document.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+
+      const kindOption = target ? target.closest("[data-kind-option]") : null;
+      if (kindOption) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        setToolbarKind(kindOption.dataset.kindOption || "cpp", {
+          applyToCell: true,
+        });
+
+        closeToolbarKindMenu();
+        return;
+      }
+
+      const kindButton = target
+        ? target.closest('[data-action="toolbar-kind"]')
+        : null;
+
+      if (kindButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleToolbarKindMenu();
+        return;
+      }
+
+      if (target && !target.closest("[data-cell-type-select]")) {
+        closeToolbarKindMenu();
+      }
+
       const t =
         event.target instanceof Element
           ? event.target.closest("[data-action]")
@@ -3849,7 +4384,7 @@
           if (targetId()) moveCellById(targetId(), "down");
           break;
         case "new-note":
-          newNote();
+          newNote(state.explorer.selectedDirPath || ".");
           break;
         case "open-note":
           openNote();
@@ -3860,6 +4395,10 @@
         case "refresh":
           refreshExplorer();
           break;
+        case "clear-problems":
+          clearDiagnostics();
+          setMessage("Problems cleared.", "info");
+          break;
         case "shortcuts":
           showShortcuts();
           break;
@@ -3867,14 +4406,6 @@
           break;
       }
     });
-
-    const kindSelect = $(sel.toolbarKind);
-    if (kindSelect) {
-      kindSelect.addEventListener("change", () => {
-        if (state.selectedId)
-          changeKind(state.selectedId, currentToolbarKind());
-      });
-    }
   }
 
   /* ==========================================================
@@ -3884,12 +4415,10 @@
     for (const b of $all("[data-activity]")) {
       b.addEventListener("click", () => {
         const activity = b.dataset.activity;
-
         if (activity === "explorer") {
           toggleExplorerSidebar();
           return;
         }
-
         setPanel(activity);
       });
     }
@@ -3897,11 +4426,100 @@
 
   /* ==========================================================
    * Wiring: explorer + open tabs + tabs bar
+   * Includes the inline-create and inline-rename input handling.
    * ======================================================== */
   function bindExplorer() {
     const listEl = $(sel.explorerList);
     if (listEl) {
+      // --- Inline create input ---
+      listEl.addEventListener("keydown", (e) => {
+        const input = e.target.closest("[data-tree-input]");
+        if (input) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitInlineCreate(input.value);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancelInlineCreate();
+          }
+          return;
+        }
+
+        const renameInput = e.target.closest("[data-tree-rename-input]");
+        if (renameInput) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitInlineRename(renameInput.value);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancelInlineRename();
+          }
+          return;
+        }
+
+        // Row-level keyboard (Enter to open/toggle, F2 to rename).
+        const row = e.target.closest("[data-tree-path]");
+
+        if (!row) {
+          /*
+           * Clicking empty space in the explorer means:
+           * create next files/folders at workspace root.
+           *
+           * This matches the expected VS Code-like behavior:
+           * selected folder = target folder
+           * empty explorer area = root target
+           */
+          state.explorer.selectedDirPath = ".";
+          state.explorer.currentPath = ".";
+          renderExplorer();
+          return;
+        }
+
+        const path = row.getAttribute("data-tree-path");
+        const type = row.getAttribute("data-tree-type");
+
+        if (e.key === "F2") {
+          e.preventDefault();
+          startInlineRename(path, type === "dir" ? "dir" : "file");
+          return;
+        }
+        if (e.key === "Enter") {
+          if (type === "dir") {
+            toggleDirectory(path);
+          } else if (type === "file") {
+            openFileRowIfAllowed(path);
+          }
+        }
+      });
+
+      // Commit-on-blur for the inline inputs (VS Code commits on blur).
+      listEl.addEventListener(
+        "focusout",
+        (e) => {
+          const input = e.target.closest("[data-tree-input]");
+          if (input && state.explorer.draft) {
+            // Defer so an Enter/Escape keydown handler runs first.
+            setTimeout(() => {
+              if (state.explorer.draft) commitInlineCreate(input.value);
+            }, 0);
+            return;
+          }
+          const renameInput = e.target.closest("[data-tree-rename-input]");
+          if (renameInput && state.explorer.rename) {
+            setTimeout(() => {
+              if (state.explorer.rename) commitInlineRename(renameInput.value);
+            }, 0);
+          }
+        },
+        true,
+      );
+
       listEl.addEventListener("click", (e) => {
+        // Clicks inside an inline input must not bubble to row handlers.
+        if (e.target.closest("[data-tree-input], [data-tree-rename-input]")) {
+          return;
+        }
+
         const menuBtn = e.target.closest("[data-tree-menu]");
         if (menuBtn) {
           e.stopPropagation();
@@ -3921,26 +4539,23 @@
         if (!row) return;
         const path = row.getAttribute("data-tree-path");
         const type = row.getAttribute("data-tree-type");
+
+        // Track selection so New note / New folder target the right place.
         if (type === "dir") {
+          state.explorer.selectedDirPath = normalizeExplorerPath(path);
           toggleDirectory(path);
           return;
         }
-
         if (type === "file") {
-          const entry = state.explorer.entries.get(path);
-
-          if (entry && entry.openable === false && !path.endsWith(".vixnote")) {
-            setMessage(
-              "Only .vixnote files can be opened in Vix Note.",
-              "warning",
-            );
-            return;
-          }
-
-          openNotePath(path);
+          state.explorer.selectedDirPath = parentPath(path);
+          openFileRowIfAllowed(path);
         }
       });
+
       listEl.addEventListener("contextmenu", (e) => {
+        if (e.target.closest("[data-tree-input], [data-tree-rename-input]")) {
+          return;
+        }
         const row = e.target.closest("[data-tree-path]");
         if (!row) return;
         e.preventDefault();
@@ -3952,47 +4567,20 @@
           type === "dir" ? dirContextItems(path) : fileContextItems(path),
         );
       });
-      listEl.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter") return;
-        const row = e.target.closest("[data-tree-path]");
-        if (!row) return;
-        const path = row.getAttribute("data-tree-path");
-        const type = row.getAttribute("data-tree-type");
-        if (type === "dir") {
-          toggleDirectory(path);
-          return;
-        }
-
-        if (type === "file") {
-          const entry = state.explorer.entries.get(path);
-
-          if (entry && entry.openable === false && !path.endsWith(".vixnote")) {
-            setMessage(
-              "Only .vixnote files can be opened in Vix Note.",
-              "warning",
-            );
-            return;
-          }
-
-          openNotePath(path);
-        }
-      });
     }
 
     const search = $(sel.explorerSearch);
     if (search) search.addEventListener("input", renderExplorer);
 
-    const openTabsList = $(sel.openTabsList);
-    if (openTabsList) {
-      openTabsList.addEventListener("click", (e) => {
-        const close = e.target.closest("[data-tab-close]");
-        if (close) {
-          e.stopPropagation();
-          closeTab(close.getAttribute("data-tab-close"));
-          return;
+    // Problems panel: clicking a diagnostic (or its group header) jumps to
+    // the owning cell.
+    const problemsList = $(sel.problemsList);
+    if (problemsList) {
+      problemsList.addEventListener("click", (e) => {
+        const goto = e.target.closest("[data-problem-goto]");
+        if (goto) {
+          gotoCellFromDiagnostic(goto.getAttribute("data-problem-goto"));
         }
-        const row = e.target.closest("[data-tab-path]");
-        if (row) switchTab(row.getAttribute("data-tab-path"));
       });
     }
 
@@ -4016,6 +4604,15 @@
     });
     window.addEventListener("blur", closeContextMenu);
     window.addEventListener("resize", closeContextMenu);
+  }
+
+  function openFileRowIfAllowed(path) {
+    const entry = state.explorer.entries.get(path);
+    if (entry && entry.openable === false && !path.endsWith(".vixnote")) {
+      setMessage("Only .vixnote files can be opened in Vix Note.", "warning");
+      return;
+    }
+    openNotePath(path, { silent: true });
   }
 
   /* ==========================================================
@@ -4065,55 +4662,30 @@
 
     container.addEventListener("input", (event) => {
       const ta = event.target;
-
-      if (!(ta instanceof HTMLTextAreaElement)) {
-        return;
-      }
-
-      if (ta.getAttribute("data-action") !== "edit-source") {
-        return;
-      }
-
+      if (!(ta instanceof HTMLTextAreaElement)) return;
+      if (ta.getAttribute("data-action") !== "edit-source") return;
       markTextareaChanged(ta);
     });
 
     container.addEventListener("click", (event) => {
       const ta = event.target;
-
-      if (!(ta instanceof HTMLTextAreaElement)) {
-        return;
-      }
-
-      if (ta.getAttribute("data-action") !== "edit-source") {
-        return;
-      }
-
+      if (!(ta instanceof HTMLTextAreaElement)) return;
+      if (ta.getAttribute("data-action") !== "edit-source") return;
       updateLineFocus(ta);
       updateCursorStatus(ta);
     });
 
     container.addEventListener("keyup", (event) => {
       const ta = event.target;
-
-      if (!(ta instanceof HTMLTextAreaElement)) {
-        return;
-      }
-
-      if (ta.getAttribute("data-action") !== "edit-source") {
-        return;
-      }
-
+      if (!(ta instanceof HTMLTextAreaElement)) return;
+      if (ta.getAttribute("data-action") !== "edit-source") return;
       updateLineFocus(ta);
       updateCursorStatus(ta);
     });
 
     container.addEventListener("select", (event) => {
       const ta = event.target;
-
-      if (!(ta instanceof HTMLTextAreaElement)) {
-        return;
-      }
-
+      if (!(ta instanceof HTMLTextAreaElement)) return;
       updateLineFocus(ta);
       updateCursorStatus(ta);
     });
@@ -4160,6 +4732,10 @@
     await addCell(currentToolbarKind(), { atIndex: idx });
   }
 
+  function inlineInputActive() {
+    return !!(state.explorer.draft || state.explorer.rename);
+  }
+
   function bindKeyboard() {
     document.addEventListener("keydown", async (event) => {
       const inField =
@@ -4167,6 +4743,22 @@
         event.target instanceof HTMLInputElement;
       const inTextarea = event.target instanceof HTMLTextAreaElement;
       const meta = event.ctrlKey || event.metaKey;
+
+      // Explorer global shortcuts: New note / New folder (VS Code-like).
+      if (meta && event.key.toLowerCase() === "n") {
+        // Don't hijack while typing into a textarea cell.
+        if (!inTextarea) {
+          event.preventDefault();
+          if (event.shiftKey) newFolder();
+          else newNote();
+          return;
+        }
+      }
+
+      // While an inline tree input is active, let it own its own keys.
+      if (inlineInputActive() && inField) {
+        return;
+      }
 
       if (meta && event.key === "Enter") {
         event.preventDefault();
@@ -4199,55 +4791,39 @@
 
         if (event.key === "Escape") {
           event.preventDefault();
-
           if (state.selectedId) {
             const cellEl = cellElById(state.selectedId);
-
-            if (cellEl) {
-              localUpdateFromDom(cellEl);
-            }
+            if (cellEl) localUpdateFromDom(cellEl);
           }
-
           exitEditMode();
           return;
         }
-
         if (event.key === "Tab") {
           event.preventDefault();
-
-          if (event.shiftKey) {
-            outdentTextarea(ta);
-          } else {
-            indentTextarea(ta);
-          }
-
+          if (event.shiftKey) outdentTextarea(ta);
+          else indentTextarea(ta);
           return;
         }
-
         if (meta && event.key === "/") {
           event.preventDefault();
           toggleCommentTextarea(ta);
           return;
         }
-
         if (event.altKey && event.key === "ArrowUp") {
           event.preventDefault();
           moveCurrentLine(ta, -1);
           return;
         }
-
         if (event.altKey && event.key === "ArrowDown") {
           event.preventDefault();
           moveCurrentLine(ta, 1);
           return;
         }
-
         if (meta && event.key.toLowerCase() === "s") {
           event.preventDefault();
           await saveNote();
           return;
         }
-
         updateLineFocus(ta);
         updateCursorStatus(ta);
         return;
@@ -4322,7 +4898,12 @@
     bindExplorer();
     bindKeyboard();
 
-    // close modal on backdrop / × click
+    // Status-bar problems indicator opens the Problems panel.
+    const statusProblems = $(sel.statusProblems);
+    if (statusProblems) {
+      statusProblems.addEventListener("click", () => setPanel("problems"));
+    }
+
     for (const c of $all("[data-modal-close]"))
       c.addEventListener("click", () => closeModal());
 
@@ -4331,6 +4912,7 @@
     renderExplorer();
     renderOpenTabs();
     renderTabsBar();
+    renderProblems();
     loadDocument();
   }
 

@@ -710,6 +710,62 @@ namespace vix::note
              name == "cmake-build-debug" ||
              name == "cmake-build-release";
     }
+
+    bool is_startup_scratch_document(const NoteDocument &doc)
+    {
+      const std::string title =
+          lower_copy(doc.title());
+
+      const std::filesystem::path normalizedPath =
+          normalize_workspace_path(doc.path());
+
+      const std::string path =
+          lower_copy(normalizedPath.generic_string());
+
+      if (!(title == "tmp" ||
+            title == "untitled" ||
+            title == "untitled note"))
+      {
+        return false;
+      }
+
+      if (!(path.empty() ||
+            path == "." ||
+            path == "untitled.vixnote" ||
+            path == "untitled"))
+      {
+        return false;
+      }
+
+      if (doc.cell_count() > 1)
+      {
+        return false;
+      }
+
+      if (doc.cell_count() == 0)
+      {
+        return true;
+      }
+
+      const NoteCell *cell = doc.cell_at(0);
+
+      if (cell == nullptr)
+      {
+        return true;
+      }
+
+      const std::string source =
+          lower_copy(cell->source());
+
+      return source.find("start writing your note here") != std::string::npos ||
+             source.find("start writing your lesson here") != std::string::npos ||
+             source.find("# tmp") != std::string::npos;
+    }
+
+    std::string no_open_document_json()
+    {
+      return "{\"ok\":true,\"hasDocument\":false,\"document\":null}";
+    }
   }
 
   NoteRouteResponse NoteRouteResponse::text(int status, std::string body)
@@ -941,6 +997,13 @@ namespace vix::note
     if (request.method == NoteRouteMethod::Get &&
         request.path == "/api/document")
     {
+      if (is_startup_scratch_document(kernel_.document()))
+      {
+        return NoteRouteResponse::json(
+            200,
+            no_open_document_json());
+      }
+
       return NoteRouteResponse::json(200, document_json());
     }
 
@@ -961,6 +1024,11 @@ namespace vix::note
       if (!options_.enableSave)
       {
         return json_error(403, "save disabled");
+      }
+
+      if (is_startup_scratch_document(kernel_.document()))
+      {
+        return json_error(409, "no open note to save");
       }
 
       NoteResult result =
@@ -1095,6 +1163,11 @@ namespace vix::note
         return json_error(403, "editing disabled");
       }
 
+      if (is_startup_scratch_document(kernel_.document()))
+      {
+        return json_error(409, "no open note; create or open a note first");
+      }
+
       NoteDocument &doc =
           kernel_.document();
 
@@ -1112,7 +1185,7 @@ namespace vix::note
       }
 
       const NoteCellKind kind =
-          json_cell_kind(request.body, NoteCellKind::Markdown);
+          json_cell_kind(request.body, NoteCellKind::Cpp);
 
       const std::string source =
           json_string_field(request.body, "source").value_or(std::string{});

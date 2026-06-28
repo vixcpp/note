@@ -66,7 +66,7 @@
                     d="M12 12v5M9.5 14.5h5"
                   />
                 </svg>
-                New note
+                New note <span class="vn-Menu__hint">⌘N</span>
               </button>
               <button
                 type="button"
@@ -120,7 +120,7 @@
                     d="M12 11v5M9.5 13.5h5"
                   />
                 </svg>
-                New folder
+                New folder <span class="vn-Menu__hint">⌘⇧N</span>
               </button>
               <div class="vn-Menu__sep"></div>
               <button type="button" class="vn-Menu__item" data-command="save">
@@ -459,7 +459,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="show-tabs"
+                data-command="show-problems"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -471,10 +471,18 @@
                     stroke="currentColor"
                     stroke-width="1.7"
                     stroke-linejoin="round"
-                    d="M3 8a2 2 0 0 1 2-2h5l1.5 2H14V6h5a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z"
+                    d="M12 3l9 16H3l9-16z"
                   />
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linecap="round"
+                    d="M12 10v4"
+                  />
+                  <circle cx="12" cy="16.5" r="1" fill="currentColor" />
                 </svg>
-                Show Open Tabs
+                Show Problems
               </button>
               <div class="vn-Menu__sep"></div>
               <button
@@ -840,16 +848,33 @@
           <button
             class="vn-Activity__btn"
             type="button"
-            data-activity="tabs"
-            title="Open tabs"
-            aria-label="Open tabs"
+            data-activity="problems"
+            title="Problems"
+            aria-label="Problems"
           >
-            <!-- open tabs (solid) -->
+            <!-- problems / diagnostics (triangle alert, stroke) -->
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
-                d="M3 8a2 2 0 0 1 2-2h5l1.5 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8zm0-2.2V6h6.3L8.4 4.6A2 2 0 0 0 6.8 4H5a2 2 0 0 0-2 1.8z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.9"
+                stroke-linejoin="round"
+                d="M12 3l9 16H3l9-16z"
               />
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.9"
+                stroke-linecap="round"
+                d="M12 10v4"
+              />
+              <circle cx="12" cy="16.5" r="1.1" fill="currentColor" />
             </svg>
+            <span
+              class="vn-Activity__badge"
+              data-activity-problems-badge
+              hidden
+            ></span>
           </button>
 
           <div class="vn-Activity__spacer"></div>
@@ -1039,16 +1064,77 @@
               </div>
             </section>
 
-            <!-- OPEN TABS PANEL -->
-            <section class="vn-Panel" data-panel="tabs" hidden>
+            <!-- PROBLEMS / DIAGNOSTICS PANEL -->
+            <section class="vn-Panel" data-panel="problems" hidden>
               <header class="vn-Panel__head">
                 <span class="vn-Panel__title">
-                  Open Tabs
-                  <span class="vn-Panel__count" data-open-tabs-count>0</span>
+                  Problems
+                  <span class="vn-Panel__count" data-problems-count>0</span>
                 </span>
+                <div class="vn-Panel__actions">
+                  <button
+                    type="button"
+                    class="vn-IconBtn"
+                    data-action="run-all"
+                    title="Run all cells"
+                    aria-label="Run all cells"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linejoin="round"
+                        d="M5 5.5v13l9-6.5-9-6.5z"
+                      />
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        d="M18 6v12"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="vn-IconBtn"
+                    data-action="clear-problems"
+                    title="Clear problems"
+                    aria-label="Clear problems"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M6 7h12M9 7V5h6v2M8 7l1 13h6l1-13"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </header>
-              <div class="vn-Tree" data-open-tabs-list aria-label="Open tabs">
-                <p class="vn-Tree__empty">No open notes.</p>
+
+              <div
+                class="vn-Problems__summary"
+                data-problems-summary
+                data-state="idle"
+              >
+                <span class="vn-Problems__dot" aria-hidden="true"></span>
+                <span
+                  class="vn-Problems__summaryText"
+                  data-problems-summary-text
+                  >No problems detected.</span
+                >
+              </div>
+
+              <div class="vn-Problems" data-problems-list aria-label="Problems">
+                <p class="vn-Tree__empty">
+                  No problems detected. Run a C++ or Reply cell to see compiler
+                  and runtime diagnostics here.
+                </p>
               </div>
             </section>
           </div>
@@ -1071,7 +1157,7 @@
             <div class="vn-TabsBar__empty">No open notes</div>
           </div>
 
-          <!-- NOTEBOOK TOOLBAR (scoped to the editor zone) — ICONS UNCHANGED -->
+          <!-- NOTEBOOK TOOLBAR (scoped to the editor zone) -->
           <div class="vn-Toolbar" role="toolbar" aria-label="Notebook toolbar">
             <button
               class="vn-ToolbarButton"
@@ -1191,32 +1277,99 @@
 
             <span class="vn-Toolbar__sep"></span>
 
-            <div class="vn-CellTypeSelect">
-              <select data-action="toolbar-kind" aria-label="Cell type">
-                <option value="">Code</option>
-                <option value="cpp">C++</option>
-                <option value="reply">Reply</option>
-                <option value="markdown">Markdown</option>
-                <option value="html">HTML</option>
-              </select>
+            <div class="vn-CellTypeSelect" data-cell-type-select>
+              <button
+                class="vn-CellTypeSelect__button"
+                type="button"
+                data-action="toolbar-kind"
+                data-kind="cpp"
+                aria-label="Cell type"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                <span class="vn-CellTypeSelect__label" data-toolbar-kind-label
+                  >C++</span
+                >
+                <svg
+                  class="vn-CellTypeSelect__chevron"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M7 10l5 5 5-5z" />
+                </svg>
+              </button>
+
+              <div
+                class="vn-CellTypeSelect__menu"
+                data-toolbar-kind-menu
+                role="listbox"
+                hidden
+              >
+                <button
+                  type="button"
+                  class="vn-CellTypeSelect__option is-active"
+                  data-kind-option="cpp"
+                  role="option"
+                  aria-selected="true"
+                >
+                  <span class="vn-CellTypeSelect__optionMain">C++</span>
+                  <span class="vn-CellTypeSelect__optionHint"
+                    >Executable C++ cell</span
+                  >
+                </button>
+
+                <button
+                  type="button"
+                  class="vn-CellTypeSelect__option"
+                  data-kind-option="reply"
+                  role="option"
+                  aria-selected="false"
+                >
+                  <span class="vn-CellTypeSelect__optionMain">Reply</span>
+                  <span class="vn-CellTypeSelect__optionHint"
+                    >Reply script cell</span
+                  >
+                </button>
+
+                <button
+                  type="button"
+                  class="vn-CellTypeSelect__option"
+                  data-kind-option="markdown"
+                  role="option"
+                  aria-selected="false"
+                >
+                  <span class="vn-CellTypeSelect__optionMain">Markdown</span>
+                  <span class="vn-CellTypeSelect__optionHint"
+                    >Text and notes</span
+                  >
+                </button>
+
+                <button
+                  type="button"
+                  class="vn-CellTypeSelect__option"
+                  data-kind-option="html"
+                  role="option"
+                  aria-selected="false"
+                >
+                  <span class="vn-CellTypeSelect__optionMain">HTML</span>
+                  <span class="vn-CellTypeSelect__optionHint"
+                    >Rendered HTML cell</span
+                  >
+                </button>
+              </div>
             </div>
 
             <div class="vn-Toolbar__grow"></div>
-
-            <span class="vn-Toolbar__title" data-note-title>Untitled note</span>
-            <span class="vn-Toolbar__filename" data-note-document
-              >Untitled.vixnote</span
-            >
           </div>
 
           <!-- NOTEBOOK PANEL -->
           <main class="vn-NotebookPanel" id="workspace">
-            <!-- <div
+            <div
               class="vn-Notice"
               data-note-message
               hidden
               aria-live="polite"
-            ></div> -->
+            ></div>
 
             <div
               class="vn-Notebook"
@@ -1241,6 +1394,16 @@
           <span class="vn-StatusBar__pos" data-status-position
             >Cell 0 of 0</span
           >
+          <span class="vn-StatusBar__sep">·</span>
+          <button
+            type="button"
+            class="vn-StatusBar__problems"
+            data-status-problems
+            title="Show problems"
+          >
+            <span class="vn-StatusBar__problemsIcon" aria-hidden="true">⚠</span>
+            <span data-status-problems-count>0</span>
+          </button>
         </div>
         <div class="vn-StatusBar__right">
           <span class="vn-StatusBar__kind" data-status-kind>—</span>
@@ -1265,7 +1428,6 @@
         <div class="vn-Modal__box">
           <header class="vn-Modal__head">
             <span class="vn-Modal__icon" data-modal-icon aria-hidden="true">
-              <!-- default modal icon: info; JS may swap this -->
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle
                   cx="12"
