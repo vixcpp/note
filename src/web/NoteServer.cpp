@@ -18,10 +18,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <iomanip>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -592,6 +596,239 @@ namespace vix::note
           sizeof(timeout));
 #endif
     }
+
+    [[nodiscard]] std::string note_env_or_empty(const char *name)
+    {
+      if (name == nullptr)
+      {
+        return {};
+      }
+
+#if defined(_WIN32)
+      char *buffer = nullptr;
+      std::size_t length = 0;
+
+      if (_dupenv_s(&buffer, &length, name) != 0 || buffer == nullptr)
+      {
+        return {};
+      }
+
+      std::string value(buffer);
+      std::free(buffer);
+
+      return value;
+#else
+      const char *value = std::getenv(name);
+
+      if (value == nullptr)
+      {
+        return {};
+      }
+
+      return std::string(value);
+#endif
+    }
+
+    bool note_runtime_color_enabled()
+    {
+      const std::string noColor = note_env_or_empty("NO_COLOR");
+
+      if (!noColor.empty())
+      {
+        return false;
+      }
+
+      const std::string rawColor = note_env_or_empty("VIX_COLOR");
+
+      if (!rawColor.empty())
+      {
+        std::string value = lower_copy(rawColor);
+
+        if (value == "never" ||
+            value == "0" ||
+            value == "false" ||
+            value == "off")
+        {
+          return false;
+        }
+
+        if (value == "always" ||
+            value == "1" ||
+            value == "true" ||
+            value == "on")
+        {
+          return true;
+        }
+      }
+
+      return true;
+    }
+
+    std::string_view note_reset()
+    {
+      return note_runtime_color_enabled() ? "\x1b[0m" : "";
+    }
+
+    std::string_view note_dim()
+    {
+      return note_runtime_color_enabled() ? "\x1b[2m" : "";
+    }
+
+    std::string_view note_gray()
+    {
+      return note_runtime_color_enabled() ? "\x1b[90m" : "";
+    }
+
+    std::string_view note_bold()
+    {
+      return note_runtime_color_enabled() ? "\x1b[1m" : "";
+    }
+
+    std::string_view note_cyan()
+    {
+      return note_runtime_color_enabled() ? "\x1b[36m" : "";
+    }
+
+    std::string_view note_green()
+    {
+      return note_runtime_color_enabled() ? "\x1b[32m" : "";
+    }
+
+    std::string_view note_yellow()
+    {
+      return note_runtime_color_enabled() ? "\x1b[33m" : "";
+    }
+
+    std::string_view note_red()
+    {
+      return note_runtime_color_enabled() ? "\x1b[31m" : "";
+    }
+
+    std::string_view note_level_color(int status)
+    {
+      if (status >= 500)
+      {
+        return note_red();
+      }
+
+      if (status >= 400)
+      {
+        return note_yellow();
+      }
+
+      return note_green();
+    }
+
+    std::string_view note_status_color(int status)
+    {
+      if (status >= 200 && status < 300)
+      {
+        return note_green();
+      }
+
+      if (status >= 300 && status < 400)
+      {
+        return note_cyan();
+      }
+
+      if (status >= 400 && status < 500)
+      {
+        return note_yellow();
+      }
+
+      return note_red();
+    }
+
+    std::string note_log_level_for_status(int status)
+    {
+      if (status >= 500)
+      {
+        return "error";
+      }
+
+      if (status >= 400)
+      {
+        return "warn";
+      }
+
+      return "info";
+    }
+
+    std::string note_format_local_time_24h()
+    {
+      using clock = std::chrono::system_clock;
+
+      const auto now = clock::now();
+      const std::time_t raw = clock::to_time_t(now);
+
+      std::tm tm{};
+
+#if defined(_WIN32)
+      localtime_s(&tm, &raw);
+#else
+      localtime_r(&raw, &tm);
+#endif
+
+      std::ostringstream out;
+
+      out << std::setw(2) << std::setfill('0') << tm.tm_hour
+          << ":"
+          << std::setw(2) << std::setfill('0') << tm.tm_min
+          << ":"
+          << std::setw(2) << std::setfill('0') << tm.tm_sec;
+
+      return out.str();
+    }
+
+    void note_print_request_log(
+        const NoteRouteRequest &request,
+        int status,
+        long long elapsedMs)
+    {
+      const std::string method = std::string(to_string(request.method));
+      const std::string path =
+          request.path.empty() ? "<bad-request>" : request.path;
+
+      std::string methodLabel = method;
+
+      if (methodLabel.size() < 4)
+      {
+        methodLabel.append(4 - methodLabel.size(), ' ');
+      }
+
+      const std::string level = note_log_level_for_status(status);
+
+      std::cerr
+          << note_gray()
+          << note_format_local_time_24h()
+          << note_reset()
+          << " "
+          << note_gray()
+          << "[note]"
+          << note_reset()
+          << " "
+          << note_level_color(status)
+          << "["
+          << level
+          << "]"
+          << note_reset()
+          << " "
+          << note_cyan()
+          << methodLabel
+          << note_reset()
+          << " "
+          << path
+          << " "
+          << note_status_color(status)
+          << status
+          << note_reset()
+          << " "
+          << note_dim()
+          << elapsedMs
+          << "ms"
+          << note_reset()
+          << '\n';
+    }
   }
 
   class NoteServerRuntime
@@ -837,6 +1074,8 @@ namespace vix::note
 
     void handle_client(NoteSocket client)
     {
+      const auto requestStart = std::chrono::steady_clock::now();
+
       NoteRouteRequest request;
 
       NoteRouteResponse response =
@@ -862,14 +1101,14 @@ namespace vix::note
 
       if (logRequests_)
       {
-        std::cerr
-            << "[vix note] "
-            << to_string(request.method)
-            << " "
-            << (request.path.empty() ? "<bad-request>" : request.path)
-            << " -> "
-            << response.status
-            << '\n';
+        const auto requestEnd = std::chrono::steady_clock::now();
+
+        const long long elapsedMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                requestEnd - requestStart)
+                .count();
+
+        note_print_request_log(request, response.status, elapsedMs);
       }
 
       const std::string payload =
