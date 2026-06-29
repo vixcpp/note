@@ -146,7 +146,7 @@ int main()
 
     assert(css.has_value());
     assert(css->contentType == "text/css; charset=utf-8");
-    assert(css->content.find(".note-shell") != std::string::npos);
+    assert(css->content.find(".vn-AppBar") != std::string::npos);
 
     std::optional<vix::note::NoteAsset> js =
         assets.find("/assets/note.js");
@@ -280,8 +280,8 @@ int main()
         vix::note::NoteAssets::default_css();
 
     assert(css.find(":root") != std::string::npos);
-    assert(css.find(".note-cell") != std::string::npos);
-    assert(css.find("--note-accent") != std::string::npos);
+    assert(css.find(".vn-Notebook") != std::string::npos);
+    assert(css.find("--vn-brand1") != std::string::npos);
   }
 
   {
