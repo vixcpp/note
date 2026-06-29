@@ -16,12 +16,7 @@
  *   POST   /api/directory/list        { path }
  *   POST   /api/path/delete           { path, recursive }
  *   POST   /api/path/rename           { path, newName }
- *
- * Goals: one cell = one DOM node (no duplication), stable status bar,
- * VS Code-style activity bar + explorer + open tabs, a notebook toolbar
- * scoped to the editor zone, and — new in this revision — VS Code-style
- * INLINE creation of files and folders directly inside the explorer tree
- * (no modal pop-ups for "New note" / "New folder").
+ *   POST   /api/path/move             { path, directory }
  *
  * No framework, no external dependency, vanilla JS only.
  *
@@ -43,36 +38,29 @@
     sidebarWidth: 260,
     focusMode: false,
     activePanel: "explorer", // explorer | problems
-    // Explorer entries are loaded from the local backend directory API.
-    // Tabs stay session-local because open editor buffers are UI state.
     explorer: {
       rootPath: ".",
       currentPath: ".",
       selectedDirPath: ".",
       loadingPath: null,
-
-      // path -> { path, type: 'file'|'dir', title?, modified, openable?, extension?, size? }
       entries: new Map(),
-
-      // Directory paths already loaded from the backend.
       loadedDirs: new Set(),
-
-      // Directory paths visually expanded in the tree.
       expandedDirs: new Set(["."]),
-
-      // VS Code-style inline create. Null when no draft is active.
-      // { kind: 'file'|'dir', parentPath: string, error: string|null }
       draft: null,
     },
     tabs: [], // [{ path, title, dirty, doc? }]
     activeTabPath: null,
 
-    // Diagnostics / Problems. A pure projection of NoteResult outputs for the
-    // active note. Never persisted: diagnostics belong to the live run only.
     diagnostics: {
-      status: "idle", // idle | running | success | failed
-      items: [], // [{ id, cellId, cellLabel, severity, kind, message, ts }]
-      byCell: new Map(), // cellId -> count of error-severity items
+      status: "idle",
+      items: [],
+      byCell: new Map(),
+    },
+
+    // Drag and drop. Explorer and tab drags never mix.
+    drag: {
+      explorer: null, // { path, type }
+      tab: null, // { path, fromIndex }
     },
   };
 
@@ -213,10 +201,6 @@
     const newTitle = noteTitleFromPath(newPath);
     const currentTitle = String(state.document.title || "").trim();
 
-    /*
-     * Only auto-retitle notes that still use the generated title.
-     * If the user gave the note a custom title, do not overwrite it.
-     */
     if (currentTitle && currentTitle !== oldTitle) {
       state.document.path = newPath;
       document.title = `${currentTitle} · Vix Note`;
@@ -466,7 +450,6 @@
     const dirs = ["."];
     const parts = normalized.split("/");
 
-    // Remove file name.
     parts.pop();
 
     let acc = "";
@@ -496,15 +479,6 @@
       });
     }
 
-    /*
-     * Important:
-     * Do NOT create a fake explorer file here.
-     *
-     * The explorer must only show files returned by /api/directory/list
-     * or files explicitly created/opened through the backend.
-     *
-     * Unsaved notes live only in the editor/tabs, not in the disk explorer.
-     */
     renderExplorer();
   }
 
@@ -649,7 +623,6 @@
         depth: 0,
       });
 
-      // Draft directly under root renders right after the root row.
       pushDraftRowIfMatches(".", 1, rows);
     }
 
@@ -671,13 +644,9 @@
       });
 
       if (child.type === "dir" && state.explorer.expandedDirs.has(path)) {
-        // Draft directly inside this expanded directory renders as the
-        // first child row of the directory.
         pushDraftRowIfMatches(path, depth + 2, rows);
         buildExplorerTreeRows(path, depth + 1, rows);
       } else if (child.type === "dir") {
-        // Collapsed directory: still allow a draft inside it (it forces
-        // an expand when the draft is started, so this is mostly defensive).
         pushDraftRowIfMatches(path, depth + 2, rows);
       }
     }
@@ -711,11 +680,6 @@
       return buildExplorerTreeRows(".", 0, []);
     }
 
-    /*
-     * Search mode: show matching entries with their natural depth.
-     * This keeps search simple while normal mode stays a real tree.
-     * Inline drafts are not shown while filtering.
-     */
     return Array.from(state.explorer.entries.values())
       .filter(shouldShowEntry)
       .filter((entry) => {
@@ -1422,8 +1386,6 @@
     syncToolbarKind();
     updateStatusBar();
 
-    // Cells may have been added/removed/reordered; prune stale diagnostics
-    // and re-apply problem badges to the freshly painted cells.
     if (state.diagnostics && state.diagnostics.items.length) {
       recomputeDiagnosticsState();
     } else {
@@ -2016,15 +1978,17 @@
 
       const status = normalizeKind(result?.result?.status);
 
-      // Project the result into diagnostics for this cell.
       setCellDiagnostics(id, result?.result);
 
       if (status === "failure") {
         setKernel("error");
-        setMessage(
-          result?.result?.message || "Cell execution failed.",
-          "error",
-        );
+
+        /*
+         * Do not show a global flash for normal C++ execution errors.
+         * The error already appears in the cell output and in the Problems panel.
+         */
+        clearMessageQuietly();
+
         setTimeout(() => setKernel("idle"), 1200);
       } else if (status === "skipped") {
         setKernel("idle");
@@ -2062,19 +2026,18 @@
       );
       if (result.document) renderDocument(result.document);
 
-      // Project every cell result into diagnostics in one pass.
       setRunAllDiagnostics(result);
 
       if (result.ok) {
         setKernel("idle");
-        setMessage(`Ran ${result.executed || 0} cell(s).`, "success");
+        clearMessageQuietly();
       } else if (result.stopped) {
         setKernel("error");
-        setMessage("Run stopped after a failed cell.", "error");
+        clearMessageQuietly();
         setTimeout(() => setKernel("idle"), 1200);
       } else {
         setKernel("error");
-        setMessage("Run completed with failures.", "error");
+        clearMessageQuietly();
         setTimeout(() => setKernel("idle"), 1200);
       }
     } catch (error) {
@@ -2225,14 +2188,7 @@
 
   /* ==========================================================
    * VS Code-style INLINE create (files + folders)
-   *
-   * No modal: a single input row appears inside the tree, right where
-   * the new entry will live. Enter commits, Escape / blur cancels.
    * ======================================================== */
-
-  // The folder a new entry should be created in, given the current
-  // selection. If a file is selected, we use its parent folder, exactly
-  // like VS Code.
   function inlineCreateParent(explicitDir) {
     if (explicitDir != null) {
       return normalizeExplorerPath(explicitDir);
@@ -2251,7 +2207,6 @@
   }
 
   async function startInlineCreate(kind, explicitDir = null) {
-    // Search mode hides drafts; clear the filter so the row is visible.
     const search = $(sel.explorerSearch);
     if (search && search.value) {
       search.value = "";
@@ -2259,8 +2214,6 @@
 
     const parent = inlineCreateParent(explicitDir);
 
-    // Make sure the parent is expanded and loaded so the draft row has a
-    // place to live and we can validate duplicates against real entries.
     if (parent !== ".") {
       state.explorer.expandedDirs.add(parent);
     }
@@ -2269,13 +2222,10 @@
     state.explorer.currentPath = parent;
     state.explorer.draft = { kind, parentPath: parent, error: null };
 
-    // Ensure the activity bar shows the explorer panel.
     if (state.activePanel !== "explorer" || state.sidebarCollapsed) {
       setPanel("explorer");
     }
 
-    // Load the directory contents silently (so duplicate detection works),
-    // then render and focus the inline input.
     if (parent !== "." && !state.explorer.loadedDirs.has(parent)) {
       await loadDirectory(parent, { silent: true, force: false });
     } else {
@@ -2292,7 +2242,6 @@
   }
 
   function focusDraftInput() {
-    // Defer to the next frame so the freshly-rendered input exists.
     requestAnimationFrame(() => {
       const input = $(".vn-Tree__input");
       if (!input) return;
@@ -2347,7 +2296,6 @@
 
     const result = validateDraftName(rawName);
     if (!result.ok) {
-      // Empty name + Enter = silently cancel, like VS Code.
       if (!String(rawName || "").trim()) {
         cancelInlineCreate();
         return;
@@ -2361,7 +2309,6 @@
     const { name, path } = result;
     const kind = draft.kind;
 
-    // Clear the draft now; the optimistic entry + backend call take over.
     state.explorer.draft = null;
 
     setBusy(true);
@@ -2422,7 +2369,6 @@
     }
   }
 
-  // Public entry points used by toolbar buttons, menus and context menus.
   function newNote(dir = null) {
     return startInlineCreate("file", dir);
   }
@@ -2431,8 +2377,7 @@
   }
 
   /* ==========================================================
-   * Open note — kept as a lightweight modal (it takes a path, not a
-   * new name in the tree, so inline editing doesn't apply here).
+   * Open note
    * ======================================================== */
   async function openNote(prefill) {
     const data = await showModalForm({
@@ -2473,7 +2418,6 @@
       });
       const d = unwrapDocument(doc);
 
-      // Diagnostics belong to a single note; reset when loading another.
       clearDiagnostics();
 
       openTab(d.path, documentDisplayTitle(d));
@@ -2490,8 +2434,6 @@
 
       await loadExplorerForDocumentPath(d.path);
       if (!silent) {
-        // Opening a note is a navigation action, not a success event.
-        // Keep the editor clean.
         setMessage("");
       }
     } catch (error) {
@@ -2576,7 +2518,6 @@
     }
   }
 
-  // Rename is also inline (VS Code style): an input replaces the row label.
   async function startInlineRename(path, type = "file") {
     const normalized = normalizeExplorerPath(path);
     cancelInlineCreate();
@@ -2590,7 +2531,6 @@
       const input = $(".vn-Tree__input--rename");
       if (!input) return;
       input.focus();
-      // Select the name without the extension, like VS Code.
       const value = input.value;
       const dot = value.lastIndexOf(".");
       if (type === "file" && dot > 0) {
@@ -2661,69 +2601,8 @@
         result.newPath || joinExplorerPath(parentPath(oldPath), newName),
       );
 
-      const oldEntry = state.explorer.entries.get(oldPath);
-      state.explorer.entries.delete(oldPath);
+      applyPathMoveToState(oldPath, newPath, type);
 
-      const oldPrefix = `${oldPath}/`;
-      const newPrefix = `${newPath}/`;
-      for (const [key, entry] of Array.from(state.explorer.entries.entries())) {
-        if (key.startsWith(oldPrefix)) {
-          const renamedChildPath = normalizeExplorerPath(
-            newPrefix + key.slice(oldPrefix.length),
-          );
-          state.explorer.entries.delete(key);
-          state.explorer.entries.set(renamedChildPath, {
-            ...entry,
-            path: renamedChildPath,
-            title: baseName(renamedChildPath),
-          });
-        }
-      }
-
-      state.explorer.entries.set(newPath, {
-        ...(oldEntry || {}),
-        path: newPath,
-        type,
-        title: baseName(newPath),
-        modified: Date.now(),
-        openable: type === "file" ? newPath.endsWith(".vixnote") : false,
-        extension: type === "file" ? ".vixnote" : "",
-      });
-
-      if (state.explorer.loadedDirs.has(oldPath)) {
-        state.explorer.loadedDirs.delete(oldPath);
-        state.explorer.loadedDirs.add(newPath);
-      }
-      if (state.explorer.expandedDirs.has(oldPath)) {
-        state.explorer.expandedDirs.delete(oldPath);
-        state.explorer.expandedDirs.add(newPath);
-      }
-      if (state.explorer.selectedDirPath === oldPath) {
-        state.explorer.selectedDirPath = newPath;
-      }
-      if (state.explorer.currentPath === oldPath) {
-        state.explorer.currentPath = newPath;
-      }
-
-      for (const tab of state.tabs) {
-        if (tab.path === oldPath) {
-          const oldTitle = noteTitleFromPath(oldPath);
-          const newTitle = noteTitleFromPath(newPath);
-
-          tab.path = newPath;
-
-          if (
-            !tab.title ||
-            tab.title === baseName(oldPath) ||
-            tab.title === oldTitle
-          ) {
-            tab.title = newTitle;
-          }
-        }
-      }
-      if (state.activeTabPath === oldPath) {
-        state.activeTabPath = newPath;
-      }
       await retitleActiveDocumentAfterRename(oldPath, newPath, type);
 
       await loadDirectory(parentPath(newPath), { silent: true, force: true });
@@ -2759,6 +2638,124 @@
     }
   }
 
+  /*
+   * Shared state surgery for rename + move. Updates explorer entries,
+   * loaded/expanded dir sets, selection, tabs and active document path
+   * so that an old path (file or dir) becomes a new path everywhere.
+   */
+  function applyPathMoveToState(oldPath, newPath, type) {
+    const oldNorm = normalizeExplorerPath(oldPath);
+    const newNorm = normalizeExplorerPath(newPath);
+    if (oldNorm === newNorm) return;
+
+    const oldEntry = state.explorer.entries.get(oldNorm);
+    state.explorer.entries.delete(oldNorm);
+
+    const oldPrefix = `${oldNorm}/`;
+    const newPrefix = `${newNorm}/`;
+    for (const [key, entry] of Array.from(state.explorer.entries.entries())) {
+      if (key.startsWith(oldPrefix)) {
+        const movedChildPath = normalizeExplorerPath(
+          newPrefix + key.slice(oldPrefix.length),
+        );
+        state.explorer.entries.delete(key);
+        state.explorer.entries.set(movedChildPath, {
+          ...entry,
+          path: movedChildPath,
+          title: baseName(movedChildPath),
+        });
+      }
+    }
+
+    state.explorer.entries.set(newNorm, {
+      ...(oldEntry || {}),
+      path: newNorm,
+      type,
+      title: baseName(newNorm),
+      modified: Date.now(),
+      openable: type === "file" ? newNorm.endsWith(".vixnote") : false,
+      extension: type === "file" ? ".vixnote" : "",
+    });
+
+    if (state.explorer.loadedDirs.has(oldNorm)) {
+      state.explorer.loadedDirs.delete(oldNorm);
+      state.explorer.loadedDirs.add(newNorm);
+    }
+    if (state.explorer.expandedDirs.has(oldNorm)) {
+      state.explorer.expandedDirs.delete(oldNorm);
+      state.explorer.expandedDirs.add(newNorm);
+    }
+    // Re-map any loaded/expanded descendants of a moved directory.
+    for (const set of [
+      state.explorer.loadedDirs,
+      state.explorer.expandedDirs,
+    ]) {
+      for (const dir of Array.from(set)) {
+        if (dir.startsWith(oldPrefix)) {
+          set.delete(dir);
+          set.add(
+            normalizeExplorerPath(newPrefix + dir.slice(oldPrefix.length)),
+          );
+        }
+      }
+    }
+
+    if (state.explorer.selectedDirPath === oldNorm) {
+      state.explorer.selectedDirPath = newNorm;
+    }
+    if (state.explorer.currentPath === oldNorm) {
+      state.explorer.currentPath = newNorm;
+    }
+
+    // Tabs: exact match (file move/rename) and prefixed (dir move/rename).
+    for (const tab of state.tabs) {
+      const tabPath = normalizeExplorerPath(tab.path);
+      if (tabPath === oldNorm) {
+        const oldTitle = noteTitleFromPath(oldNorm);
+        const newTitle = noteTitleFromPath(newNorm);
+        tab.path = newNorm;
+        if (
+          !tab.title ||
+          tab.title === baseName(oldNorm) ||
+          tab.title === oldTitle
+        ) {
+          tab.title = newTitle;
+        }
+      } else if (tabPath.startsWith(oldPrefix)) {
+        tab.path = normalizeExplorerPath(
+          newPrefix + tabPath.slice(oldPrefix.length),
+        );
+      }
+    }
+
+    if (state.activeTabPath) {
+      const activeNorm = normalizeExplorerPath(state.activeTabPath);
+      if (activeNorm === oldNorm) {
+        state.activeTabPath = newNorm;
+      } else if (activeNorm.startsWith(oldPrefix)) {
+        state.activeTabPath = normalizeExplorerPath(
+          newPrefix + activeNorm.slice(oldPrefix.length),
+        );
+      }
+    }
+
+    // Active document path (keep the document open after a move/rename).
+    if (
+      state.document &&
+      normalizeExplorerPath(state.document.path) === oldNorm
+    ) {
+      state.document.path = newNorm;
+    } else if (
+      state.document &&
+      normalizeExplorerPath(state.document.path).startsWith(oldPrefix)
+    ) {
+      state.document.path = normalizeExplorerPath(
+        newPrefix +
+          normalizeExplorerPath(state.document.path).slice(oldPrefix.length),
+      );
+    }
+  }
+
   async function confirmDelete(label, type = "file") {
     return showModalConfirm({
       title: "Delete from disk",
@@ -2772,6 +2769,107 @@
   }
 
   /* ==========================================================
+   * Explorer drag and drop (move files / folders)
+   * ======================================================== */
+
+  // A move is allowed when:
+  //  - we are not moving the root
+  //  - source and destination differ
+  //  - a folder is not dropped into itself or any of its descendants
+  //  - the file/folder is not already a direct child of the target
+  function canMoveExplorerPath(sourcePath, sourceType, targetDir) {
+    const src = normalizeExplorerPath(sourcePath);
+    const dir = normalizeExplorerPath(targetDir);
+
+    if (!src || src === ".") return false; // never move the root
+    if (!dir) return false;
+
+    // Dropping a folder into itself.
+    if (sourceType === "dir" && dir === src) return false;
+
+    // Dropping a folder into one of its own descendants.
+    if (sourceType === "dir" && dir.startsWith(`${src}/`)) return false;
+
+    // No-op: already a direct child of the target directory.
+    if (parentPath(src) === dir) return false;
+
+    return true;
+  }
+
+  async function moveExplorerPath(sourcePath, targetDir) {
+    const src = normalizeExplorerPath(sourcePath);
+    const dir = normalizeExplorerPath(targetDir);
+
+    const entry = state.explorer.entries.get(src);
+    const type = entry ? entry.type : src.endsWith(".vixnote") ? "file" : "dir";
+
+    if (!canMoveExplorerPath(src, type, dir)) {
+      return;
+    }
+
+    const oldParent = parentPath(src);
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const result = await api("/api/path/move", {
+        method: "POST",
+        body: JSON.stringify({ path: src, directory: dir }),
+      });
+
+      if (!result || result.ok === false) {
+        throw new Error(result?.error || "Failed to move path.");
+      }
+
+      const newPath = normalizeExplorerPath(
+        result.newPath || joinExplorerPath(dir, baseName(src)),
+      );
+
+      // Reflect the move across explorer entries, tabs and active document.
+      applyPathMoveToState(src, newPath, type);
+
+      if (dir !== ".") {
+        state.explorer.expandedDirs.add(dir);
+      }
+
+      // Silently reload both the old and the new parent directories.
+      await loadDirectory(oldParent, { silent: true, force: true });
+      await loadDirectory(dir, { silent: true, force: true });
+
+      renderExplorer();
+      renderOpenTabs();
+      renderTabsBar();
+      persistTabs();
+      // No success flash: a move is a quiet action.
+      clearMessageQuietly();
+    } catch (error) {
+      setMessage(error.message || "Failed to move path.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function clearExplorerDropTargets() {
+    for (const el of $all(".vn-Tree__row.is-drop-target")) {
+      el.classList.remove("is-drop-target");
+    }
+    const listEl = $(sel.explorerList);
+    if (listEl) listEl.classList.remove("is-root-drop-target");
+  }
+
+  function explorerDropDirForRow(row) {
+    // Returns the target directory for a drop on this row, or null if the
+    // row is not a valid drop target.
+    if (!row) return null;
+    const path = row.getAttribute("data-tree-path");
+    const type = row.getAttribute("data-tree-type");
+    if (!path) return null;
+    // Only folders (and the root row ".") are valid drop targets.
+    if (type === "dir") return normalizeExplorerPath(path);
+    return null;
+  }
+
+  /* ==========================================================
    * Outputs (client-side display only)
    * ======================================================== */
   function clearCellOutput(id) {
@@ -2781,7 +2879,6 @@
     if (oa) oa.remove();
     const cell = findCell(id);
     if (cell) cell.outputs = [];
-    // Drop this cell's diagnostics too.
     state.diagnostics.items = state.diagnostics.items.filter(
       (d) => d.cellId !== String(id),
     );
@@ -2810,8 +2907,6 @@
       const path = state.activeTabPath || state.tabs[0].path;
 
       try {
-        const before = state.activeTabPath;
-
         await openNotePath(path, { silent: true });
 
         if (
@@ -2968,6 +3063,40 @@
 
     const entries = Array.isArray(payload?.entries) ? payload.entries : [];
 
+    // Remove stale children of this directory that no longer exist on disk.
+    const incomingPaths = new Set();
+    for (const entry of entries) {
+      const name = String(
+        entry.name || baseName(entry.path || "") || "",
+      ).trim();
+      if (!name) continue;
+      let path;
+      if (dirPath === ".") {
+        path = normalizeExplorerPath(entry.path || name);
+      } else {
+        const rawPath = normalizeExplorerPath(entry.path || name);
+        if (rawPath === dirPath || rawPath.startsWith(`${dirPath}/`)) {
+          path = rawPath;
+        } else {
+          path = normalizeExplorerPath(`${dirPath}/${name}`);
+        }
+      }
+      incomingPaths.add(path);
+    }
+
+    for (const key of Array.from(state.explorer.entries.keys())) {
+      if (key === dirPath) continue;
+      if (parentPath(key) !== dirPath) continue;
+      if (!incomingPaths.has(key)) {
+        // Drop the stale entry and any of its descendants.
+        state.explorer.entries.delete(key);
+        const prefix = `${key}/`;
+        for (const child of Array.from(state.explorer.entries.keys())) {
+          if (child.startsWith(prefix)) state.explorer.entries.delete(child);
+        }
+      }
+    }
+
     for (const entry of entries) {
       const name = String(
         entry.name || baseName(entry.path || "") || "",
@@ -3010,7 +3139,7 @@
     }
 
     state.explorer.loadingPath = dirPath;
-    if (!silent) setMessage(`Loading ${dirPath}…`, "info");
+    if (!silent) clearMessageQuietly();
     renderExplorer();
 
     try {
@@ -3025,7 +3154,7 @@
 
       state.explorer.currentPath = dirPath;
       mergeDirectoryList(payload, dirPath);
-      if (!silent) setMessage("Explorer refreshed.", "success");
+      if (!silent) clearMessageQuietly();
     } catch (error) {
       if (!silent) {
         setMessage(error.message || "Failed to load directory.", "error");
@@ -3151,7 +3280,6 @@
       ? normalizeExplorerPath(state.explorer.rename.path)
       : null;
 
-    // Count excludes the draft pseudo-row.
     const realCount = entries.filter((e) => !e.isDraft).length;
     setText(sel.explorerCount, String(realCount));
 
@@ -3195,6 +3323,10 @@
         const depth = Number(e.depth || 0);
         const expanded = state.explorer.expandedDirs.has(path);
 
+        // The root row and every file/dir except root are draggable.
+        // All folders (and the root) are drop targets.
+        const draggable = path !== "." ? ' draggable="true"' : "";
+
         return `
         <div
           class="vn-Tree__row${active}${loading}${expanded ? " is-expanded" : ""}"
@@ -3202,7 +3334,7 @@
           data-tree-type="${escapeHtml(e.type)}"
           data-tree-openable="${e.openable ? "true" : "false"}"
           style="--depth:${depth}"
-          tabindex="0"
+          tabindex="0"${draggable}
         >
           ${
             e.type === "dir"
@@ -3374,6 +3506,36 @@
     renderTabsBar();
   }
 
+  // Reorder tabs without touching disk. position is "before" | "after".
+  function reorderTabs(sourcePath, targetPath, position) {
+    const src = normalizeExplorerPath(sourcePath);
+    const tgt = normalizeExplorerPath(targetPath);
+    if (src === tgt) return;
+
+    const fromIndex = state.tabs.findIndex(
+      (t) => normalizeExplorerPath(t.path) === src,
+    );
+    if (fromIndex < 0) return;
+
+    // Pull the source tab out (keeps its dirty state, since it's the object).
+    const [moved] = state.tabs.splice(fromIndex, 1);
+
+    let targetIndex = state.tabs.findIndex(
+      (t) => normalizeExplorerPath(t.path) === tgt,
+    );
+    if (targetIndex < 0) {
+      // Target vanished; put it back where it was.
+      state.tabs.splice(fromIndex, 0, moved);
+      return;
+    }
+
+    const insertAt = position === "after" ? targetIndex + 1 : targetIndex;
+    state.tabs.splice(insertAt, 0, moved);
+
+    persistTabs();
+    renderTabsBar();
+  }
+
   function tabDot(tab) {
     return tab.dirty
       ? '<span class="vn-Tab__dot" title="Unsaved changes"></span>'
@@ -3390,7 +3552,7 @@
     bar.innerHTML = state.tabs
       .map((t) => {
         const active = t.path === state.activeTabPath ? " is-active" : "";
-        return `<div class="vn-Tab${active}" data-tab-path="${escapeHtml(t.path)}" title="${escapeHtml(t.path)}">
+        return `<div class="vn-Tab${active}" data-tab-path="${escapeHtml(t.path)}" title="${escapeHtml(t.path)}" draggable="true">
             ${tabDot(t)}
             <span class="vn-Tab__label">${escapeHtml(t.title)}</span>
             <button class="vn-Tab__close" type="button" data-tab-close="${escapeHtml(t.path)}" aria-label="Close tab">×</button>
@@ -3401,15 +3563,6 @@
 
   /* ==========================================================
    * Diagnostics / Problems
-   *
-   * Diagnostics are a pure projection of NoteResult outputs. The runtime
-   * already classifies outputs (compiler_error, runtime_error, error, stderr,
-   * hint); we only read those, attach the owning cell, and render them.
-   *
-   * Severity mapping:
-   *   compiler_error / runtime_error / error / stderr -> "error"
-   *   hint                                            -> "hint"
-   *   everything else (stdout, debug, raw_log, text, html, ...) -> ignored
    * ======================================================== */
   const DIAGNOSTIC_SEVERITY = {
     compiler_error: "error",
@@ -3433,7 +3586,6 @@
     return String(cellId || "cell");
   }
 
-  // Build diagnostics from a single NoteResult-like object for a known cell.
   function diagnosticsFromResult(result, cellId) {
     const outputs = Array.isArray(result?.outputs) ? result.outputs : [];
     const items = [];
@@ -3455,7 +3607,6 @@
     return items;
   }
 
-  // Replace diagnostics for a single cell (used after running one cell).
   function setCellDiagnostics(cellId, result) {
     const id = String(cellId);
     state.diagnostics.items = state.diagnostics.items.filter(
@@ -3467,9 +3618,6 @@
     renderProblems();
   }
 
-  // Rebuild all diagnostics from a run-all kernel result. results[] follows
-  // the order of executable cells, so we zip against the document skipping
-  // non-executable cells.
   function setRunAllDiagnostics(runResult) {
     const results = Array.isArray(runResult?.results) ? runResult.results : [];
     const executable = cells().filter((c) => isCodeKind(c.kind));
@@ -3498,7 +3646,6 @@
   }
 
   function recomputeDiagnosticsState() {
-    // Drop diagnostics whose cell no longer exists.
     state.diagnostics.items = state.diagnostics.items.filter(
       (d) => findCell(d.cellId) !== null,
     );
@@ -3537,7 +3684,6 @@
     const total = state.diagnostics.items.length;
     const status = state.diagnostics.status;
 
-    // Panel header count + status-bar count + activity badge.
     setText(sel.problemsCount, String(errorCount));
     setText(sel.statusProblemsCount, String(errorCount));
 
@@ -3556,7 +3702,6 @@
       statusBtn.classList.toggle("has-errors", errorCount > 0);
     }
 
-    // Summary line.
     const summary = $(sel.problemsSummary);
     const summaryText = $(sel.problemsSummaryText);
     if (summary) summary.setAttribute("data-state", status);
@@ -3573,7 +3718,6 @@
       }
     }
 
-    // List body.
     const listEl = $(sel.problemsList);
     if (!listEl) return;
 
@@ -3595,7 +3739,6 @@
       return;
     }
 
-    // Group items by cell, errors first within each group.
     const groups = new Map();
     for (const d of state.diagnostics.items) {
       if (!groups.has(d.cellId)) groups.set(d.cellId, []);
@@ -3642,7 +3785,6 @@
     listEl.innerHTML = rows.join("");
   }
 
-  // Small red dot on cells that currently have error diagnostics.
   function refreshCellProblemBadges() {
     for (const el of $all(".vn-Cell")) {
       const id = el.dataset.cellId;
@@ -3651,7 +3793,6 @@
     }
   }
 
-  // Navigate from a diagnostic to its cell.
   function gotoCellFromDiagnostic(cellId) {
     const id = String(cellId);
 
@@ -3669,10 +3810,6 @@
     }
   }
 
-  // Compatibility shim: older call sites invoke renderOpenTabs() after tab
-  // changes. The Open Tabs panel is gone (folded into the main tab bar), so
-  // this now only refreshes the tab bar. Kept as a named function so we don't
-  // have to touch every call site.
   function renderOpenTabs() {
     renderTabsBar();
   }
@@ -3726,7 +3863,6 @@
     }
     setPanel("explorer");
   }
-  // Alias kept for the keyboard shortcut and menu command.
   function toggleSidebar(forceCollapsed) {
     if (forceCollapsed === true) {
       state.sidebarCollapsed = true;
@@ -3971,7 +4107,6 @@
 
   /* ==========================================================
    * Modal system (forms + confirm + info)
-   * Kept for Open note, confirmations, shortcuts and about only.
    * ======================================================== */
   function modalEls() {
     return {
@@ -4425,13 +4560,11 @@
   }
 
   /* ==========================================================
-   * Wiring: explorer + open tabs + tabs bar
-   * Includes the inline-create and inline-rename input handling.
+   * Wiring: explorer + tabs bar
    * ======================================================== */
   function bindExplorer() {
     const listEl = $(sel.explorerList);
     if (listEl) {
-      // --- Inline create input ---
       listEl.addEventListener("keydown", (e) => {
         const input = e.target.closest("[data-tree-input]");
         if (input) {
@@ -4457,18 +4590,9 @@
           return;
         }
 
-        // Row-level keyboard (Enter to open/toggle, F2 to rename).
         const row = e.target.closest("[data-tree-path]");
 
         if (!row) {
-          /*
-           * Clicking empty space in the explorer means:
-           * create next files/folders at workspace root.
-           *
-           * This matches the expected VS Code-like behavior:
-           * selected folder = target folder
-           * empty explorer area = root target
-           */
           state.explorer.selectedDirPath = ".";
           state.explorer.currentPath = ".";
           renderExplorer();
@@ -4492,13 +4616,11 @@
         }
       });
 
-      // Commit-on-blur for the inline inputs (VS Code commits on blur).
       listEl.addEventListener(
         "focusout",
         (e) => {
           const input = e.target.closest("[data-tree-input]");
           if (input && state.explorer.draft) {
-            // Defer so an Enter/Escape keydown handler runs first.
             setTimeout(() => {
               if (state.explorer.draft) commitInlineCreate(input.value);
             }, 0);
@@ -4515,7 +4637,6 @@
       );
 
       listEl.addEventListener("click", (e) => {
-        // Clicks inside an inline input must not bubble to row handlers.
         if (e.target.closest("[data-tree-input], [data-tree-rename-input]")) {
           return;
         }
@@ -4540,7 +4661,6 @@
         const path = row.getAttribute("data-tree-path");
         const type = row.getAttribute("data-tree-type");
 
-        // Track selection so New note / New folder target the right place.
         if (type === "dir") {
           state.explorer.selectedDirPath = normalizeExplorerPath(path);
           toggleDirectory(path);
@@ -4567,13 +4687,96 @@
           type === "dir" ? dirContextItems(path) : fileContextItems(path),
         );
       });
+
+      // ---- Explorer drag and drop ----
+      listEl.addEventListener("dragstart", (e) => {
+        // Never start a drag from an inline input.
+        if (e.target.closest("[data-tree-input], [data-tree-rename-input]")) {
+          e.preventDefault();
+          return;
+        }
+        const row = e.target.closest("[data-tree-path]");
+        if (!row) return;
+        const path = row.getAttribute("data-tree-path");
+        const type = row.getAttribute("data-tree-type");
+        if (!path || path === ".") {
+          e.preventDefault();
+          return;
+        }
+        state.drag.tab = null;
+        state.drag.explorer = { path: normalizeExplorerPath(path), type };
+        row.classList.add("is-dragging");
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move";
+          // Some browsers require data to be set for a drag to begin.
+          try {
+            e.dataTransfer.setData("text/plain", path);
+          } catch (_) {}
+        }
+      });
+
+      listEl.addEventListener("dragover", (e) => {
+        const drag = state.drag.explorer;
+        if (!drag) return;
+
+        const row = e.target.closest("[data-tree-path]");
+        const targetDir = row ? explorerDropDirForRow(row) : "."; // empty space => root
+
+        clearExplorerDropTargets();
+
+        if (targetDir == null) {
+          return; // not a valid target (e.g. a file row)
+        }
+
+        if (!canMoveExplorerPath(drag.path, drag.type, targetDir)) {
+          return;
+        }
+
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+
+        if (row) {
+          row.classList.add("is-drop-target");
+        } else {
+          listEl.classList.add("is-root-drop-target");
+        }
+      });
+
+      listEl.addEventListener("dragleave", (e) => {
+        const row = e.target.closest("[data-tree-path]");
+        if (row) row.classList.remove("is-drop-target");
+      });
+
+      listEl.addEventListener("drop", (e) => {
+        const drag = state.drag.explorer;
+        if (!drag) return;
+
+        const row = e.target.closest("[data-tree-path]");
+        const targetDir = row ? explorerDropDirForRow(row) : ".";
+
+        clearExplorerDropTargets();
+
+        if (targetDir == null) return;
+        if (!canMoveExplorerPath(drag.path, drag.type, targetDir)) return;
+
+        e.preventDefault();
+        const source = drag.path;
+        state.drag.explorer = null;
+        moveExplorerPath(source, targetDir);
+      });
+
+      listEl.addEventListener("dragend", () => {
+        state.drag.explorer = null;
+        for (const el of $all(".vn-Tree__row.is-dragging")) {
+          el.classList.remove("is-dragging");
+        }
+        clearExplorerDropTargets();
+      });
     }
 
     const search = $(sel.explorerSearch);
     if (search) search.addEventListener("input", renderExplorer);
 
-    // Problems panel: clicking a diagnostic (or its group header) jumps to
-    // the owning cell.
     const problemsList = $(sel.problemsList);
     if (problemsList) {
       problemsList.addEventListener("click", (e) => {
@@ -4584,19 +4787,7 @@
       });
     }
 
-    const tabsBar = $(sel.tabsBar);
-    if (tabsBar) {
-      tabsBar.addEventListener("click", (e) => {
-        const close = e.target.closest("[data-tab-close]");
-        if (close) {
-          e.stopPropagation();
-          closeTab(close.getAttribute("data-tab-close"));
-          return;
-        }
-        const tab = e.target.closest("[data-tab-path]");
-        if (tab) switchTab(tab.getAttribute("data-tab-path"));
-      });
-    }
+    bindTabsBar();
 
     document.addEventListener("click", () => closeContextMenu());
     document.addEventListener("keydown", (e) => {
@@ -4604,6 +4795,106 @@
     });
     window.addEventListener("blur", closeContextMenu);
     window.addEventListener("resize", closeContextMenu);
+  }
+
+  /* ==========================================================
+   * Wiring: tabs bar (click + reorder drag and drop)
+   * ======================================================== */
+  function clearTabDropMarkers() {
+    for (const el of $all(".vn-Tab.is-drop-before, .vn-Tab.is-drop-after")) {
+      el.classList.remove("is-drop-before", "is-drop-after");
+    }
+  }
+
+  function bindTabsBar() {
+    const tabsBar = $(sel.tabsBar);
+    if (!tabsBar) return;
+
+    tabsBar.addEventListener("click", (e) => {
+      const close = e.target.closest("[data-tab-close]");
+      if (close) {
+        e.stopPropagation();
+        closeTab(close.getAttribute("data-tab-close"));
+        return;
+      }
+      const tab = e.target.closest("[data-tab-path]");
+      if (tab) switchTab(tab.getAttribute("data-tab-path"));
+    });
+
+    tabsBar.addEventListener("dragstart", (e) => {
+      const tab = e.target.closest("[data-tab-path]");
+      if (!tab) return;
+      const path = normalizeExplorerPath(tab.getAttribute("data-tab-path"));
+      const fromIndex = state.tabs.findIndex(
+        (t) => normalizeExplorerPath(t.path) === path,
+      );
+      state.drag.explorer = null;
+      state.drag.tab = { path, fromIndex };
+      tab.classList.add("is-dragging");
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        try {
+          e.dataTransfer.setData("text/plain", path);
+        } catch (_) {}
+      }
+    });
+
+    tabsBar.addEventListener("dragover", (e) => {
+      const drag = state.drag.tab;
+      if (!drag) return;
+      const tab = e.target.closest("[data-tab-path]");
+      if (!tab) return;
+      const path = normalizeExplorerPath(tab.getAttribute("data-tab-path"));
+      if (path === drag.path) {
+        clearTabDropMarkers();
+        return;
+      }
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+
+      // Decide before/after from cursor position within the tab.
+      const rect = tab.getBoundingClientRect();
+      const after = e.clientX > rect.left + rect.width / 2;
+      clearTabDropMarkers();
+      tab.classList.add(after ? "is-drop-after" : "is-drop-before");
+    });
+
+    tabsBar.addEventListener("dragleave", (e) => {
+      const tab = e.target.closest("[data-tab-path]");
+      if (tab) tab.classList.remove("is-drop-before", "is-drop-after");
+    });
+
+    tabsBar.addEventListener("drop", (e) => {
+      const drag = state.drag.tab;
+      if (!drag) return;
+      const tab = e.target.closest("[data-tab-path]");
+      if (!tab) {
+        clearTabDropMarkers();
+        return;
+      }
+      const targetPath = normalizeExplorerPath(
+        tab.getAttribute("data-tab-path"),
+      );
+      if (targetPath === drag.path) {
+        clearTabDropMarkers();
+        return;
+      }
+      e.preventDefault();
+      const rect = tab.getBoundingClientRect();
+      const after = e.clientX > rect.left + rect.width / 2;
+      const source = drag.path;
+      state.drag.tab = null;
+      clearTabDropMarkers();
+      reorderTabs(source, targetPath, after ? "after" : "before");
+    });
+
+    tabsBar.addEventListener("dragend", () => {
+      state.drag.tab = null;
+      for (const el of $all(".vn-Tab.is-dragging")) {
+        el.classList.remove("is-dragging");
+      }
+      clearTabDropMarkers();
+    });
   }
 
   function openFileRowIfAllowed(path) {
@@ -4744,9 +5035,7 @@
       const inTextarea = event.target instanceof HTMLTextAreaElement;
       const meta = event.ctrlKey || event.metaKey;
 
-      // Explorer global shortcuts: New note / New folder (VS Code-like).
       if (meta && event.key.toLowerCase() === "n") {
-        // Don't hijack while typing into a textarea cell.
         if (!inTextarea) {
           event.preventDefault();
           if (event.shiftKey) newFolder();
@@ -4755,7 +5044,6 @@
         }
       }
 
-      // While an inline tree input is active, let it own its own keys.
       if (inlineInputActive() && inField) {
         return;
       }
@@ -4898,7 +5186,6 @@
     bindExplorer();
     bindKeyboard();
 
-    // Status-bar problems indicator opens the Problems panel.
     const statusProblems = $(sel.statusProblems);
     if (statusProblems) {
       statusProblems.addEventListener("click", () => setPanel("problems"));

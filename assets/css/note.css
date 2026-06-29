@@ -6,7 +6,8 @@
  *  Vix Note — notebook UI
  *  Lightweight editor: top app bar, activity bar, explorer/problems sidebar,
  *  central tabs + notebook toolbar, stable status bar, custom modals,
- *  VS Code-style inline create/rename, and a Problems (diagnostics) panel.
+ *  VS Code-style inline create/rename, a Problems (diagnostics) panel, and
+ *  native drag-and-drop for explorer entries and editor tabs.
  *
  *  Copyright 2026, Gaspard Kirira. MIT License.
  */
@@ -687,6 +688,25 @@ input {
   color: var(--vn-text1);
 }
 
+/* ---------- Drag and drop: explorer ---------- */
+/* Source row while it is being dragged. */
+.vn-Tree__row.is-dragging {
+  opacity: 0.5;
+}
+/* Folder (or root row) that is a valid drop target under the cursor. */
+.vn-Tree__row.is-drop-target {
+  background: var(--vn-brand3);
+  box-shadow: inset 0 0 0 1px var(--vn-brand1);
+}
+.vn-Tree__row.is-drop-target .vn-Tree__icon {
+  fill: var(--vn-brand0);
+}
+/* Whole tree highlighted when dropping onto empty space (root target). */
+.vn-Tree.is-root-drop-target {
+  box-shadow: inset 0 0 0 2px var(--vn-brand2);
+  border-radius: 6px;
+}
+
 /* ---------- Inline create / rename input (simple VS Code style) ---------- */
 .vn-Tree__row--draft,
 .vn-Tree__row--rename {
@@ -1058,11 +1078,14 @@ input {
    EDITOR COLUMN
    ============================================================ */
 .vn-Editor-col {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  overflow: hidden;
+  background: var(--vn-color0);
 }
 
 /* ---------- Center tabs bar ---------- */
@@ -1087,6 +1110,7 @@ input {
   color: var(--vn-text3);
 }
 .vn-Tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1143,8 +1167,33 @@ input {
   color: var(--vn-text1);
 }
 
+/* ---------- Drag and drop: tabs ---------- */
+/* Source tab while it is being dragged. */
+.vn-Tab.is-dragging {
+  opacity: 0.5;
+}
+/* Insertion markers (drop before / after the hovered tab). */
+.vn-Tab.is-drop-before::before,
+.vn-Tab.is-drop-after::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--vn-brand1);
+  border-radius: 2px;
+}
+.vn-Tab.is-drop-before::before {
+  left: 0;
+}
+.vn-Tab.is-drop-after::after {
+  right: 0;
+}
+
 /* ---------- Notebook toolbar ---------- */
 .vn-Toolbar {
+  position: relative;
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 1px;
@@ -1153,24 +1202,17 @@ input {
   background: var(--vn-toolbar-bg);
   border-bottom: 1px solid var(--vn-border2);
   flex: 0 0 auto;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.vn-Toolbar {
-  position: relative;
-  z-index: 30;
   overflow: visible;
+  width: 100%;
+  max-width: 100%;
 }
 .vn-Toolbar::-webkit-scrollbar {
   display: none;
 }
-.vn-EditorColumn {
-  overflow: visible;
-}
 
 .vn-CellTypeSelect {
   position: relative;
-  z-index: 90;
+  z-index: 120;
   flex: 0 0 auto;
 }
 
@@ -1178,7 +1220,8 @@ input {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 999;
+  z-index: 1000;
+  min-width: 190px;
 }
 .vn-ToolbarButton {
   display: grid;
@@ -1209,19 +1252,7 @@ input {
   background: var(--vn-border2);
   flex: 0 0 auto;
 }
-.vn-CellTypeSelect select {
-  height: 28px;
-  padding: 0 22px 0 8px;
-  border: 1px solid var(--vn-border1);
-  border-radius: 5px;
-  background: var(--vn-color1)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23616161'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")
-    no-repeat right 4px center / 16px;
-  color: var(--vn-text1);
-  font-size: 12.5px;
-  appearance: none;
-  cursor: pointer;
-}
+
 .vn-Toolbar__grow {
   flex: 1 1 auto;
 }
@@ -2142,7 +2173,7 @@ input {
 /* ============================================================
    RESPONSIVE
    ============================================================ */
-@media (max-width: 900px) {
+@media (max-width: 620px) {
   .vn-Sidebar {
     position: absolute;
     top: 0;
