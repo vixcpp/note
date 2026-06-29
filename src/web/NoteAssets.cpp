@@ -421,7 +421,10 @@ namespace vix::note
 
   std::string NoteAssets::default_index_html()
   {
-    return R"VIXNOTE(<!doctype html>
+    std::string value;
+    value.reserve(50310);
+
+    value.append(R"VIXNOTE(<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -768,7 +771,9 @@ namespace vix::note
                     height="12"
                     rx="2"
                     fill="none"
-                    stroke="currentColor"
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(                    stroke="currentColor"
                     stroke-width="1.7"
                   />
                   <path
@@ -1129,7 +1134,9 @@ namespace vix::note
                     stroke="currentColor"
                     stroke-width="1.7"
                     stroke-linecap="round"
-                    stroke-linejoin="round"
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(                    stroke-linejoin="round"
                     d="M20 5v6h-6"
                   />
                 </svg>
@@ -1472,7 +1479,9 @@ namespace vix::note
                     stroke-width="2"
                     stroke-linecap="round"
                   />
-                </svg>
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(                </svg>
                 <input
                   type="text"
                   data-explorer-search
@@ -1822,7 +1831,9 @@ namespace vix::note
             type="button"
             class="vn-StatusBar__problems"
             data-status-problems
-            title="Show problems"
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(            title="Show problems"
           >
             <span class="vn-StatusBar__problemsIcon" aria-hidden="true">⚠</span>
             <span data-status-problems-count>0</span>
@@ -1889,12 +1900,17 @@ namespace vix::note
     <script src="/assets/note.js"></script>
   </body>
 </html>
-)VIXNOTE";
+)VIXNOTE");
+
+    return value;
   }
 
   std::string NoteAssets::default_css()
   {
-    return R"VIXNOTE(/**
+    std::string value;
+    value.reserve(45042);
+
+    value.append(R"VIXNOTE(/**
  *
  *  @file note.css
  *  @author Gaspard Kirira
@@ -2501,7 +2517,9 @@ input {
   align-items: center;
   gap: 7px;
   padding: 4px 6px;
-  padding-left: calc(6px + var(--depth, 0) * 14px);
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(  padding-left: calc(6px + var(--depth, 0) * 14px);
   border-radius: 5px;
   cursor: pointer;
   color: var(--vn-text1);
@@ -3076,7 +3094,9 @@ input {
   top: 4px;
   bottom: 4px;
   width: 2px;
-  background: var(--vn-brand1);
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(  background: var(--vn-brand1);
   border-radius: 2px;
 }
 .vn-Tab.is-drop-before::before {
@@ -3680,7 +3700,9 @@ input {
   min-width: 78px;
 }
 .vn-StatusBar__kind {
-  display: inline-block;
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(  display: inline-block;
   min-width: 56px;
   text-align: right;
 }
@@ -4125,12 +4147,17 @@ input {
     display: none;
   }
 }
-)VIXNOTE";
+)VIXNOTE");
+
+    return value;
   }
 
   std::string NoteAssets::default_js()
   {
-    return R"VIXNOTE(/*
+    std::string value;
+    value.reserve(155060);
+
+    value.append(R"VIXNOTE(/*
  * Vix Note — notebook frontend
  *
  * Lightweight editor experience over the existing Vix Note HTTP API:
@@ -4584,7 +4611,9 @@ input {
 
     parts.pop();
 
-    let acc = "";
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(    let acc = "";
 
     for (const part of parts) {
       if (!part || part === ".") {
@@ -5113,7 +5142,9 @@ input {
         let j = i + 1;
         while (j < n) {
           if (s[j] === "\\") {
-            j += 2;
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(            j += 2;
             continue;
           }
           if (s[j] === q) {
@@ -5459,7 +5490,9 @@ input {
 
   function renderDocument(payload, opts = {}) {
     const doc = unwrapDocument(payload);
-    if (!doc) {
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(    if (!doc) {
       renderEmpty("Unable to load the note document.");
       return;
     }
@@ -5848,7 +5881,9 @@ input {
       el.classList.remove("is-editing");
       el.focus({ preventScroll: true });
     }
-    updateStatusBar();
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(    updateStatusBar();
   }
   function selectAdjacent(delta) {
     const list = cells();
@@ -6264,7 +6299,9 @@ input {
         state.selectedId = String(id);
         renderDocument(result.document);
       }
-      selectCell(id, { edit: false });
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(      selectCell(id, { edit: false });
       setDirty(true);
     } catch (error) {
       setMessage(error.message || "Failed to change cell type.", "error");
@@ -6708,7 +6745,9 @@ input {
     if (state.explorer.entries.has(normalizeExplorerPath(newPathOptimistic))) {
       ren.error = "A file or folder with that name already exists.";
       renderExplorer();
-      requestAnimationFrame(() => {
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(      requestAnimationFrame(() => {
         const input = $(".vn-Tree__input--rename");
         if (input) input.focus();
       });
@@ -7101,7 +7140,9 @@ input {
 
     try {
       const doc = await api("/api/document");
-      const d = unwrapDocument(doc);
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(      const d = unwrapDocument(doc);
 
       if (isStartupScratchDocument(d)) {
         clearEditorNoOpenNote();
@@ -7461,7 +7502,9 @@ input {
 
         return `
         <div
-          class="vn-Tree__row${active}${loading}${expanded ? " is-expanded" : ""}"
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(          class="vn-Tree__row${active}${loading}${expanded ? " is-expanded" : ""}"
           data-tree-path="${escapeHtml(path)}"
           data-tree-type="${escapeHtml(e.type)}"
           data-tree-openable="${e.openable ? "true" : "false"}"
@@ -7846,7 +7889,9 @@ input {
       } else if (status === "success") {
         summaryText.textContent = "No problems — last run succeeded";
       } else {
-        summaryText.textContent = "No problems detected";
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(        summaryText.textContent = "No problems detected";
       }
     }
 
@@ -8218,7 +8263,9 @@ input {
     "show-explorer": {
       label: "Show Explorer",
       run: () => setPanel("explorer"),
-    },
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(    },
     "show-problems": {
       label: "Show Problems",
       run: () => setPanel("problems"),
@@ -8577,7 +8624,9 @@ input {
     ];
   }
 
-  /* ==========================================================
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(  /* ==========================================================
    * Wiring: header toolbar actions
    * ======================================================== */
   function bindActions() {
@@ -8963,7 +9012,9 @@ input {
       state.drag.explorer = null;
       state.drag.tab = { path, fromIndex };
       tab.classList.add("is-dragging");
-      if (e.dataTransfer) {
+)VIXNOTE");
+
+    value.append(R"VIXNOTE(      if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = "move";
         try {
           e.dataTransfer.setData("text/plain", path);
@@ -9341,7 +9392,9 @@ input {
     init();
   }
 })();
-)VIXNOTE";
+)VIXNOTE");
+
+    return value;
   }
 
   bool read_note_asset_file(
