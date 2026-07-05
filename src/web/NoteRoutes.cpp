@@ -100,8 +100,9 @@ namespace vix::note
 
       const char hex[] = "0123456789abcdef";
 
-      for (unsigned char c : value)
+      for (char raw_c : value)
       {
+        const auto c = static_cast<unsigned char>(raw_c);
         switch (c)
         {
         case '\\':

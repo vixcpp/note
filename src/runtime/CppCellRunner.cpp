@@ -144,8 +144,9 @@ namespace vix::note
     {
       std::uint64_t hash = 14695981039346656037ULL;
 
-      for (unsigned char c : value)
+      for (char raw_c : value)
       {
+        const auto c = static_cast<unsigned char>(raw_c);
         hash ^= static_cast<std::uint64_t>(c);
         hash *= 1099511628211ULL;
       }

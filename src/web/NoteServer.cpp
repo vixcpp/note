@@ -515,7 +515,7 @@ namespace vix::note
             reinterpret_cast<const char *>(&yes),
             sizeof(yes));
 
-        if (bind(candidate, address->ai_addr, static_cast<int>(address->ai_addrlen)) == 0 &&
+        if (bind(candidate, address->ai_addr, address->ai_addrlen) == 0 &&
             listen(candidate, 16) == 0)
         {
           serverSocket = candidate;
