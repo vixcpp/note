@@ -642,20 +642,6 @@ namespace vix::note
       return NoteRouteResponse::json(200, out.str());
     }
 
-    /**
-     * @brief Returns "dir" or "file" for an existing path.
-     */
-    std::string path_type_json(const std::filesystem::path &path)
-    {
-      std::error_code ec;
-
-      if (std::filesystem::is_directory(path, ec) && !ec)
-      {
-        return "dir";
-      }
-
-      return "file";
-    }
 
     std::string directory_entry_json(
         const std::filesystem::directory_entry &entry)

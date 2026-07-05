@@ -679,10 +679,6 @@ namespace vix::note
       return note_runtime_color_enabled() ? "\x1b[90m" : "";
     }
 
-    std::string_view note_bold()
-    {
-      return note_runtime_color_enabled() ? "\x1b[1m" : "";
-    }
 
     std::string_view note_cyan()
     {
