@@ -28,9 +28,24 @@
 #include <vector>
 #include <cstdint>
 #include <cstdlib>
+#include <thread>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <windows.h>
+#else
+#include <cerrno>
+#include <csignal>
+#include <fcntl.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace vix::note
@@ -40,6 +55,9 @@ namespace vix::note
     struct ProcessOutput
     {
       int exitCode = 0;
+      bool timedOut = false;
+      bool outputLimitExceeded = false;
+      std::string failureMessage;
       std::string stdoutText;
       std::string stderrText;
       std::string mergedText;
@@ -147,6 +165,7 @@ namespace vix::note
       for (char raw_c : value)
       {
         const auto c = static_cast<unsigned char>(raw_c);
+
         hash ^= static_cast<std::uint64_t>(c);
         hash *= 1099511628211ULL;
       }
@@ -495,99 +514,534 @@ namespace vix::note
       return cmd.str();
     }
 
-    int run_command_exit_code(const std::string &command)
+    bool append_limited(
+        std::string &out,
+        const char *data,
+        std::size_t size,
+        std::size_t maxBytes)
     {
-#ifdef _WIN32
-      FILE *pipe = _popen(command.c_str(), "r");
-#else
-      FILE *pipe = popen(command.c_str(), "r");
-#endif
-
-      if (pipe == nullptr)
+      if (size == 0)
       {
-        return 1;
+        return true;
+      }
+
+      if (maxBytes == 0)
+      {
+        out.append(data, size);
+        return true;
+      }
+
+      if (out.size() >= maxBytes)
+      {
+        return false;
+      }
+
+      const std::size_t remaining =
+          maxBytes - out.size();
+
+      const std::size_t toCopy =
+          size < remaining ? size : remaining;
+
+      out.append(data, toCopy);
+
+      return toCopy == size;
+    }
+
+    std::uintmax_t safe_file_size_no_error(const std::filesystem::path &path)
+    {
+      std::error_code ec;
+
+      const std::uintmax_t size =
+          std::filesystem::file_size(path, ec);
+
+      if (ec)
+      {
+        return 0;
+      }
+
+      return size;
+    }
+
+    bool output_files_exceed_limit(
+        const std::filesystem::path *stdoutFile,
+        const std::filesystem::path *stderrFile,
+        std::size_t maxBytes)
+    {
+      if (maxBytes == 0)
+      {
+        return false;
+      }
+
+      std::uintmax_t total = 0;
+
+      if (stdoutFile != nullptr)
+      {
+        total += safe_file_size_no_error(*stdoutFile);
+      }
+
+      if (stderrFile != nullptr)
+      {
+        total += safe_file_size_no_error(*stderrFile);
+      }
+
+      return total > static_cast<std::uintmax_t>(maxBytes);
+    }
+
+    bool read_text_file_limited(
+        const std::filesystem::path &path,
+        std::string &out,
+        std::size_t maxBytes,
+        bool &truncated)
+    {
+      out.clear();
+      truncated = false;
+
+      std::ifstream in(path, std::ios::binary);
+
+      if (!in.is_open())
+      {
+        return false;
       }
 
       std::array<char, 4096> buffer{};
 
-      while (true)
+      while (in)
       {
-        const std::size_t n =
-            std::fread(buffer.data(), 1, buffer.size(), pipe);
+        in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
 
-        if (n < buffer.size())
+        const std::streamsize count = in.gcount();
+
+        if (count <= 0)
         {
-          if (std::feof(pipe) != 0)
-          {
-            break;
-          }
+          break;
+        }
 
-          if (std::ferror(pipe) != 0)
-          {
-            break;
-          }
+        const bool ok =
+            append_limited(
+                out,
+                buffer.data(),
+                static_cast<std::size_t>(count),
+                maxBytes);
+
+        if (!ok)
+        {
+          truncated = true;
+          break;
         }
       }
 
-#ifdef _WIN32
-      const int rawCode = _pclose(pipe);
-#else
-      const int rawCode = pclose(pipe);
-#endif
-
-      return normalize_exit_code(rawCode);
+      return true;
     }
 
-    ProcessOutput run_command_capture_merged(const std::string &command)
+#ifdef _WIN32
+    bool append_pipe_output(
+        HANDLE pipe,
+        std::string &out,
+        std::size_t maxBytes)
+    {
+      bool withinLimit = true;
+
+      while (true)
+      {
+        DWORD available = 0;
+
+        if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr))
+        {
+          break;
+        }
+
+        if (available == 0)
+        {
+          break;
+        }
+
+        std::array<char, 4096> buffer{};
+        DWORD read = 0;
+
+        const DWORD toRead =
+            available < static_cast<DWORD>(buffer.size())
+                ? available
+                : static_cast<DWORD>(buffer.size());
+
+        if (!ReadFile(pipe, buffer.data(), toRead, &read, nullptr) ||
+            read == 0)
+        {
+          break;
+        }
+
+        if (!append_limited(
+                out,
+                buffer.data(),
+                static_cast<std::size_t>(read),
+                maxBytes))
+        {
+          withinLimit = false;
+          break;
+        }
+      }
+
+      return withinLimit;
+    }
+
+    ProcessOutput run_command_controlled(
+        const std::string &command,
+        std::chrono::milliseconds timeout,
+        std::size_t maxOutputBytes,
+        const std::filesystem::path *stdoutFile = nullptr,
+        const std::filesystem::path *stderrFile = nullptr)
     {
       ProcessOutput output;
 
-#ifdef _WIN32
-      FILE *pipe = _popen(command.c_str(), "r");
-#else
-      FILE *pipe = popen(command.c_str(), "r");
-#endif
+      SECURITY_ATTRIBUTES security{};
+      security.nLength = sizeof(security);
+      security.bInheritHandle = TRUE;
+      security.lpSecurityDescriptor = nullptr;
 
-      if (pipe == nullptr)
+      HANDLE readPipe = nullptr;
+      HANDLE writePipe = nullptr;
+
+      if (!CreatePipe(&readPipe, &writePipe, &security, 0))
       {
         output.exitCode = 1;
-        output.mergedText = "cannot start C++ cell process";
+        output.failureMessage = "cannot create process pipe";
+        output.stderrText = output.failureMessage;
+        output.mergedText = output.failureMessage;
         return output;
       }
+
+      SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
+
+      STARTUPINFOA startup{};
+      startup.cb = sizeof(startup);
+      startup.dwFlags = STARTF_USESTDHANDLES;
+      startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+      startup.hStdOutput = writePipe;
+      startup.hStdError = writePipe;
+
+      PROCESS_INFORMATION process{};
+
+      std::string commandLine = "cmd.exe /C " + command;
+
+      const BOOL created =
+          CreateProcessA(
+              nullptr,
+              commandLine.data(),
+              nullptr,
+              nullptr,
+              TRUE,
+              CREATE_NO_WINDOW,
+              nullptr,
+              nullptr,
+              &startup,
+              &process);
+
+      CloseHandle(writePipe);
+
+      if (!created)
+      {
+        CloseHandle(readPipe);
+
+        output.exitCode = 1;
+        output.failureMessage = "cannot start C++ cell process";
+        output.stderrText = output.failureMessage;
+        output.mergedText = output.failureMessage;
+        return output;
+      }
+
+      const auto start = std::chrono::steady_clock::now();
+      const bool hasTimeout = timeout.count() > 0;
+
+      while (true)
+      {
+        if (!append_pipe_output(readPipe, output.mergedText, maxOutputBytes) ||
+            output_files_exceed_limit(stdoutFile, stderrFile, maxOutputBytes))
+        {
+          output.outputLimitExceeded = true;
+          output.exitCode = 125;
+          output.failureMessage = "C++ cell produced too much output";
+
+          TerminateProcess(process.hProcess, 125);
+          WaitForSingleObject(process.hProcess, 1000);
+          break;
+        }
+
+        const DWORD waitResult =
+            WaitForSingleObject(process.hProcess, 25);
+
+        if (waitResult == WAIT_OBJECT_0)
+        {
+          break;
+        }
+
+        if (hasTimeout)
+        {
+          const auto elapsed =
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::steady_clock::now() - start);
+
+          if (elapsed >= timeout)
+          {
+            output.timedOut = true;
+            output.exitCode = 124;
+            output.failureMessage =
+                "C++ cell timed out after " +
+                std::to_string(timeout.count()) +
+                " ms";
+
+            TerminateProcess(process.hProcess, 124);
+            WaitForSingleObject(process.hProcess, 1000);
+            break;
+          }
+        }
+      }
+
+      if (!append_pipe_output(readPipe, output.mergedText, maxOutputBytes) &&
+          !output.timedOut &&
+          !output.outputLimitExceeded)
+      {
+        output.outputLimitExceeded = true;
+        output.exitCode = 125;
+        output.failureMessage = "C++ cell produced too much output";
+      }
+
+      if (!output.timedOut && !output.outputLimitExceeded)
+      {
+        DWORD exitCode = 1;
+
+        if (GetExitCodeProcess(process.hProcess, &exitCode))
+        {
+          output.exitCode = static_cast<int>(exitCode);
+        }
+        else
+        {
+          output.exitCode = 1;
+        }
+      }
+
+      CloseHandle(process.hThread);
+      CloseHandle(process.hProcess);
+      CloseHandle(readPipe);
+
+      return output;
+    }
+#else
+    bool append_fd_output(
+        int fd,
+        std::string &out,
+        std::size_t maxBytes)
+    {
+      bool withinLimit = true;
 
       std::array<char, 4096> buffer{};
 
       while (true)
       {
-        const std::size_t n =
-            std::fread(buffer.data(), 1, buffer.size(), pipe);
+        const ssize_t n =
+            ::read(fd, buffer.data(), buffer.size());
 
         if (n > 0)
         {
-          output.mergedText.append(buffer.data(), n);
+          if (!append_limited(
+                  out,
+                  buffer.data(),
+                  static_cast<std::size_t>(n),
+                  maxBytes))
+          {
+            withinLimit = false;
+            break;
+          }
+
+          continue;
         }
 
-        if (n < buffer.size())
+        if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
         {
-          if (std::feof(pipe) != 0)
-          {
-            break;
-          }
-
-          if (std::ferror(pipe) != 0)
-          {
-            break;
-          }
+          break;
         }
+
+        break;
       }
 
-#ifdef _WIN32
-      const int rawCode = _pclose(pipe);
-#else
-      const int rawCode = pclose(pipe);
+      return withinLimit;
+    }
+
+    void terminate_process_group(pid_t pid)
+    {
+      if (pid <= 0)
+      {
+        return;
+      }
+
+      ::kill(-pid, SIGTERM);
+
+      for (int i = 0; i < 10; ++i)
+      {
+        int status = 0;
+        const pid_t done = ::waitpid(pid, &status, WNOHANG);
+
+        if (done == pid)
+        {
+          return;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      }
+
+      ::kill(-pid, SIGKILL);
+    }
+
+    ProcessOutput run_command_controlled(
+        const std::string &command,
+        std::chrono::milliseconds timeout,
+        std::size_t maxOutputBytes,
+        const std::filesystem::path *stdoutFile = nullptr,
+        const std::filesystem::path *stderrFile = nullptr)
+    {
+      ProcessOutput output;
+
+      int pipeFd[2];
+
+      if (::pipe(pipeFd) != 0)
+      {
+        output.exitCode = 1;
+        output.failureMessage = "cannot create process pipe";
+        output.stderrText = output.failureMessage;
+        output.mergedText = output.failureMessage;
+        return output;
+      }
+
+      const pid_t pid = ::fork();
+
+      if (pid == -1)
+      {
+        ::close(pipeFd[0]);
+        ::close(pipeFd[1]);
+
+        output.exitCode = 1;
+        output.failureMessage = "cannot start C++ cell process";
+        output.stderrText = output.failureMessage;
+        output.mergedText = output.failureMessage;
+        return output;
+      }
+
+      if (pid == 0)
+      {
+        ::setpgid(0, 0);
+
+        ::close(pipeFd[0]);
+
+        ::dup2(pipeFd[1], STDOUT_FILENO);
+        ::dup2(pipeFd[1], STDERR_FILENO);
+
+        ::close(pipeFd[1]);
+
+        ::execl(
+            "/bin/sh",
+            "sh",
+            "-c",
+            command.c_str(),
+            static_cast<char *>(nullptr));
+
+        _exit(127);
+      }
+
+      ::setpgid(pid, pid);
+
+      ::close(pipeFd[1]);
+
+      const int flags = ::fcntl(pipeFd[0], F_GETFL, 0);
+
+      if (flags != -1)
+      {
+        ::fcntl(pipeFd[0], F_SETFL, flags | O_NONBLOCK);
+      }
+
+      const auto start = std::chrono::steady_clock::now();
+      const bool hasTimeout = timeout.count() > 0;
+
+      int status = 0;
+
+      while (true)
+      {
+        if (!append_fd_output(pipeFd[0], output.mergedText, maxOutputBytes) ||
+            output_files_exceed_limit(stdoutFile, stderrFile, maxOutputBytes))
+        {
+          output.outputLimitExceeded = true;
+          output.exitCode = 125;
+          output.failureMessage = "C++ cell produced too much output";
+
+          terminate_process_group(pid);
+          break;
+        }
+
+        const pid_t done =
+            ::waitpid(pid, &status, WNOHANG);
+
+        if (done == pid)
+        {
+          output.exitCode = normalize_exit_code(status);
+          break;
+        }
+
+        if (done == -1)
+        {
+          output.exitCode = 1;
+          break;
+        }
+
+        if (hasTimeout)
+        {
+          const auto elapsed =
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::steady_clock::now() - start);
+
+          if (elapsed >= timeout)
+          {
+            output.timedOut = true;
+            output.exitCode = 124;
+            output.failureMessage =
+                "C++ cell timed out after " +
+                std::to_string(timeout.count()) +
+                " ms";
+
+            terminate_process_group(pid);
+            break;
+          }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+      }
+
+      if (!append_fd_output(pipeFd[0], output.mergedText, maxOutputBytes) &&
+          !output.timedOut &&
+          !output.outputLimitExceeded)
+      {
+        output.outputLimitExceeded = true;
+        output.exitCode = 125;
+        output.failureMessage = "C++ cell produced too much output";
+      }
+
+      ::close(pipeFd[0]);
+
+      return output;
+    }
 #endif
 
-      output.exitCode = normalize_exit_code(rawCode);
+    ProcessOutput run_command_capture_merged(
+        const std::string &command,
+        std::chrono::milliseconds timeout,
+        std::size_t maxOutputBytes)
+    {
+      ProcessOutput output =
+          run_command_controlled(
+              command,
+              timeout,
+              maxOutputBytes);
+
+      if (!output.failureMessage.empty() && output.mergedText.empty())
+      {
+        output.mergedText = output.failureMessage;
+      }
 
       if (output.exitCode == 0)
       {
@@ -604,13 +1058,57 @@ namespace vix::note
     ProcessOutput run_command_capture_separated(
         const std::string &command,
         const std::filesystem::path &stdoutFile,
-        const std::filesystem::path &stderrFile)
+        const std::filesystem::path &stderrFile,
+        std::chrono::milliseconds timeout,
+        std::size_t maxOutputBytes)
     {
-      ProcessOutput output;
-      output.exitCode = run_command_exit_code(command);
+      ProcessOutput output =
+          run_command_controlled(
+              command,
+              timeout,
+              maxOutputBytes,
+              &stdoutFile,
+              &stderrFile);
 
-      (void)read_text_file(stdoutFile, output.stdoutText);
-      (void)read_text_file(stderrFile, output.stderrText);
+      bool stdoutTruncated = false;
+      bool stderrTruncated = false;
+
+      (void)read_text_file_limited(
+          stdoutFile,
+          output.stdoutText,
+          maxOutputBytes,
+          stdoutTruncated);
+
+      const std::size_t remaining =
+          maxOutputBytes > output.stdoutText.size()
+              ? maxOutputBytes - output.stdoutText.size()
+              : 0;
+
+      (void)read_text_file_limited(
+          stderrFile,
+          output.stderrText,
+          remaining,
+          stderrTruncated);
+
+      if (stdoutTruncated || stderrTruncated)
+      {
+        output.outputLimitExceeded = true;
+
+        if (output.failureMessage.empty())
+        {
+          output.failureMessage = "C++ cell produced too much output";
+        }
+
+        if (output.exitCode == 0)
+        {
+          output.exitCode = 125;
+        }
+      }
+
+      if (!output.failureMessage.empty() && output.stderrText.empty())
+      {
+        output.stderrText = output.failureMessage;
+      }
 
       output.mergedText = output.stdoutText;
 
@@ -876,7 +1374,9 @@ namespace vix::note
           run_command_capture_separated(
               command,
               stdoutFile,
-              stderrFile);
+              stderrFile,
+              runOptions.executionTimeout,
+              runOptions.maxCapturedOutputBytes);
     }
     else
     {
@@ -884,7 +1384,10 @@ namespace vix::note
           make_merged_run_command(runOptions, file);
 
       process =
-          run_command_capture_merged(command);
+          run_command_capture_merged(
+              command,
+              runOptions.executionTimeout,
+              runOptions.maxCapturedOutputBytes);
     }
 
     process.stdoutText = strip_ansi_codes(process.stdoutText);
@@ -896,6 +1399,100 @@ namespace vix::note
 
     const long long durationMs =
         std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    if (process.timedOut)
+    {
+      NoteResult result =
+          NoteResult::failure(
+              process.failureMessage.empty()
+                  ? "C++ cell timed out"
+                  : process.failureMessage,
+              process.exitCode == 0 ? 124 : process.exitCode);
+
+      if (!process.stdoutText.empty())
+      {
+        result.add_stdout(process.stdoutText);
+      }
+
+      if (!process.stderrText.empty())
+      {
+        result.add_stderr(process.stderrText);
+      }
+
+      result.add_error(
+          process.failureMessage.empty()
+              ? "C++ cell timed out"
+              : process.failureMessage);
+
+      add_debug_outputs(
+          result,
+          runOptions,
+          file,
+          durationMs,
+          process.exitCode);
+
+      if (!runOptions.keepTemporaryFile)
+      {
+        std::error_code ec;
+
+        if (!runOptions.projectContext.enabled)
+        {
+          std::filesystem::remove(file, ec);
+        }
+
+        std::filesystem::remove(stdoutFile, ec);
+        std::filesystem::remove(stderrFile, ec);
+      }
+
+      return result;
+    }
+
+    if (process.outputLimitExceeded)
+    {
+      const std::string message =
+          process.failureMessage.empty()
+              ? "C++ cell produced too much output"
+              : process.failureMessage;
+
+      NoteResult result =
+          NoteResult::failure(
+              message,
+              process.exitCode == 0 ? 125 : process.exitCode);
+
+      if (!process.stdoutText.empty())
+      {
+        result.add_stdout(process.stdoutText);
+      }
+
+      if (!process.stderrText.empty())
+      {
+        result.add_stderr(process.stderrText);
+      }
+
+      result.add_error(message);
+
+      add_debug_outputs(
+          result,
+          runOptions,
+          file,
+          durationMs,
+          process.exitCode);
+
+      if (!runOptions.keepTemporaryFile)
+      {
+        std::error_code ec;
+
+        if (!runOptions.projectContext.enabled)
+        {
+          std::filesystem::remove(file, ec);
+        }
+
+        std::filesystem::remove(stdoutFile, ec);
+        std::filesystem::remove(stderrFile, ec);
+      }
+
+      return result;
+    }
 
     NoteResult result =
         process.exitCode == 0

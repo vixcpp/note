@@ -26,6 +26,8 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <cstddef>
 
 namespace vix::note
 {
@@ -90,6 +92,26 @@ namespace vix::note
      * Avoid --clean for notebook cells because it disables incremental speed.
      */
     std::vector<std::string> runArgs{};
+
+    /**
+     * @brief Maximum time allowed for one C++ cell execution.
+     *
+     * This prevents notebook cells from blocking forever when user code
+     * contains an infinite loop or a long-running process.
+     *
+     * Set to zero or a negative duration to disable the timeout.
+     */
+    std::chrono::milliseconds executionTimeout{10000};
+
+    /**
+     * @brief Maximum output captured from one C++ cell.
+     *
+     * This prevents a cell from freezing the notebook UI when user code prints
+     * too much output, for example inside an accidental infinite loop.
+     *
+     * Set to zero to disable the output limit.
+     */
+    std::size_t maxCapturedOutputBytes = 1024 * 1024;
 
     /**
      * @brief Keeps the generated temporary C++ file after execution.

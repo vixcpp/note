@@ -515,7 +515,15 @@ namespace vix::note
             reinterpret_cast<const char *>(&yes),
             sizeof(yes));
 
-        if (bind(candidate, address->ai_addr, address->ai_addrlen) == 0 &&
+#ifdef _WIN32
+        const int addressLength =
+            static_cast<int>(address->ai_addrlen);
+#else
+        const socklen_t addressLength =
+            address->ai_addrlen;
+#endif
+
+        if (bind(candidate, address->ai_addr, addressLength) == 0 &&
             listen(candidate, 16) == 0)
         {
           serverSocket = candidate;
@@ -678,7 +686,6 @@ namespace vix::note
     {
       return note_runtime_color_enabled() ? "\x1b[90m" : "";
     }
-
 
     std::string_view note_cyan()
     {

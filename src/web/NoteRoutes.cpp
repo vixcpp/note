@@ -643,7 +643,6 @@ namespace vix::note
       return NoteRouteResponse::json(200, out.str());
     }
 
-
     std::string directory_entry_json(
         const std::filesystem::directory_entry &entry)
     {
