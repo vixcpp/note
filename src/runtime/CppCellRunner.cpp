@@ -1229,19 +1229,28 @@ namespace vix::note
         const CppCellRunnerOptions &options,
         const ProcessOutput &process)
     {
-      const std::string errorText =
-          !process.stderrText.empty()
-              ? process.stderrText
-              : process.mergedText;
-
       if (!process.stdoutText.empty())
       {
         result.add_stdout(process.stdoutText);
       }
 
+      std::string errorText;
+
+      if (!process.stderrText.empty())
+      {
+        errorText = process.stderrText;
+      }
+      else if (process.stdoutText.empty())
+      {
+        errorText = process.mergedText;
+      }
+
       if (errorText.empty())
       {
-        result.add_error("C++ cell failed with exit code " + std::to_string(process.exitCode));
+        result.add_error(
+            "C++ cell exited with code " +
+            std::to_string(process.exitCode));
+
         return;
       }
 
