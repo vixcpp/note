@@ -1334,7 +1334,7 @@ namespace vix::note
     nlohmann::json payload = registry_payload_json(
         result,
         kernel_.extension_registry(),
-        false,
+        true,
         filters.limit);
     payload["query"] = filters.query;
     return NoteRouteResponse::json(result.ok ? 200 : 503, payload.dump());

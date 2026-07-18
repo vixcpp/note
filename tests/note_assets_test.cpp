@@ -144,6 +144,14 @@ int main()
     assert(js.find("function extensionActionLabel") != std::string::npos);
     assert(js.find("Installing…") != std::string::npos);
     assert(js.find("filterCatalogExtensions") != std::string::npos);
+    assert(js.find("function installedExtensionIds()") != std::string::npos);
+    assert(js.find("!installed.has(id)") != std::string::npos);
+    assert(js.find("if (explicit.includes(\"/\")) return explicit;") != std::string::npos);
+    assert(js.find("return String(fallback || explicit || \"extension\");") != std::string::npos);
+    assert(js.find("async function reloadLocalExtensions()") != std::string::npos);
+    assert(js.find("const payload = await api(\"/api/extensions\");") != std::string::npos);
+    const auto extensionActionRefreshPos = js.find("applyExtensionsPayload(payload);\n      await reloadLocalExtensions();");
+    assert(extensionActionRefreshPos != std::string::npos);
     assert(js.find("ext.installed === true") != std::string::npos);
     assert(js.find("ext.installed !== false") == std::string::npos);
     assert(js.find("vn-ExtensionItem__pendingLabel") != std::string::npos);
