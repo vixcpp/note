@@ -805,47 +805,73 @@ namespace vix::note
       return "vix";
     }
 
-    NoteRouteResponse package_mutation_response(std::string_view action, std::string_view body)
+    NoteResult run_package_mutation_command(std::string_view action, const std::string &package)
     {
-      const std::string package = json_string_field(body, "package").value_or(std::string{});
-      if (!is_safe_package_id(package)) return json_error(400, "invalid extension package id");
 #ifdef _WIN32
       (void)action;
-      return json_error(501, "extension package mutations are not implemented on Windows yet");
+      (void)package;
+      return NoteResult::failure("extension package mutations are not implemented on Windows yet", 501)
+          .add_error("extension package mutations are not implemented on Windows yet");
 #else
       std::vector<std::string> args;
       args.push_back(current_vix_executable());
-      if (action == "install") { args.push_back("install"); args.push_back("-g"); args.push_back(package); }
-      else if (action == "uninstall") { args.push_back("uninstall"); args.push_back("-g"); args.push_back(package); }
-      else if (action == "update") { args.push_back("install"); args.push_back("-g"); args.push_back(package); }
-      else if (action == "enable" || action == "disable") { return json_error(501, "extension enable/disable persistence is not implemented yet"); }
-      else return json_error(400, "unsupported extension action");
+      if (action == "install")
+      {
+        args.push_back("install");
+        args.push_back("-g");
+        args.push_back(package);
+      }
+      else if (action == "uninstall")
+      {
+        args.push_back("uninstall");
+        args.push_back("-g");
+        args.push_back(package);
+      }
+      else if (action == "update")
+      {
+        args.push_back("install");
+        args.push_back("-g");
+        args.push_back(package);
+      }
+      else
+      {
+        return NoteResult::failure("unsupported extension action", 400)
+            .add_error("unsupported extension action");
+      }
 
       std::vector<char *> argv;
       argv.reserve(args.size() + 1);
-      for (std::string &arg : args) argv.push_back(arg.data());
+      for (std::string &arg : args)
+        argv.push_back(arg.data());
       argv.push_back(nullptr);
+
       const pid_t pid = fork();
-      if (pid < 0) return json_error(500, "failed to start vix package command");
+      if (pid < 0)
+        return NoteResult::failure("failed to start vix package command", 1)
+            .add_error("failed to start vix package command");
       if (pid == 0)
       {
         execv(args[0].c_str(), argv.data());
         execvp("vix", argv.data());
         _exit(127);
       }
+
       int status = 0;
-      if (waitpid(pid, &status, 0) < 0) return json_error(500, "failed to wait for vix package command");
+      if (waitpid(pid, &status, 0) < 0)
+        return NoteResult::failure("failed to wait for vix package command", 1)
+            .add_error("failed to wait for vix package command");
       if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
       {
         std::ostringstream message;
         message << "vix " << action << " failed for " << package;
-        return json_error(500, message.str());
+        return NoteResult::failure(message.str(), WIFEXITED(status) ? WEXITSTATUS(status) : 1)
+            .add_error(message.str());
       }
-      std::ostringstream out;
-      out << "{\"ok\":true,\"package\":\"" << json_escape(package) << "\",\"action\":\"" << json_escape(std::string(action)) << "\"}";
-      return NoteRouteResponse::json(200, out.str());
+
+      return NoteResult::success("extension package mutation completed");
 #endif
     }
+
 
   }
 
@@ -931,6 +957,78 @@ namespace vix::note
         assets_,
         assetOptions,
         error);
+  }
+
+  NoteRouteResponse NoteRoutes::reload_extensions_response(
+      std::string_view action,
+      std::string_view package)
+  {
+    if (options_.reloadExtensions)
+    {
+      NoteResult reloaded = options_.reloadExtensions();
+      if (!reloaded.ok())
+      {
+        return json_error(500, reloaded.message().empty()
+                                   ? "extension reload failed"
+                                   : reloaded.message());
+      }
+    }
+
+    std::string state = extensions_json();
+    if (!state.empty() && state.back() == '}')
+    {
+      state.pop_back();
+    }
+    std::ostringstream out;
+    out << state
+        << ",\"action\":\"" << json_escape(std::string(action)) << "\""
+        << ",\"package\":\"" << json_escape(std::string(package)) << "\""
+        << "}";
+    return NoteRouteResponse::json(200, out.str());
+  }
+
+  NoteRouteResponse NoteRoutes::package_mutation_response(
+      std::string_view action,
+      std::string_view body)
+  {
+    const std::string package =
+        json_string_field(body, "package").value_or(std::string{});
+
+    if (!is_safe_package_id(package))
+    {
+      return json_error(400, "invalid extension package id");
+    }
+
+    if (action == "enable" || action == "disable")
+    {
+      if (!options_.setExtensionEnabled)
+      {
+        return json_error(501, "extension enable/disable persistence is not configured");
+      }
+
+      NoteResult changed =
+          options_.setExtensionEnabled(package, action == "enable");
+
+      if (!changed.ok())
+      {
+        return json_error(400, changed.message().empty()
+                                   ? "extension enable/disable failed"
+                                   : changed.message());
+      }
+
+      return reload_extensions_response(action, package);
+    }
+
+    NoteResult result = run_package_mutation_command(action, package);
+    if (!result.ok())
+    {
+      return json_error(result.exit_code() == 501 ? 501 : 500,
+                        result.message().empty()
+                            ? "extension package mutation failed"
+                            : result.message());
+    }
+
+    return reload_extensions_response(action, package);
   }
 
   const NoteAssets &NoteRoutes::assets() const noexcept
@@ -1099,7 +1197,7 @@ namespace vix::note
     {
       if (request.path == "/api/extensions/reload")
       {
-        return NoteRouteResponse::json(200, extensions_json());
+        return reload_extensions_response("reload", "");
       }
       if (!options_.allowPackageMutations)
       {
@@ -2344,7 +2442,7 @@ namespace vix::note
       out << "\"source\":\"" << source << "\",";
       out << "\"builtin\":" << (builtin ? "true" : "false") << ",";
       out << "\"installed\":" << (installed ? "true" : "false") << ",";
-      out << "\"enabled\":true,";
+      out << "\"enabled\":" << (ext.enabled ? "true" : "false") << ",";
       out << "\"available\":" << (ext.available ? "true" : "false") << ",";
       out << "\"runtime\":{";
       out << "\"protocol\":\"" << json_escape(ext.runtimeProtocol) << "\",";

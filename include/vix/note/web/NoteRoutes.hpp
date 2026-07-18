@@ -27,6 +27,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -206,6 +207,19 @@ namespace vix::note
      * This must only be enabled for loopback-only servers.
      */
     bool allowPackageMutations = false;
+
+    /**
+     * @brief Callback used after package mutations to rediscover extensions.
+     *
+     * NoteCommand owns the manager for the full server lifetime and installs
+     * this callback with references that remain valid until NoteServer exits.
+     */
+    std::function<NoteResult()> reloadExtensions;
+
+    /**
+     * @brief Callback used to persist enable/disable state for an extension.
+     */
+    std::function<NoteResult(const std::string &, bool)> setExtensionEnabled;
 
     /**
      * @brief Kernel options used by route execution.
@@ -466,6 +480,14 @@ namespace vix::note
     std::string project_context_json() const;
 
     std::string extensions_json() const;
+
+    NoteRouteResponse package_mutation_response(
+        std::string_view action,
+        std::string_view body);
+
+    NoteRouteResponse reload_extensions_response(
+        std::string_view action,
+        std::string_view package);
 
     /**
      * @brief Serializes one note cell into JSON.

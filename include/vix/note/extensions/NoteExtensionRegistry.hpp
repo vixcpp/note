@@ -88,6 +88,7 @@ namespace vix::note
     std::string runtimeProtocol;
     std::string runtimeMode;
     bool available{true};
+    bool enabled{true};
     std::vector<std::string> diagnostics;
   };
 
@@ -124,8 +125,15 @@ namespace vix::note
     void register_builtins(const CppCellRunnerOptions &cppOptions = {}, const ReplyCellRunnerOptions &replyOptions = {});
     void discover_global();
     void discover_project(const ProjectContext &context);
+    void reload(const ProjectContext &context = {}, bool includeExternal = true);
+    bool set_extension_enabled(const std::string &packageId, bool enabled, std::string &error);
+    bool is_extension_disabled(const std::string &packageId) const;
 
   private:
+    CppCellRunnerOptions cppOptions_;
+    ReplyCellRunnerOptions replyOptions_;
+    ProjectContext projectContext_;
+    bool includeExternal_{true};
     NoteExtensionRegistry registry_;
   };
 

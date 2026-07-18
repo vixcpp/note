@@ -36,6 +36,7 @@
       loading: false,
       error: "",
       selectedId: null,
+      pendingActions: new Set(),
 
       marketplace: [],
       installed: [],
@@ -46,7 +47,7 @@
         search: true,
         updates: true,
         installed: true,
-        recommended: true,
+        recommended: false,
         builtin: false,
       },
     },
@@ -59,7 +60,7 @@
     bottomPanelHeight: 220,
     bottomPanelVisible: false,
     focusMode: false,
-    activePanel: "explorer", // explorer | problems
+    activePanel: "explorer", // explorer | problems | extensions
     focus: {
       area: "editor",
       previousElement: null,
@@ -129,6 +130,8 @@
     "border.color": "--vn-border1",
     "accent.color": "--vn-brand1",
   };
+  const VIX_LOGO_SVG = "data:image/svg+xml,%3Csvg%20viewBox=%220%200%20120%20120%22%20fill=%22none%22%20xmlns=%22http://www.w3.org/2000/svg%22%3E%0A%20%20%3Ccircle%20cx=%2260%22%20cy=%2260%22%20r=%2258%22%20fill=%22#07110c%22/%3E%0A%20%20%3Ccircle%20cx=%2260%22%20cy=%2260%22%20r=%2257%22%20stroke=%22#22c55e%22%20stroke-opacity=%220.22%22%20stroke-width=%222%22/%3E%0A%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id=%22left%22%20x1=%2228%22%20y1=%2224%22%20x2=%2258%22%20y2=%2296%22%20gradientUnits=%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%220%%22%20stop-color=%22#d4fcd4%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%2255%%22%20stop-color=%22#4ade80%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%22100%%22%20stop-color=%22#22c55e%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%0A%20%20%20%20%3ClinearGradient%20id=%22right%22%20x1=%2292%22%20y1=%2224%22%20x2=%2262%22%20y2=%2296%22%20gradientUnits=%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%220%%22%20stop-color=%22#22c55e%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%22100%%22%20stop-color=%22#15803d%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%20%20%3C/defs%3E%0A%0A%20%20%3Cpolygon%20points=%2228,24%2045,24%2060,96%2050,96%22%20fill=%22url(#left)%22/%3E%0A%20%20%3Cpolygon%20points=%2292,24%2075,24%2060,96%2070,96%22%20fill=%22url(#right)%22/%3E%0A%0A%20%20%3Cline%0A%20%20%20%20x1=%2238%22%0A%20%20%20%20y1=%2250%22%0A%20%20%20%20x2=%2251%22%0A%20%20%20%20y2=%2296%22%0A%20%20%20%20stroke=%22#bbf7d0%22%0A%20%20%20%20stroke-width=%223%22%0A%20%20%20%20stroke-linecap=%22round%22%0A%20%20%20%20opacity=%220.65%22%0A%20%20/%3E%0A%3C/svg%3E";
+
   const BUILTIN_THEMES = [
     { id: "vix.light", label: "Vix Light", kind: "light", tokens: {} },
     {
@@ -485,6 +488,65 @@
     return Array.from(byId.values());
   }
 
+  function findExtensionById(id) {
+    const wanted = String(id || "");
+    if (!wanted) return null;
+
+    const all = uniqueExtensions([
+      ...(Array.isArray(state.extensions.extensions)
+        ? state.extensions.extensions
+        : []),
+      ...state.extensionWorkbench.marketplace,
+    ]);
+
+    return all.find((ext) => extensionIdentifier(ext) === wanted) || null;
+  }
+
+  function isExtensionActionPending(id, action = "") {
+    const prefix = `${id}:`;
+    if (action) return state.extensionWorkbench.pendingActions.has(`${id}:${action}`);
+    for (const key of state.extensionWorkbench.pendingActions) {
+      if (key.startsWith(prefix)) return true;
+    }
+    return false;
+  }
+
+  function applyExtensionsPayload(payload) {
+    if (!payload || payload.ok === false) {
+      throw new Error((payload && payload.error) || "Extension action failed");
+    }
+
+    state.extensions = {
+      ok: true,
+      extensions: Array.isArray(payload.extensions) ? payload.extensions : [],
+      cellTypes: Array.isArray(payload.cellTypes) ? payload.cellTypes : [],
+      themes: Array.isArray(payload.themes) ? payload.themes : [],
+    };
+
+    state.extensionWorkbench.error = "";
+    refreshExtensionWorkbenchFromRegistry();
+    renderToolbarKindOptions();
+    renderExtensionsPanel();
+  }
+
+  function refreshExtensionDetailAfterAction(action, id) {
+    const current = findExtensionById(id);
+
+    if (action === "uninstall" && !current) {
+      if (state.extensionWorkbench.selectedId === id) {
+        state.extensionWorkbench.selectedId = null;
+      }
+      if (state.document) {
+        renderDocument(state.document, { fullRepaint: true });
+      }
+      return;
+    }
+
+    if (state.extensionWorkbench.selectedId === id && current) {
+      renderExtensionDetailMain(current);
+    }
+  }
+
   function refreshExtensionWorkbenchFromRegistry() {
     const list = uniqueExtensions(
       Array.isArray(state.extensions.extensions)
@@ -513,6 +575,15 @@
       .map((cell) => cell.label || cell.id)
       .filter(Boolean)
       .join(", ");
+  }
+
+  function extensionIconHtml(ext, fallback = "E") {
+    const id = extensionIdentifier(ext);
+    const isVixBuiltin = !!(ext && ext.builtin) || id.startsWith("vix.note.");
+    if (isVixBuiltin) {
+      return `<img src="${VIX_LOGO_SVG}" alt="" />`;
+    }
+    return escapeHtml(fallback);
   }
 
   function recommendedExtensions() {
@@ -581,6 +652,7 @@
         .toUpperCase() || "E";
 
     const installed = !ext.builtin && ext.installed !== false;
+    const pending = isExtensionActionPending(id);
 
     let actions = "";
 
@@ -591,8 +663,9 @@
         class="vn-ExtensionItem__button vn-ExtensionItem__button--primary"
         data-extension-action="install"
         data-extension-id="${escapeHtml(id)}"
+        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
       >
-        Install
+        ${pending ? "Working…" : "Install"}
       </button>
     `;
     } else if (!ext.builtin) {
@@ -602,8 +675,9 @@
         class="vn-ExtensionItem__button"
         data-extension-action="${ext.enabled === false ? "enable" : "disable"}"
         data-extension-id="${escapeHtml(id)}"
+        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
       >
-        ${ext.enabled === false ? "Enable" : "Disable"}
+        ${pending ? "Working…" : ext.enabled === false ? "Enable" : "Disable"}
       </button>
 
       <button
@@ -611,8 +685,9 @@
         class="vn-ExtensionItem__button"
         data-extension-action="uninstall"
         data-extension-id="${escapeHtml(id)}"
+        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
       >
-        Uninstall
+        ${pending ? "Working…" : "Uninstall"}
       </button>
     `;
     }
@@ -630,7 +705,7 @@
         aria-label="Open ${escapeHtml(name)} extension details"
       >
         <span class="vn-ExtensionItem__icon" aria-hidden="true">
-          ${escapeHtml(initial)}
+          ${extensionIconHtml(ext, initial)}
         </span>
 
         <span class="vn-ExtensionItem__content">
@@ -801,6 +876,7 @@
 
     sections[groupId] = sections[groupId] === false;
 
+    persistUiState();
     renderExtensionsPanel();
   }
 
@@ -917,6 +993,7 @@
         .toUpperCase() || "E";
 
     const installed = !ext.builtin && ext.installed !== false;
+    const pending = isExtensionActionPending(id);
 
     const runtimeCommand = runtime.resolvedCommand || runtime.command || "";
 
@@ -936,8 +1013,9 @@
         class="vn-ExtensionShow__button vn-ExtensionShow__button--primary"
         data-extension-action="install"
         data-extension-id="${escapeHtml(id)}"
+        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
       >
-        Install
+        ${pending ? "Working…" : "Install"}
       </button>
     `;
     } else if (!ext.builtin && ext.updateAvailable) {
@@ -947,8 +1025,9 @@
         class="vn-ExtensionShow__button vn-ExtensionShow__button--primary"
         data-extension-action="update"
         data-extension-id="${escapeHtml(id)}"
+        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
       >
-        Update
+        ${pending ? "Working…" : "Update"}
       </button>
     `;
     }
@@ -961,8 +1040,9 @@
           class="vn-ExtensionShow__button"
           data-extension-action="${ext.enabled === false ? "enable" : "disable"}"
           data-extension-id="${escapeHtml(id)}"
+          ${pending ? 'disabled aria-disabled=\"true\"' : ''}
         >
-          ${ext.enabled === false ? "Enable" : "Disable"}
+          ${pending ? "Working…" : ext.enabled === false ? "Enable" : "Disable"}
         </button>
 
         <button
@@ -970,8 +1050,9 @@
           class="vn-ExtensionShow__button vn-ExtensionShow__button--danger"
           data-extension-action="uninstall"
           data-extension-id="${escapeHtml(id)}"
+          ${pending ? 'disabled aria-disabled=\"true\"' : ''}
         >
-          Uninstall
+          ${pending ? "Working…" : "Uninstall"}
         </button>
       `
         : "";
@@ -1317,7 +1398,8 @@
     state.extensionWorkbench.error = "";
     renderExtensionsPanel();
     try {
-      await loadExtensions();
+      const payload = await api("/api/extensions/reload", { method: "POST" });
+      applyExtensionsPayload(payload);
       showNotification({ type: "success", message: "Extensions refreshed" });
     } catch (error) {
       reportError(error, { label: "Refresh extensions" });
@@ -1327,6 +1409,116 @@
     }
   }
 
+  function extensionActionText(action) {
+    const labels = {
+      install: {
+        title: "Install extension",
+        confirm: "Install",
+        pending: "Installing…",
+        body: "Vix Note will install this package globally and reload available cell types when the installation completes.",
+      },
+      update: {
+        title: "Update extension",
+        confirm: "Update",
+        pending: "Updating…",
+        body: "Vix Note will update this global package and refresh its contributed cells and runtime metadata.",
+      },
+      enable: {
+        title: "Enable extension",
+        confirm: "Enable",
+        pending: "Enabling…",
+        body: "Cell types provided by this extension will become available again in the editor.",
+      },
+      disable: {
+        title: "Disable extension",
+        confirm: "Disable",
+        pending: "Disabling…",
+        body: "Existing cells keep their source, but cells provided by this extension may become unavailable until the extension is enabled again.",
+        important: true,
+      },
+      uninstall: {
+        title: "Uninstall extension",
+        confirm: "Uninstall",
+        pending: "Uninstalling…",
+        body: "The global package will be removed. Existing cells keep their source, but their runtime may become unavailable.",
+        danger: true,
+      },
+    };
+
+    return labels[action] || {
+      title: "Extension action",
+      confirm: "Continue",
+      pending: "Working…",
+      body: "Vix Note will update this extension.",
+    };
+  }
+
+  function showExtensionActionModal(action, ext, id) {
+    return new Promise((resolve) => {
+      const spec = extensionActionText(action);
+      const m = openModalShell(spec.title);
+      if (!m) {
+        resolve(true);
+        return;
+      }
+
+      const name = ext?.name || id.split("/").pop() || id;
+      const initial =
+        String(name || "E")
+          .trim()
+          .charAt(0)
+          .toUpperCase() || "E";
+
+      m.body.innerHTML = `
+        <div class="vn-ExtensionActionModal${spec.important ? " is-important" : ""}${spec.danger ? " is-danger" : ""}">
+          <span class="vn-ExtensionActionModal__icon" aria-hidden="true">
+            ${escapeHtml(initial)}
+          </span>
+          <div class="vn-ExtensionActionModal__content">
+            <strong>${escapeHtml(name)}</strong>
+            <code>${escapeHtml(id)}</code>
+            <p>${escapeHtml(spec.body)}</p>
+          </div>
+        </div>
+      `;
+
+      m.foot.innerHTML = `
+        <button type="button" class="vn-Btn vn-Btn--ghost" data-modal-cancel>Cancel</button>
+        <button type="button" class="vn-Btn ${spec.danger ? "vn-Btn--danger" : "vn-Btn--primary"}" data-modal-ok>${escapeHtml(spec.confirm)}</button>
+      `;
+
+      const okBtn = $("[data-modal-ok]", m.foot);
+      const cancelBtn = $("[data-modal-cancel]", m.foot);
+      const allClose = $all("[data-modal-cancel], [data-modal-close]");
+
+      const cleanup = () => {
+        okBtn?.removeEventListener("click", onOk);
+        for (const c of allClose) c.removeEventListener("click", onCancel);
+      };
+
+      const onOk = () => {
+        cleanup();
+        if (okBtn) {
+          okBtn.disabled = true;
+          okBtn.textContent = spec.pending;
+          okBtn.setAttribute("aria-busy", "true");
+        }
+        if (cancelBtn) cancelBtn.disabled = true;
+        resolve({ modal: m, pendingLabel: spec.pending });
+      };
+
+      const onCancel = () => {
+        cleanup();
+        closeModal();
+        resolve(null);
+      };
+
+      okBtn?.addEventListener("click", onOk);
+      for (const c of allClose) c.addEventListener("click", onCancel);
+      okBtn?.focus();
+    });
+  }
+
   async function extensionAction(action, packageId) {
     const id = packageId || state.extensionWorkbench.selectedId;
     if (!id) {
@@ -1334,13 +1526,25 @@
       return;
     }
 
-    if (
-      (action === "uninstall" || action === "disable") &&
-      !confirm(
-        `${action} ${id}? Existing cells keep their source but may become unavailable.`,
-      )
-    ) {
+    const ext = findExtensionById(id);
+    if (ext && ext.builtin) {
+      showNotification({
+        type: "warning",
+        message: "Built-in extensions cannot be modified",
+      });
       return;
+    }
+
+    const actionKey = `${id}:${action}`;
+    if (state.extensionWorkbench.pendingActions.has(actionKey)) return;
+
+    const modal = await showExtensionActionModal(action, ext, id);
+    if (!modal) return;
+
+    state.extensionWorkbench.pendingActions.add(actionKey);
+    renderExtensionsPanel();
+    if (state.extensionWorkbench.selectedId === id && ext) {
+      renderExtensionDetailMain(ext);
     }
 
     try {
@@ -1348,18 +1552,37 @@
         method: "POST",
         body: JSON.stringify({ package: id, scope: "global" }),
       });
-      if (payload && payload.ok === false) {
-        throw new Error(payload.error || `Extension ${action} failed`);
-      }
+
+      applyExtensionsPayload(payload);
+      refreshExtensionDetailAfterAction(action, id);
+
       showNotification({
         type: "success",
         message: `${id}: ${action} complete`,
       });
-      await loadExtensions();
+      closeModal();
     } catch (error) {
       reportError(error, { label: `${action} ${id}` });
+      const spec = extensionActionText(action);
+      const m = modal.modal;
+      const okBtn = m && $("[data-modal-ok]", m.foot);
+      const cancelBtn = m && $("[data-modal-cancel]", m.foot);
+      if (okBtn) {
+        okBtn.disabled = false;
+        okBtn.textContent = spec.confirm;
+        okBtn.removeAttribute("aria-busy");
+      }
+      if (cancelBtn) cancelBtn.disabled = false;
+    } finally {
+      state.extensionWorkbench.pendingActions.delete(actionKey);
+      renderExtensionsPanel();
+      const current = findExtensionById(id);
+      if (state.extensionWorkbench.selectedId === id && current) {
+        renderExtensionDetailMain(current);
+      }
     }
   }
+
 
   function safeClass(value) {
     return String(value || "unknown")
@@ -4449,17 +4672,7 @@
   async function loadExtensions() {
     try {
       const payload = await api("/api/extensions");
-      state.extensions = {
-        ok: payload && payload.ok !== false,
-        extensions: Array.isArray(payload && payload.extensions)
-          ? payload.extensions
-          : [],
-        cellTypes: Array.isArray(payload && payload.cellTypes)
-          ? payload.cellTypes
-          : [],
-        themes: Array.isArray(payload && payload.themes) ? payload.themes : [],
-      };
-      state.extensionWorkbench.error = "";
+      applyExtensionsPayload(payload);
     } catch (error) {
       console.error("Failed to load Vix Note extensions", error);
       state.extensions = { ok: false, extensions: [], cellTypes: [] };
@@ -4922,6 +5135,7 @@
         activePanel: state.activePanel,
         focusMode: state.focusMode,
         autoSave: state.autoSave.mode,
+        extensionSections: state.extensionWorkbench.sections,
       }),
     );
   }
@@ -4946,9 +5160,17 @@
         520,
       );
       state.bottomPanelVisible = !!parsed.bottomPanelVisible;
-      state.activePanel = ["explorer", "problems"].includes(parsed.activePanel)
+      state.activePanel = ["explorer", "problems", "extensions"].includes(
+        parsed.activePanel,
+      )
         ? parsed.activePanel
         : "explorer";
+      if (parsed.extensionSections && typeof parsed.extensionSections === "object") {
+        state.extensionWorkbench.sections = {
+          ...state.extensionWorkbench.sections,
+          ...parsed.extensionSections,
+        };
+      }
       state.focusMode = !!parsed.focusMode;
       state.autoSave.mode =
         parsed.autoSave === "afterDelay" ? "afterDelay" : "off";
@@ -5580,17 +5802,45 @@
     }
   }
 
+  function normalizeActivityPanel(panel) {
+    return ["explorer", "problems", "extensions"].includes(panel)
+      ? panel
+      : "explorer";
+  }
+
   function setPanel(panel) {
-    state.activePanel = panel;
-    state.bottomPanelVisible = panel === "problems";
+    state.activePanel = normalizeActivityPanel(panel);
+    state.bottomPanelVisible = state.activePanel === "problems";
     state.sidebarCollapsed = false;
     for (const p of $all("[data-panel]")) {
-      p.hidden = p.dataset.panel !== panel;
+      p.hidden = p.dataset.panel !== state.activePanel;
     }
     app.classList.remove("is-sidebar-collapsed");
     renderActivityBar();
     persistUiState();
   }
+
+  function closeSidebarPanel() {
+    state.sidebarCollapsed = true;
+    if (state.activePanel === "problems") state.bottomPanelVisible = false;
+    app.classList.add("is-sidebar-collapsed");
+    renderActivityBar();
+    persistUiState();
+  }
+
+  function toggleActivityPanel(panel) {
+    const normalized = normalizeActivityPanel(panel);
+    if (state.sidebarCollapsed) {
+      setPanel(normalized);
+      return;
+    }
+    if (state.activePanel === normalized) {
+      closeSidebarPanel();
+      return;
+    }
+    setPanel(normalized);
+  }
+
 
   function revealActiveFile() {
     const path = normalizeExplorerPath(
@@ -5658,28 +5908,16 @@
     persistUiState();
   }
   function toggleExplorerSidebar() {
-    if (state.sidebarCollapsed) {
-      setPanel("explorer");
-      return;
-    }
-    if (state.activePanel === "explorer") {
-      state.sidebarCollapsed = true;
-      app.classList.add("is-sidebar-collapsed");
-      renderActivityBar();
-      persistUiState();
-      return;
-    }
-    setPanel("explorer");
+    toggleActivityPanel("explorer");
   }
   function toggleSidebar(forceCollapsed) {
     if (forceCollapsed === true) {
-      state.sidebarCollapsed = true;
-      app.classList.add("is-sidebar-collapsed");
-      renderActivityBar();
+      closeSidebarPanel();
       return;
     }
-    toggleExplorerSidebar();
+    toggleActivityPanel(state.activePanel || "explorer");
   }
+
   function toggleFocus() {
     state.focusMode = !state.focusMode;
     app.classList.toggle("is-focus", state.focusMode);
@@ -7189,12 +7427,9 @@
         state.extensionWorkbench.selectedId =
           extensionDetails.dataset.extensionDetails || "";
         renderExtensionsPanel();
-        const selectedExtension = (
-          Array.isArray(state.extensions.extensions)
-            ? state.extensions.extensions
-            : []
-        ).find((ext) => ext && ext.id === state.extensionWorkbench.selectedId);
-        renderExtensionDetailMain(selectedExtension);
+        renderExtensionDetailMain(
+          findExtensionById(state.extensionWorkbench.selectedId),
+        );
         return;
       }
 
@@ -7324,12 +7559,7 @@
   function bindActivityBar() {
     for (const b of $all("[data-activity]")) {
       b.addEventListener("click", () => {
-        const activity = b.dataset.activity;
-        if (activity === "explorer") {
-          toggleExplorerSidebar();
-          return;
-        }
-        setPanel(activity);
+        toggleActivityPanel(b.dataset.activity);
       });
     }
   }
@@ -8291,7 +8521,7 @@
 
     const statusProblems = $(sel.statusProblems);
     if (statusProblems) {
-      statusProblems.addEventListener("click", () => setPanel("problems"));
+      statusProblems.addEventListener("click", () => toggleActivityPanel("problems"));
     }
 
     for (const c of $all("[data-modal-close]"))

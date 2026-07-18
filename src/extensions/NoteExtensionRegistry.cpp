@@ -80,6 +80,89 @@ namespace vix::note
       return home.empty() ? std::filesystem::path(".vix/global") : home / ".vix" / "global";
     }
 
+    std::filesystem::path note_preferences_path()
+    {
+      const auto home = home_dir();
+      const auto root = home.empty() ? std::filesystem::path(".vix") : home / ".vix";
+      return root / "note" / "extensions.json";
+    }
+
+    bool is_disabled_package_id(const std::vector<std::string> &items, const std::string &id)
+    {
+      return std::find(items.begin(), items.end(), id) != items.end();
+    }
+
+    std::vector<std::string> load_disabled_extensions()
+    {
+      std::vector<std::string> disabled;
+      std::ifstream in(note_preferences_path());
+      if (!in)
+        return disabled;
+      json root;
+      try
+      {
+        in >> root;
+      }
+      catch (...)
+      {
+        return disabled;
+      }
+      if (!root.contains("disabled") || !root["disabled"].is_array())
+        return disabled;
+      for (const auto &item : root["disabled"])
+      {
+        if (!item.is_string())
+          continue;
+        const std::string id = item.get<std::string>();
+        if (!id.empty() && !is_disabled_package_id(disabled, id))
+          disabled.push_back(id);
+      }
+      return disabled;
+    }
+
+    bool save_disabled_extensions(const std::vector<std::string> &disabled, std::string &error)
+    {
+      error.clear();
+      const std::filesystem::path path = note_preferences_path();
+      std::error_code ec;
+      std::filesystem::create_directories(path.parent_path(), ec);
+      if (ec)
+      {
+        error = "cannot create note preferences directory: " + ec.message();
+        return false;
+      }
+      const std::filesystem::path tmp = path.string() + ".tmp";
+      json root;
+      root["disabled"] = disabled;
+      {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        if (!out)
+        {
+          error = "cannot write note extension preferences";
+          return false;
+        }
+        out << root.dump(2) << '\n';
+        if (!out)
+        {
+          error = "cannot flush note extension preferences";
+          return false;
+        }
+      }
+      std::filesystem::rename(tmp, path, ec);
+      if (ec)
+      {
+        std::filesystem::remove(path, ec);
+        ec.clear();
+        std::filesystem::rename(tmp, path, ec);
+      }
+      if (ec)
+      {
+        error = "cannot replace note extension preferences: " + ec.message();
+        return false;
+      }
+      return true;
+    }
+
     std::vector<std::string> string_array(const json &j, const char *key)
     {
       std::vector<std::string> out;
@@ -370,6 +453,9 @@ namespace vix::note
 
   void NoteExtensionManager::register_builtins(const CppCellRunnerOptions &cppOptions, const ReplyCellRunnerOptions &replyOptions)
   {
+    cppOptions_ = cppOptions;
+    replyOptions_ = replyOptions;
+
     auto add = [&](std::string extId, NoteCellTypeDescriptor cell, NoteExtensionRegistry::RunnerFactory factory)
     {
       NoteExtensionDescriptor ext;
@@ -436,6 +522,8 @@ namespace vix::note
 
   void NoteExtensionManager::discover_global()
   {
+    includeExternal_ = true;
+    const std::vector<std::string> disabled = load_disabled_extensions();
     const auto prefix = global_prefix();
     const auto manifest = prefix / "installed.json";
     std::ifstream in(manifest);
@@ -457,10 +545,13 @@ namespace vix::note
       if (!pkg.is_object() || !pkg.contains("extensions") || !pkg["extensions"].contains("note"))
         continue;
       const std::string id = pkg.value("id", "");
-      const auto d = descriptor_from_note_json(pkg["extensions"]["note"], id, pkg.value("version", ""), NoteExtensionSource::Global, pkg.value("installed_path", ""), prefix / "bin", nullptr);
+      auto d = descriptor_from_note_json(pkg["extensions"]["note"], id, pkg.value("version", ""), NoteExtensionSource::Global, pkg.value("installed_path", ""), prefix / "bin", nullptr);
       if (!d)
         continue;
+      d->enabled = !is_disabled_package_id(disabled, d->id);
       registry_.register_extension(*d);
+      if (!d->enabled)
+        continue;
       for (const auto &cell : d->cellTypes)
       {
         NoteExtensionDescriptor captured = *d;
@@ -472,6 +563,8 @@ namespace vix::note
 
   void NoteExtensionManager::discover_project(const ProjectContext &context)
   {
+    projectContext_ = context;
+    const std::vector<std::string> disabled = load_disabled_extensions();
     if (!context.enabled || context.projectRoot.empty())
       return;
     const auto deps = context.projectRoot / ".vix" / "deps";
@@ -501,7 +594,10 @@ namespace vix::note
       auto d = descriptor_from_note_json(root["extensions"]["note"], id, root.value("version", ""), NoteExtensionSource::Project, entry.path(), {}, nullptr);
       if (!d)
         continue;
+      d->enabled = !is_disabled_package_id(disabled, d->id);
       registry_.register_extension(*d);
+      if (!d->enabled)
+        continue;
       for (const auto &cell : d->cellTypes)
       {
         NoteExtensionDescriptor captured = *d;
@@ -509,6 +605,54 @@ namespace vix::note
                                      { return std::make_unique<ExternalProcessCellRunner>(captured); });
       }
     }
+  }
+
+  void NoteExtensionManager::reload(const ProjectContext &context, bool includeExternal)
+  {
+    projectContext_ = context;
+    includeExternal_ = includeExternal;
+    registry_ = NoteExtensionRegistry{};
+    register_builtins(cppOptions_, replyOptions_);
+    if (includeExternal_)
+    {
+      discover_global();
+      discover_project(projectContext_);
+    }
+  }
+
+  bool NoteExtensionManager::set_extension_enabled(const std::string &packageId, bool enabled, std::string &error)
+  {
+    error.clear();
+    const NoteExtensionDescriptor *ext = registry_.find_extension(packageId);
+    if (ext == nullptr)
+    {
+      error = "extension is not installed: " + packageId;
+      return false;
+    }
+    if (ext->source == NoteExtensionSource::Builtin)
+    {
+      error = "built-in extensions cannot be enabled or disabled";
+      return false;
+    }
+    std::vector<std::string> disabled = load_disabled_extensions();
+    const bool alreadyDisabled = is_disabled_package_id(disabled, packageId);
+    if (enabled && alreadyDisabled)
+    {
+      disabled.erase(std::remove(disabled.begin(), disabled.end(), packageId), disabled.end());
+    }
+    else if (!enabled && !alreadyDisabled)
+    {
+      disabled.push_back(packageId);
+    }
+    if (!save_disabled_extensions(disabled, error))
+      return false;
+    reload(projectContext_, includeExternal_);
+    return true;
+  }
+
+  bool NoteExtensionManager::is_extension_disabled(const std::string &packageId) const
+  {
+    return is_disabled_package_id(load_disabled_extensions(), packageId);
   }
 
   ExternalProcessCellRunner::ExternalProcessCellRunner(NoteExtensionDescriptor descriptor)

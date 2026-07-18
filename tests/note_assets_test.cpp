@@ -109,6 +109,12 @@ int main()
     assert(js.find("normalizedCellTypes") != std::string::npos);
     assert(js.find("data-change-cell-type") != std::string::npos);
     assert(js.find("UI_STATE_KEY") != std::string::npos);
+    assert(js.find("window.confirm") == std::string::npos);
+    assert(js.find("confirm(") == std::string::npos);
+    assert(js.find("recommended: false") != std::string::npos);
+    assert(js.find("builtin: false") != std::string::npos);
+    assert(js.find("toggleActivityPanel") != std::string::npos);
+    assert(js.find("VIX_LOGO_SVG") != std::string::npos);
   }
 
   const auto validRoot = make_test_root("valid");

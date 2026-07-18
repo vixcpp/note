@@ -4062,3 +4062,58 @@ input {
     border-radius: 8px;
   }
 }
+.vn-ExtensionItem__icon img,
+.vn-ExtensionShow__icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.vn-ExtensionActionModal {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.vn-ExtensionActionModal__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--vn-brand1) 12%, transparent);
+  color: var(--vn-brand1);
+  font-weight: 800;
+  overflow: hidden;
+}
+
+.vn-ExtensionActionModal__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.vn-ExtensionActionModal__content {
+  display: grid;
+  gap: 6px;
+}
+
+.vn-ExtensionActionModal__content code {
+  color: var(--vn-text2);
+  font-size: 12px;
+}
+
+.vn-ExtensionActionModal__content p {
+  margin: 4px 0 0;
+  color: var(--vn-text2);
+  line-height: 1.45;
+}
+
+.vn-ExtensionActionModal.is-important .vn-ExtensionActionModal__icon,
+.vn-ExtensionActionModal.is-danger .vn-ExtensionActionModal__icon {
+  background: color-mix(in srgb, var(--vn-danger, #d92d20) 12%, transparent);
+  color: var(--vn-danger, #d92d20);
+}
+

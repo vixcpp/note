@@ -17,10 +17,12 @@
 #include <vix/note/core/NoteCell.hpp>
 #include <vix/note/core/NoteDocument.hpp>
 #include <vix/note/runtime/NoteKernel.hpp>
+#include <vix/note/extensions/NoteExtensionRegistry.hpp>
 #include <vix/note/web/NoteRoutes.hpp>
 
 #include <cassert>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -1005,6 +1007,105 @@ int main()
     assert(routes.document().title() == "Replaced");
     assert(routes.document().cell_count() == 1);
     assert(routes.kernel().can_execute_cell(0));
+  }
+
+
+  {
+    const std::filesystem::path home = root / "home-extensions";
+    const std::filesystem::path global = home / ".vix" / "global";
+    const std::filesystem::path pkgRoot = global / "packages" / "softadastra.pyrelune";
+    std::filesystem::create_directories(pkgRoot);
+
+#ifndef _WIN32
+    setenv("HOME", home.string().c_str(), 1);
+    setenv("VIX_GLOBAL_PREFIX", global.string().c_str(), 1);
+#else
+    _putenv_s("USERPROFILE", home.string().c_str());
+    _putenv_s("VIX_GLOBAL_PREFIX", global.string().c_str());
+#endif
+
+    write_file(
+        global / "installed.json",
+        "{\n"
+        "  \"packages\": [\n"
+        "    {\n"
+        "      \"id\": \"softadastra/pyrelune\",\n"
+        "      \"version\": \"0.1.0\",\n"
+        "      \"installed_path\": \".\",\n"
+        "      \"extensions\": {\n"
+        "        \"note\": {\n"
+        "          \"api\": \"1\",\n"
+        "          \"capabilities\": [\"cell-type\"],\n"
+        "          \"cellTypes\": [\n"
+        "            {\"id\": \"python\", \"label\": \"Python\", \"language\": \"python\", \"executable\": false}\n"
+        "          ]\n"
+        "        }\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n");
+
+    vix::note::NoteExtensionManager manager;
+    manager.reload({}, true);
+
+    assert(manager.registry().find_extension("softadastra/pyrelune") != nullptr);
+    assert(manager.registry().find_cell_type("python") != nullptr);
+
+    std::string error;
+    assert(!manager.set_extension_enabled("vix.note.cpp", false, error));
+    assert(contains(error, "built-in"));
+
+    vix::note::NoteRoutesOptions options;
+    options.allowPackageMutations = true;
+    options.kernelOptions.extensionRegistry = &manager.registry();
+    options.reloadExtensions = [&manager]() {
+      manager.reload({}, true);
+      return vix::note::NoteResult::success("extensions reloaded");
+    };
+    options.setExtensionEnabled = [&manager](const std::string &packageId, bool enabled) {
+      std::string message;
+      if (!manager.set_extension_enabled(packageId, enabled, message))
+      {
+        return vix::note::NoteResult::failure(message, 1).add_error(message);
+      }
+      return vix::note::NoteResult::success("extension state updated");
+    };
+
+    vix::note::NoteRoutes routes(options);
+
+    vix::note::NoteRouteResponse before = routes.get("/api/extensions");
+    assert(before.ok());
+    assert(contains(before.body, "softadastra/pyrelune"));
+    assert(contains(before.body, "\"enabled\":true"));
+    assert(contains(before.body, "\"id\":\"python\""));
+
+    vix::note::NoteRouteResponse disabled =
+        routes.post("/api/extensions/disable", "{\"package\":\"softadastra/pyrelune\"}");
+    assert(disabled.ok());
+    assert(contains(disabled.body, "\"action\":\"disable\""));
+    assert(contains(disabled.body, "\"enabled\":false"));
+
+    vix::note::NoteRouteResponse afterDisable = routes.get("/api/extensions");
+    assert(afterDisable.ok());
+    assert(contains(afterDisable.body, "\"enabled\":false"));
+
+    vix::note::NoteExtensionManager restarted;
+    restarted.reload({}, true);
+    const auto *disabledExt = restarted.registry().find_extension("softadastra/pyrelune");
+    assert(disabledExt != nullptr);
+    assert(!disabledExt->enabled);
+    assert(restarted.registry().find_cell_type("python") == nullptr);
+
+    vix::note::NoteRouteResponse enabled =
+        routes.post("/api/extensions/enable", "{\"package\":\"softadastra/pyrelune\"}");
+    assert(enabled.ok());
+    assert(contains(enabled.body, "\"action\":\"enable\""));
+    assert(contains(enabled.body, "\"enabled\":true"));
+
+    vix::note::NoteRouteResponse reloaded =
+        routes.post("/api/extensions/reload");
+    assert(reloaded.ok());
+    assert(contains(reloaded.body, "\"action\":\"reload\""));
   }
 
   std::filesystem::remove_all(root);
