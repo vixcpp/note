@@ -101,7 +101,7 @@ namespace vix::note
       return true;
     }
 
-    std::string language_to_cell_type_id(std::string language)
+    std::string language_to_cell_type_id(const std::string &language)
     {
       return normalize_cell_type_id(lower_copy(trim_copy(language)));
     }

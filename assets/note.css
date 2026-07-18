@@ -66,6 +66,8 @@
   /* Outputs */
   --vn-error-bg: #ffdddd;
   --vn-error: #b71c1c;
+  --vn-danger: #d92d20;
+  --vn-warning: #b45309;
   --vn-stderr-bg: #fdf2f2;
 
   /* Diagnostics / Problems */
@@ -103,6 +105,110 @@
 
   /* sidebar width, JS-controlled */
   --vn-sidebar-w: 260px;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --vn-color0: #111418;
+  --vn-color1: #171b20;
+  --vn-color2: #0f1216;
+  --vn-color3: #232a31;
+  --vn-color4: #4b5563;
+
+  --vn-border1: #343c45;
+  --vn-border2: #29313a;
+  --vn-border3: #20272f;
+
+  --vn-toolbar-bg: #151a1f;
+  --vn-appbar-bg: #12161b;
+  --vn-activity-bg: #101419;
+  --vn-sidebar-bg: #151a1f;
+  --vn-tabsbar-bg: #171c22;
+
+  --vn-text0: #ffffff;
+  --vn-text1: #e7edf4;
+  --vn-text2: #aab5c2;
+  --vn-text3: #748091;
+  --vn-content1: #e7edf4;
+
+  --vn-brand0: #fb923c;
+  --vn-brand1: #f37726;
+  --vn-brand2: #fdba74;
+  --vn-brand3: #4a2a16;
+  --vn-accent1: #60a5fa;
+
+  --vn-editor-bg: #11161c;
+  --vn-editor-border: #303944;
+  --vn-editor-active-bg: #171d24;
+  --vn-prompt-not-active: #667085;
+  --vn-inprompt: #93c5fd;
+  --vn-outprompt: #fb923c;
+  --vn-collapser-selected: #60a5fa;
+  --vn-collapser-edit: #22c55e;
+
+  --vn-error-bg: #3a1518;
+  --vn-error: #f87171;
+  --vn-stderr-bg: #2a1518;
+  --vn-problem-error: #f87171;
+  --vn-problem-error-bg: #35171b;
+  --vn-problem-hint: #93c5fd;
+  --vn-problem-hint-bg: #10243d;
+  --vn-problem-ok: #4ade80;
+  --vn-danger: #f87171;
+  --vn-warning: #fbbf24;
+}
+
+html[data-theme="softadastra"] {
+  color-scheme: dark;
+
+  --vn-color0: #0f1215;
+  --vn-color1: #1a1e22;
+  --vn-color2: #131619;
+  --vn-color3: #20252a;
+  --vn-color4: #4d5964;
+
+  --vn-border1: #343a40;
+  --vn-border2: #282e34;
+  --vn-border3: #22282e;
+
+  --vn-toolbar-bg: #1a1e22;
+  --vn-appbar-bg: #0f1215;
+  --vn-activity-bg: #15191d;
+  --vn-sidebar-bg: #1a1e22;
+  --vn-tabsbar-bg: #20252a;
+
+  --vn-text0: #ffffff;
+  --vn-text1: #f1f5f9;
+  --vn-text2: #b6c0cb;
+  --vn-text3: #778390;
+  --vn-content1: #f1f5f9;
+
+  --vn-brand0: #fb923c;
+  --vn-brand1: #f97316;
+  --vn-brand2: #fdba74;
+  --vn-brand3: #4b2a12;
+  --vn-accent1: #fb923c;
+
+  --vn-editor-bg: #0f1215;
+  --vn-editor-border: #343a40;
+  --vn-editor-active-bg: #15191d;
+  --vn-prompt-not-active: #778390;
+  --vn-inprompt: #fdba74;
+  --vn-outprompt: #fb923c;
+  --vn-collapser-selected: #f97316;
+  --vn-collapser-edit: #22c55e;
+
+  --vn-error-bg: #3a1518;
+  --vn-error: #f87171;
+  --vn-stderr-bg: #2a1518;
+  --vn-problem-error: #f87171;
+  --vn-problem-error-bg: #35171b;
+  --vn-problem-hint: #fdba74;
+  --vn-problem-hint-bg: #30200e;
+  --vn-problem-ok: #22c55e;
+  --vn-danger: #f87171;
+  --vn-warning: #fbbf24;
 }
 
 * {
@@ -267,6 +373,104 @@ input {
   gap: 12px;
   padding-right: 8px;
 }
+
+
+.vn-ThemeMenu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.vn-ThemeMenu__button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--vn-text2);
+  cursor: pointer;
+}
+
+.vn-ThemeMenu__button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.vn-ThemeMenu__button:hover,
+.vn-ThemeMenu__button[aria-expanded="true"] {
+  background: var(--vn-color3);
+  color: var(--vn-text1);
+}
+
+.vn-ThemeMenu__button:focus-visible {
+  outline: 2px solid var(--vn-accent1);
+  outline-offset: 2px;
+}
+
+.vn-ThemeMenu__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 184px;
+  padding: 5px;
+  background: var(--vn-color1);
+  border: 1px solid var(--vn-border1);
+  border-radius: 9px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+  z-index: 1002;
+}
+
+.vn-ThemeMenu__dropdown[hidden] {
+  display: none;
+}
+
+.vn-ThemeMenu__item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vn-text1);
+  cursor: pointer;
+  text-align: left;
+}
+
+.vn-ThemeMenu__item:hover,
+.vn-ThemeMenu__item:focus-visible {
+  background: var(--vn-color3);
+  outline: 0;
+}
+
+.vn-ThemeMenu__item.is-active {
+  color: var(--vn-brand0);
+  font-weight: 650;
+}
+
+.vn-ThemeMenu__check {
+  color: var(--vn-brand1);
+  font-weight: 800;
+  text-align: center;
+}
+
+
+.vn-ThemeMenu__label {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vn-ThemeMenu__label small {
+  color: var(--vn-text3);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
 .vn-KernelName {
   color: var(--vn-text2);
   font-size: 12px;
@@ -4062,6 +4266,35 @@ input {
     border-radius: 8px;
   }
 }
+
+
+.vn-ExtensionIcon {
+  position: relative;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.vn-ExtensionIcon img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.vn-ExtensionIcon img[hidden],
+.vn-ExtensionIcon__fallback[hidden] {
+  display: none;
+}
+
+.vn-ExtensionIcon__fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
 .vn-ExtensionItem__icon img,
 .vn-ExtensionShow__icon img {
   width: 100%;

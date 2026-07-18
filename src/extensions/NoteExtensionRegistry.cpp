@@ -456,7 +456,7 @@ namespace vix::note
     cppOptions_ = cppOptions;
     replyOptions_ = replyOptions;
 
-    auto add = [&](std::string extId, NoteCellTypeDescriptor cell, NoteExtensionRegistry::RunnerFactory factory)
+    auto add = [&](const std::string &extId, NoteCellTypeDescriptor cell, NoteExtensionRegistry::RunnerFactory factory)
     {
       NoteExtensionDescriptor ext;
       ext.id = extId;

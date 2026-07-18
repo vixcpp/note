@@ -120,32 +120,122 @@
   const UI_STATE_KEY = "vix-note:ui-state:v2";
   const SESSION_STATE_KEY = "vix-note:session:v2";
   const MAX_CLOSED_TABS = 20;
-  const THEME_STORAGE_KEY = "vix-note:theme:v1";
+  const THEME_STORAGE_KEY = "vix.note.theme";
+  const LEGACY_THEME_STORAGE_KEY = "vix-note:theme:v1";
   const THEME_TOKEN_TO_CSS = {
     "editor.background": "--vn-editor-bg",
     "editor.foreground": "--vn-text1",
+    "editor.activeBackground": "--vn-editor-active-bg",
     "sidebar.background": "--vn-sidebar-bg",
     "activityBar.background": "--vn-activity-bg",
     "tabs.background": "--vn-tabsbar-bg",
+    "appbar.background": "--vn-appbar-bg",
+    "toolbar.background": "--vn-toolbar-bg",
+    "surface.background": "--vn-color1",
+    "surface.subtle": "--vn-color2",
+    "surface.hover": "--vn-color3",
     "border.color": "--vn-border1",
-    "accent.color": "--vn-brand1",
+    "border.subtle": "--vn-border2",
+    "border.muted": "--vn-border3",
+    "text.primary": "--vn-text1",
+    "text.secondary": "--vn-text2",
+    "text.muted": "--vn-text3",
+    "brand.primary": "--vn-brand1",
+    "brand.strong": "--vn-brand0",
+    "brand.soft": "--vn-brand2",
+    "accent.color": "--vn-accent1",
+    "status.error": "--vn-error",
+    "status.success": "--vn-problem-ok",
+    "status.warning": "--vn-warning",
   };
-  const VIX_LOGO_SVG = "data:image/svg+xml,%3Csvg%20viewBox=%220%200%20120%20120%22%20fill=%22none%22%20xmlns=%22http://www.w3.org/2000/svg%22%3E%0A%20%20%3Ccircle%20cx=%2260%22%20cy=%2260%22%20r=%2258%22%20fill=%22#07110c%22/%3E%0A%20%20%3Ccircle%20cx=%2260%22%20cy=%2260%22%20r=%2257%22%20stroke=%22#22c55e%22%20stroke-opacity=%220.22%22%20stroke-width=%222%22/%3E%0A%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id=%22left%22%20x1=%2228%22%20y1=%2224%22%20x2=%2258%22%20y2=%2296%22%20gradientUnits=%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%220%%22%20stop-color=%22#d4fcd4%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%2255%%22%20stop-color=%22#4ade80%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%22100%%22%20stop-color=%22#22c55e%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%0A%20%20%20%20%3ClinearGradient%20id=%22right%22%20x1=%2292%22%20y1=%2224%22%20x2=%2262%22%20y2=%2296%22%20gradientUnits=%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%220%%22%20stop-color=%22#22c55e%22/%3E%0A%20%20%20%20%20%20%3Cstop%20offset=%22100%%22%20stop-color=%22#15803d%22/%3E%0A%20%20%20%20%3C/linearGradient%3E%0A%20%20%3C/defs%3E%0A%0A%20%20%3Cpolygon%20points=%2228,24%2045,24%2060,96%2050,96%22%20fill=%22url(#left)%22/%3E%0A%20%20%3Cpolygon%20points=%2292,24%2075,24%2060,96%2070,96%22%20fill=%22url(#right)%22/%3E%0A%0A%20%20%3Cline%0A%20%20%20%20x1=%2238%22%0A%20%20%20%20y1=%2250%22%0A%20%20%20%20x2=%2251%22%0A%20%20%20%20y2=%2296%22%0A%20%20%20%20stroke=%22#bbf7d0%22%0A%20%20%20%20stroke-width=%223%22%0A%20%20%20%20stroke-linecap=%22round%22%0A%20%20%20%20opacity=%220.65%22%0A%20%20/%3E%0A%3C/svg%3E";
+
+  const VIX_LOGO_SVG = `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="60" cy="60" r="58" fill="#07110c"/>
+  <circle cx="60" cy="60" r="57" stroke="#22c55e" stroke-opacity="0.22" stroke-width="2"/>
+  <defs>
+    <linearGradient id="left" x1="28" y1="24" x2="58" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d4fcd4"/>
+      <stop offset="55%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+    <linearGradient id="right" x1="92" y1="24" x2="62" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+  </defs>
+  <polygon points="28,24 45,24 60,96 50,96" fill="url(#left)"/>
+  <polygon points="92,24 75,24 60,96 70,96" fill="url(#right)"/>
+  <line x1="38" y1="50" x2="51" y2="96" stroke="#bbf7d0" stroke-width="3" stroke-linecap="round" opacity="0.65"/>
+</svg>`;
+
+  function svgToDataUri(svg) {
+    const text = String(svg || "").replace(/[\u0000-\u001f\u007f]/g, "");
+    if (!text.trim().startsWith("<svg") || /javascript:/i.test(text)) return "";
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(text)}`;
+  }
+
+  const VIX_LOGO_ICON = svgToDataUri(VIX_LOGO_SVG);
 
   const BUILTIN_THEMES = [
-    { id: "vix.light", label: "Vix Light", kind: "light", tokens: {} },
+    { id: "system", label: "System", kind: "system", system: true, tokens: {} },
+    { id: "light", label: "Light", kind: "light", tokens: {} },
     {
-      id: "vix.dark",
-      label: "Vix Dark",
+      id: "dark",
+      label: "Dark",
       kind: "dark",
       tokens: {
+        "surface.background": "#1f2329",
+        "surface.subtle": "#252a32",
+        "surface.hover": "#303642",
         "editor.background": "#1f2329",
         "editor.foreground": "#e8e3d8",
+        "editor.activeBackground": "#252a32",
         "sidebar.background": "#1a1d22",
         "activityBar.background": "#15181d",
         "tabs.background": "#20242b",
+        "appbar.background": "#171b20",
+        "toolbar.background": "#20242b",
         "border.color": "#343a44",
-        "accent.color": "#f37726",
+        "border.subtle": "#29303a",
+        "border.muted": "#242a32",
+        "text.primary": "#e8e3d8",
+        "text.secondary": "#b8b2a8",
+        "text.muted": "#7e8794",
+        "brand.primary": "#f37726",
+        "brand.strong": "#f9aa7c",
+        "brand.soft": "#7c3f1d",
+        "accent.color": "#fb923c",
+      },
+    },
+    {
+      id: "softadastra",
+      label: "Softadastra",
+      kind: "dark",
+      tokens: {
+        "surface.background": "#1a1e22",
+        "surface.subtle": "#15191d",
+        "surface.hover": "#20252a",
+        "editor.background": "#0f1215",
+        "editor.foreground": "#f1f5f9",
+        "editor.activeBackground": "#15191d",
+        "sidebar.background": "#1a1e22",
+        "activityBar.background": "#131619",
+        "tabs.background": "#15191d",
+        "appbar.background": "#131619",
+        "toolbar.background": "#1a1e22",
+        "border.color": "#343a40",
+        "border.subtle": "#282e34",
+        "border.muted": "#22282e",
+        "text.primary": "#f1f5f9",
+        "text.secondary": "#b6c0cb",
+        "text.muted": "#778390",
+        "brand.primary": "#f97316",
+        "brand.strong": "#fb923c",
+        "brand.soft": "#fdba74",
+        "accent.color": "#f97316",
+        "status.error": "#f87171",
+        "status.success": "#22c55e",
+        "status.warning": "#fbbf24",
       },
     },
   ];
@@ -387,6 +477,27 @@
     return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value.trim());
   }
 
+  function normalizeTheme(value) {
+    const raw = String(value || "system").trim().toLowerCase();
+    if (["system", "light", "dark", "softadastra"].includes(raw)) return raw;
+    if (raw === "vix.light") return "light";
+    if (raw === "vix.dark") return "dark";
+    const external = Array.isArray(state.extensions.themes)
+      ? state.extensions.themes
+      : [];
+    if (external.some((theme) => String(theme?.id || "").toLowerCase() === raw)) {
+      return raw;
+    }
+    return "system";
+  }
+
+  function systemTheme() {
+    return window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+
   function normalizedThemes() {
     const external = Array.isArray(state.extensions.themes)
       ? state.extensions.themes
@@ -400,52 +511,131 @@
     });
   }
 
-  function applyTheme(themeId, options = {}) {
-    const theme =
-      normalizedThemes().find((item) => item.id === themeId) ||
-      BUILTIN_THEMES[0];
-    const root = document.documentElement;
-    root.dataset.vnTheme = theme.id;
-    root.style.colorScheme = theme.kind === "dark" ? "dark" : "light";
+  function themeById(themeId) {
+    const normalized = normalizeTheme(themeId);
+    return (
+      normalizedThemes().find((item) => item.id === normalized) ||
+      BUILTIN_THEMES[0]
+    );
+  }
+
+  function clearThemeVariables(root) {
     for (const cssVar of Object.values(THEME_TOKEN_TO_CSS)) {
       root.style.removeProperty(cssVar);
     }
-    for (const [token, value] of Object.entries(theme.tokens || {})) {
-      const cssVar = THEME_TOKEN_TO_CSS[token];
-      if (cssVar && isSafeThemeColor(value))
-        root.style.setProperty(cssVar, value);
-    }
-    if (options.persist !== false)
-      localStorage.setItem(THEME_STORAGE_KEY, theme.id);
   }
 
-  function restoreTheme() {
-    applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "vix.light", {
-      persist: false,
+  function applyTheme(themeId, options = {}) {
+    const selected = normalizeTheme(themeId);
+    const resolved = selected === "system" ? systemTheme() : selected;
+    const theme = themeById(resolved);
+    const root = document.documentElement;
+
+    root.dataset.themeChoice = selected;
+    root.dataset.theme = resolved;
+    root.dataset.vnTheme = resolved;
+    root.style.colorScheme = resolved === "dark" || resolved === "softadastra" ? "dark" : "light";
+
+    clearThemeVariables(root);
+    for (const [token, value] of Object.entries(theme.tokens || {})) {
+      const cssVar = THEME_TOKEN_TO_CSS[token];
+      if (cssVar && isSafeThemeColor(value)) {
+        root.style.setProperty(cssVar, value);
+      }
+    }
+
+    if (options.persist !== false) {
+      localStorage.setItem(THEME_STORAGE_KEY, selected);
+      localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+    }
+
+    renderThemeMenu();
+  }
+
+  function setTheme(themeId) {
+    applyTheme(themeId);
+    showNotification({
+      type: "success",
+      message: `Theme: ${themeById(themeId).label}`,
     });
   }
 
+  let systemThemeMedia = null;
+
+  function restoreTheme() {
+    const stored =
+      localStorage.getItem(THEME_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_THEME_STORAGE_KEY) ||
+      "system";
+    applyTheme(stored, { persist: false });
+
+    if (window.matchMedia) {
+      systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+      systemThemeMedia.addEventListener?.("change", () => {
+        if (normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY)) === "system") {
+          applyTheme("system", { persist: false });
+        }
+      });
+    }
+  }
+
+  function renderThemeMenu() {
+    const menu = $("[data-theme-menu]");
+    if (!menu) return;
+
+    const active = normalizeTheme(
+      document.documentElement.dataset.themeChoice ||
+        localStorage.getItem(THEME_STORAGE_KEY) ||
+        "system",
+    );
+
+    menu.innerHTML = normalizedThemes().map((theme) => {
+      const selected = normalizeTheme(theme.id) === active;
+      const source = theme.system || BUILTIN_THEMES.some((item) => item.id === theme.id)
+        ? "Built-in"
+        : "Extension";
+      return `
+        <button
+          type="button"
+          class="vn-ThemeMenu__item${selected ? " is-active" : ""}"
+          data-theme-option="${escapeHtml(theme.id)}"
+          role="menuitemradio"
+          aria-checked="${selected ? "true" : "false"}"
+        >
+          <span class="vn-ThemeMenu__check" aria-hidden="true">${selected ? "✓" : ""}</span>
+          <span class="vn-ThemeMenu__label">
+            <span>${escapeHtml(theme.label)}</span>
+            <small>${escapeHtml(source)}</small>
+          </span>
+        </button>
+      `;
+    }).join("");
+  }
+
+  function closeThemeMenu() {
+    const menu = $("[data-theme-menu]");
+    const button = $("[data-theme-toggle]");
+    if (menu) menu.hidden = true;
+    if (button) button.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleThemeMenu() {
+    const menu = $("[data-theme-menu]");
+    const button = $("[data-theme-toggle]");
+    if (!menu || !button) return;
+    renderThemeMenu();
+    const open = menu.hidden;
+    menu.hidden = !open;
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      const active = $(".vn-ThemeMenu__item.is-active", menu) ||
+        $(".vn-ThemeMenu__item", menu);
+      active?.focus({ preventScroll: true });
+    }
+  }
+
   function openColorThemePicker() {
-    const themes = normalizedThemes();
-    const active = document.documentElement.dataset.vnTheme || "vix.light";
-    const root = ensurePickerRoot("command-palette");
-    root.innerHTML = `
-      <div class="vn-PickerOverlay" data-picker-close></div>
-      <section class="vn-Picker" role="dialog" aria-modal="true" aria-label="Color Theme">
-        <input class="vn-Picker__input" aria-label="Filter color themes" placeholder="Preferences: Color Theme" value="" />
-        <div class="vn-Picker__list" role="listbox">
-          ${themes
-            .map(
-              (theme) => `
-            <button type="button" class="vn-Picker__item${theme.id === active ? " is-selected" : ""}" data-theme-id="${escapeHtml(theme.id)}" role="option" aria-selected="${theme.id === active ? "true" : "false"}">
-              <span class="vn-Picker__label"><small>${escapeHtml(theme.kind || "theme")}</small>${escapeHtml(theme.label)}</span>
-              <code>${escapeHtml(theme.id)}</code>
-            </button>`,
-            )
-            .join("")}
-        </div>
-      </section>`;
-    root.querySelector("input")?.focus({ preventScroll: true });
+    toggleThemeMenu();
   }
 
   function extensionStatus(ext) {
@@ -577,14 +767,56 @@
       .join(", ");
   }
 
-  function extensionIconHtml(ext, fallback = "E") {
-    const id = extensionIdentifier(ext);
-    const isVixBuiltin = !!(ext && ext.builtin) || id.startsWith("vix.note.");
-    if (isVixBuiltin) {
-      return `<img src="${VIX_LOGO_SVG}" alt="" />`;
+  function normalizeExtensionIcon(icon) {
+    const value = String(icon || "").trim();
+    if (!value || /[\u0000-\u001f\u007f]/.test(value) || /javascript:/i.test(value)) {
+      return "";
     }
-    return escapeHtml(fallback);
+    if (/^data:image\/(svg\+xml|png|jpeg|webp)(;charset=[^,]+)?[,;]/i.test(value)) {
+      if (/^data:image\/svg\+xml/i.test(value) && value.includes("#")) {
+        return "";
+      }
+      return value;
+    }
+    if (value.startsWith("/assets/") && !value.includes("..")) {
+      return value;
+    }
+    if (/^https:\/\//i.test(value)) {
+      return value;
+    }
+    return "";
   }
+
+  function extensionIconSource(ext) {
+    const explicit = normalizeExtensionIcon(ext && ext.icon);
+    if (explicit) return explicit;
+
+    const id = extensionIdentifier(ext);
+    if ((ext && ext.builtin) || id.startsWith("vix.note.")) {
+      return VIX_LOGO_ICON;
+    }
+
+    return "";
+  }
+
+  function extensionIconHtml(ext, fallback = "E") {
+    const safeFallback =
+      String(fallback || "E")
+        .trim()
+        .charAt(0)
+        .toUpperCase() || "E";
+    const src = extensionIconSource(ext);
+
+    return `
+      ${
+        src
+          ? `<img src="${escapeHtml(src)}" alt="" loading="lazy" decoding="async" onload="this.nextElementSibling.hidden=true" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />`
+          : ""
+      }
+      <span class="vn-ExtensionIcon__fallback" ${src ? "hidden" : ""}>${escapeHtml(safeFallback)}</span>
+    `;
+  }
+
 
   function recommendedExtensions() {
     return uniqueExtensions(
@@ -704,7 +936,7 @@
         data-extension-details="${escapeHtml(id)}"
         aria-label="Open ${escapeHtml(name)} extension details"
       >
-        <span class="vn-ExtensionItem__icon" aria-hidden="true">
+        <span class="vn-ExtensionIcon vn-ExtensionItem__icon" aria-hidden="true">
           ${extensionIconHtml(ext, initial)}
         </span>
 
@@ -1141,10 +1373,10 @@
     >
       <header class="vn-ExtensionShow__hero">
         <div
-          class="vn-ExtensionShow__icon"
+          class="vn-ExtensionIcon vn-ExtensionShow__icon"
           aria-hidden="true"
         >
-          ${escapeHtml(initial)}
+          ${extensionIconHtml(ext, initial)}
         </div>
 
         <div class="vn-ExtensionShow__identity">
@@ -1471,8 +1703,8 @@
 
       m.body.innerHTML = `
         <div class="vn-ExtensionActionModal${spec.important ? " is-important" : ""}${spec.danger ? " is-danger" : ""}">
-          <span class="vn-ExtensionActionModal__icon" aria-hidden="true">
-            ${escapeHtml(initial)}
+          <span class="vn-ExtensionIcon vn-ExtensionActionModal__icon" aria-hidden="true">
+            ${extensionIconHtml(ext, initial)}
           </span>
           <div class="vn-ExtensionActionModal__content">
             <strong>${escapeHtml(name)}</strong>
@@ -4673,6 +4905,7 @@
     try {
       const payload = await api("/api/extensions");
       applyExtensionsPayload(payload);
+      applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "system", { persist: false });
     } catch (error) {
       console.error("Failed to load Vix Note extensions", error);
       state.extensions = { ok: false, extensions: [], cellTypes: [] };
@@ -5818,6 +6051,22 @@
     app.classList.remove("is-sidebar-collapsed");
     renderActivityBar();
     persistUiState();
+  }
+
+  function syncActivityPanelState(options = {}) {
+    state.activePanel = normalizeActivityPanel(state.activePanel);
+    for (const p of $all("[data-panel]")) {
+      p.hidden = p.dataset.panel !== state.activePanel;
+    }
+    if (state.sidebarCollapsed) {
+      state.bottomPanelVisible = false;
+      app.classList.add("is-sidebar-collapsed");
+    } else {
+      state.bottomPanelVisible = state.activePanel === "problems";
+      app.classList.remove("is-sidebar-collapsed");
+    }
+    renderActivityBar();
+    if (options.persist !== false) persistUiState();
   }
 
   function closeSidebarPanel() {
@@ -7446,16 +7695,24 @@
         return;
       }
 
-      const themeButton = target ? target.closest("[data-theme-id]") : null;
-      if (themeButton) {
+      const themeToggle = target ? target.closest("[data-theme-toggle]") : null;
+      if (themeToggle) {
         event.preventDefault();
-        applyTheme(themeButton.dataset.themeId || "vix.light");
-        closePicker("command-palette");
-        showNotification({
-          type: "success",
-          message: `Theme: ${themeButton.textContent.trim()}`,
-        });
+        event.stopPropagation();
+        toggleThemeMenu();
         return;
+      }
+
+      const themeOption = target ? target.closest("[data-theme-option]") : null;
+      if (themeOption) {
+        event.preventDefault();
+        setTheme(themeOption.dataset.themeOption || "system");
+        closeThemeMenu();
+        return;
+      }
+
+      if (target && !target.closest("[data-theme-menu-root]")) {
+        closeThemeMenu();
       }
 
       const menuCommand = target ? target.closest("[data-command]") : null;
@@ -8508,6 +8765,7 @@
       !!state.sidebarCollapsed ||
         window.matchMedia("(max-width: 900px)").matches,
     );
+    state.sidebarCollapsed = app.classList.contains("is-sidebar-collapsed");
     app.classList.toggle("is-focus", !!state.focusMode);
 
     bindActions();
@@ -8527,8 +8785,7 @@
     for (const c of $all("[data-modal-close]"))
       c.addEventListener("click", () => closeModal());
 
-    setPanel(state.activePanel || "explorer");
-    if (state.sidebarCollapsed) app.classList.add("is-sidebar-collapsed");
+    syncActivityPanelState({ persist: false });
     setKernel("idle");
     renderExplorer();
     renderOpenTabs();

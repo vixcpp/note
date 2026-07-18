@@ -114,6 +114,12 @@ int main()
     assert(js.find("recommended: false") != std::string::npos);
     assert(js.find("builtin: false") != std::string::npos);
     assert(js.find("toggleActivityPanel") != std::string::npos);
+    assert(js.find("data-theme-option") != std::string::npos);
+    assert(js.find("softadastra") != std::string::npos);
+    assert(js.find("svgToDataUri") != std::string::npos);
+    assert(js.find("encodeURIComponent") != std::string::npos);
+    assert(js.find("fill=%22#") == std::string::npos);
+    assert(js.find("stroke=%22#") == std::string::npos);
     assert(js.find("VIX_LOGO_SVG") != std::string::npos);
   }
 

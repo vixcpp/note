@@ -16,6 +16,22 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23f37726'/%3E%3Cpath d='M18 14h10l7 23 7-23h10L40 50H30L18 14z' fill='white'/%3E%3C/svg%3E"
     />
 
+    <script>
+      (() => {
+        try {
+          const key = "vix.note.theme";
+          const stored = localStorage.getItem(key) || localStorage.getItem("vix-note:theme:v1") || "system";
+          const theme = ["system", "light", "dark", "softadastra"].includes(stored) ? stored : "system";
+          const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.themeChoice = theme;
+          document.documentElement.dataset.theme = theme === "system" ? (dark ? "dark" : "light") : theme;
+        } catch (_) {
+          document.documentElement.dataset.themeChoice = "system";
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+
     <link rel="stylesheet" href="/assets/note.css" />
   </head>
 
@@ -835,6 +851,38 @@
         <div class="vn-AppBar__spacer"></div>
 
         <div class="vn-AppBar__status">
+          <div class="vn-ThemeMenu" data-theme-menu-root>
+            <button
+              type="button"
+              class="vn-ThemeMenu__button"
+              data-theme-toggle
+              title="Change theme"
+              aria-label="Change theme"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 3a9 9 0 1 0 0 18h1.2a1.8 1.8 0 0 0 .6-3.5 1.8 1.8 0 0 1 .2-3.5h1.4a5.4 5.4 0 0 0 0-10.8H12z"
+                />
+                <circle cx="7.8" cy="10" r="1" fill="currentColor" />
+                <circle cx="10.8" cy="7.3" r="1" fill="currentColor" />
+                <circle cx="14.5" cy="7.7" r="1" fill="currentColor" />
+              </svg>
+            </button>
+            <div
+              class="vn-ThemeMenu__dropdown"
+              data-theme-menu
+              role="menu"
+              aria-label="Color theme"
+              hidden
+            ></div>
+          </div>
           <span class="vn-KernelName" data-note-project>No project</span>
           <span class="vn-KernelStatus" title="Kernel status">
             <span class="vn-KernelStatus__dot"></span>
