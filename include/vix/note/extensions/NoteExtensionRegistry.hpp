@@ -67,6 +67,10 @@ namespace vix::note
     bool executable{false};
     bool builtin{false};
     std::string extensionId;
+    std::string commentLine;
+    std::string commentBlock;
+    std::string defaultSource;
+    std::string placeholder;
   };
 
   struct NoteExtensionDescriptor

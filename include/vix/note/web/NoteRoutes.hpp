@@ -201,6 +201,13 @@ namespace vix::note
     bool keepEmbeddedAssetFallback = false;
 
     /**
+     * @brief Enables package install/update/uninstall API mutations.
+     *
+     * This must only be enabled for loopback-only servers.
+     */
+    bool allowPackageMutations = false;
+
+    /**
      * @brief Kernel options used by route execution.
      */
     NoteKernelOptions kernelOptions;

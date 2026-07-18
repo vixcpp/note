@@ -2632,3 +2632,202 @@ input {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* Compact Extensions workbench refinement */
+.vn-ExtensionsPanel .vn-Panel__title {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.vn-Extensions__tabs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 7px 10px;
+}
+.vn-Extensions__tabs button {
+  border-radius: 7px;
+  padding: 5px 4px;
+  font-size: 11px;
+}
+.vn-Extensions {
+  gap: 4px;
+  padding: 6px 8px 12px;
+}
+.vn-ExtensionCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  min-height: 66px;
+  padding: 8px 9px;
+  border-radius: 9px;
+}
+.vn-ExtensionCard::before {
+  content: attr(data-extension-id);
+  display: grid;
+  place-items: center;
+  grid-row: 1 / span 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vn-brand1) 16%, var(--vn-surface-muted));
+  color: var(--vn-brand1);
+  font-size: 0;
+}
+.vn-ExtensionCard::after {
+  content: attr(data-extension-id);
+  position: absolute;
+  visibility: hidden;
+}
+.vn-ExtensionCard__main {
+  grid-column: 1;
+  padding-left: 36px;
+  min-width: 0;
+}
+.vn-ExtensionCard__title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vn-ExtensionCard__id {
+  display: none;
+}
+.vn-ExtensionCard__desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vn-ExtensionCard__cells {
+  margin-top: 2px;
+  font-size: 11px;
+}
+.vn-ExtensionCard__meta {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  align-self: start;
+  justify-content: end;
+  font-size: 11px;
+}
+.vn-ExtensionCard__actions {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+  align-self: end;
+  justify-content: end;
+}
+.vn-ExtensionCard__actions:empty {
+  display: none;
+}
+.vn-ExtensionCard__actions button {
+  padding: 4px 7px;
+  font-size: 11px;
+}
+.vn-ExtensionDetails {
+  display: none;
+}
+
+.vn-ExtensionMain {
+  max-width: 980px;
+  margin: 34px auto;
+  padding: 0 28px 48px;
+  color: var(--vn-text);
+}
+.vn-ExtensionMain__hero {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.vn-ExtensionMain__icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--vn-brand1) 20%, var(--vn-surface-muted));
+  color: var(--vn-brand1);
+  font-size: 34px;
+  font-weight: 800;
+}
+.vn-ExtensionMain h1 {
+  margin: 0 0 3px;
+  font-size: clamp(28px, 4vw, 42px);
+}
+.vn-ExtensionMain h2 {
+  margin: 20px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--vn-text-muted);
+}
+.vn-ExtensionMain__id,
+.vn-ExtensionMain__empty {
+  color: var(--vn-text-muted);
+}
+.vn-ExtensionMain__badges,
+.vn-ExtensionMain__actions,
+.vn-ExtensionMain__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.vn-ExtensionMain__badges span {
+  border: 1px solid var(--vn-border-subtle);
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--vn-surface-muted);
+  font-size: 12px;
+}
+.vn-ExtensionMain__actions button {
+  border: 1px solid var(--vn-border-subtle);
+  border-radius: 9px;
+  background: var(--vn-surface-muted);
+  color: var(--vn-text);
+  padding: 7px 11px;
+  cursor: pointer;
+}
+.vn-ExtensionMain__tabs {
+  border-bottom: 1px solid var(--vn-border-subtle);
+  margin-top: 22px;
+}
+.vn-ExtensionMain__tabs span {
+  padding: 10px 2px;
+  color: var(--vn-text-muted);
+}
+.vn-ExtensionMain__tabs .is-active {
+  color: var(--vn-text);
+  border-bottom: 2px solid var(--vn-brand1);
+}
+.vn-ExtensionMain__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+}
+.vn-ExtensionMain__grid aside {
+  border: 1px solid var(--vn-border-subtle);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--vn-surface);
+  height: fit-content;
+}
+.vn-ExtensionMain dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 13px;
+}
+.vn-ExtensionMain dt {
+  color: var(--vn-text-muted);
+}
+.vn-ExtensionMain dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .vn-ExtensionMain__grid,
+  .vn-ExtensionMain__hero {
+    grid-template-columns: 1fr;
+  }
+}

@@ -49,9 +49,8 @@ namespace vix::note
     std::string lower_extension(std::filesystem::path path)
     {
       std::string ext = path.extension().string();
-      std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-      });
+      std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c)
+                     { return static_cast<char>(std::tolower(c)); });
       return ext;
     }
 
@@ -336,9 +335,8 @@ namespace vix::note
   std::optional<NoteAsset> NoteAssets::find(std::string_view path) const
   {
     const std::string normalized = normalize_note_asset_path(path);
-    const auto overrideIt = std::find_if(overrides_.begin(), overrides_.end(), [&](const NoteAsset &asset) {
-      return normalize_note_asset_path(asset.path) == normalized;
-    });
+    const auto overrideIt = std::find_if(overrides_.begin(), overrides_.end(), [&](const NoteAsset &asset)
+                                         { return normalize_note_asset_path(asset.path) == normalized; });
     if (overrideIt != overrides_.end())
     {
       return *overrideIt;
@@ -376,9 +374,8 @@ namespace vix::note
     {
       asset.contentType = note_asset_content_type(asset.path);
     }
-    const auto it = std::find_if(overrides_.begin(), overrides_.end(), [&](const NoteAsset &candidate) {
-      return candidate.path == asset.path;
-    });
+    const auto it = std::find_if(overrides_.begin(), overrides_.end(), [&](const NoteAsset &candidate)
+                                 { return candidate.path == asset.path; });
     if (it == overrides_.end())
     {
       overrides_.push_back(std::move(asset));
@@ -408,9 +405,8 @@ namespace vix::note
     const std::string normalized = normalize_note_asset_path(path);
     const auto oldSize = overrides_.size();
     overrides_.erase(
-        std::remove_if(overrides_.begin(), overrides_.end(), [&](const NoteAsset &asset) {
-          return normalize_note_asset_path(asset.path) == normalized;
-        }),
+        std::remove_if(overrides_.begin(), overrides_.end(), [&](const NoteAsset &asset)
+                       { return normalize_note_asset_path(asset.path) == normalized; }),
         overrides_.end());
     return overrides_.size() != oldSize;
   }

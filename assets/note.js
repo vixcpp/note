@@ -111,6 +111,33 @@
   const UI_STATE_KEY = "vix-note:ui-state:v2";
   const SESSION_STATE_KEY = "vix-note:session:v2";
   const MAX_CLOSED_TABS = 20;
+  const THEME_STORAGE_KEY = "vix-note:theme:v1";
+  const THEME_TOKEN_TO_CSS = {
+    "editor.background": "--vn-editor-bg",
+    "editor.foreground": "--vn-text1",
+    "sidebar.background": "--vn-sidebar-bg",
+    "activityBar.background": "--vn-activity-bg",
+    "tabs.background": "--vn-tabsbar-bg",
+    "border.color": "--vn-border1",
+    "accent.color": "--vn-brand1",
+  };
+  const BUILTIN_THEMES = [
+    { id: "vix.light", label: "Vix Light", kind: "light", tokens: {} },
+    {
+      id: "vix.dark",
+      label: "Vix Dark",
+      kind: "dark",
+      tokens: {
+        "editor.background": "#1f2329",
+        "editor.foreground": "#e8e3d8",
+        "sidebar.background": "#1a1d22",
+        "activityBar.background": "#15181d",
+        "tabs.background": "#20242b",
+        "border.color": "#343a44",
+        "accent.color": "#f37726",
+      },
+    },
+  ];
 
   const app = document.querySelector("[data-note-app]");
 
@@ -195,11 +222,21 @@
   }
 
   function normalizeKind(kind) {
-    return String(kind || "unknown").toLowerCase();
+    const value = String(kind || "")
+      .trim()
+      .toLowerCase();
+    return value || "unknown";
   }
 
   function cellTypeOf(cell) {
     return normalizeKind(cell && (cell.type || cell.kind));
+  }
+
+  function setCellType(cell, type) {
+    if (!cell) return;
+    const normalized = normalizeKind(type);
+    cell.type = normalized;
+    cell.kind = normalized;
   }
 
   function normalizedCellTypes() {
@@ -247,6 +284,10 @@
         executable: !!raw.executable,
         builtin: !!raw.builtin,
         extension: raw.extension || raw.packageId || "",
+        commentLine: raw.commentLine || "",
+        commentBlock: raw.commentBlock || "",
+        defaultSource: raw.defaultSource || "",
+        placeholder: raw.placeholder || "",
       });
     }
     return Array.from(byId.values());
@@ -255,6 +296,145 @@
   function cellTypeDescriptor(kind) {
     const k = normalizeKind(kind);
     return normalizedCellTypes().find((c) => normalizeKind(c.id) === k) || null;
+  }
+
+  function extensionDescriptorForCellType(kind) {
+    const type = cellTypeDescriptor(kind);
+    if (!type || !type.extension) return null;
+    const list = Array.isArray(state.extensions.extensions)
+      ? state.extensions.extensions
+      : [];
+    return list.find((ext) => ext && ext.id === type.extension) || null;
+  }
+
+  function executionAvailabilityForCell(cell) {
+    const typeId = cellTypeOf(cell);
+    const descriptor = cellTypeDescriptor(typeId);
+    if (!descriptor) {
+      return {
+        executable: false,
+        available: false,
+        reason: `Cell type '${typeId}' is not available`,
+        extension: "",
+      };
+    }
+    if (!descriptor.executable) {
+      return {
+        executable: false,
+        available: false,
+        reason: "Cell is not executable",
+        extension: descriptor.extension || "",
+      };
+    }
+    const extension = extensionDescriptorForCellType(typeId);
+    if (extension) {
+      if (extension.enabled === false) {
+        return {
+          executable: true,
+          available: false,
+          reason: `${descriptor.label || typeId} extension is disabled`,
+          extension: extension.id,
+        };
+      }
+      if (extension.available === false) {
+        const reason =
+          extension.runtime?.error ||
+          extension.diagnostics?.[0] ||
+          `${descriptor.label || typeId} runtime is unavailable`;
+        return {
+          executable: true,
+          available: false,
+          reason,
+          extension: extension.id,
+        };
+      }
+      if (extension.runtime && extension.runtime.healthy === false) {
+        return {
+          executable: true,
+          available: false,
+          reason:
+            extension.runtime.error ||
+            `${descriptor.label || typeId} runtime is unhealthy`,
+          extension: extension.id,
+        };
+      }
+    }
+    return {
+      executable: true,
+      available: true,
+      reason: "",
+      extension: descriptor.extension || "",
+    };
+  }
+
+  function cellTypeDisplayLabel(kind) {
+    const desc = cellTypeDescriptor(kind);
+    return desc && desc.label ? desc.label : normalizeKind(kind);
+  }
+
+  function isSafeThemeColor(value) {
+    return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value.trim());
+  }
+
+  function normalizedThemes() {
+    const external = Array.isArray(state.extensions.themes)
+      ? state.extensions.themes
+      : [];
+    return [...BUILTIN_THEMES, ...external].filter((theme) => {
+      if (!theme || !theme.id || !theme.label) return false;
+      const tokens = theme.tokens || {};
+      return Object.entries(tokens).every(
+        ([key, value]) => THEME_TOKEN_TO_CSS[key] && isSafeThemeColor(value),
+      );
+    });
+  }
+
+  function applyTheme(themeId, options = {}) {
+    const theme =
+      normalizedThemes().find((item) => item.id === themeId) ||
+      BUILTIN_THEMES[0];
+    const root = document.documentElement;
+    root.dataset.vnTheme = theme.id;
+    root.style.colorScheme = theme.kind === "dark" ? "dark" : "light";
+    for (const cssVar of Object.values(THEME_TOKEN_TO_CSS)) {
+      root.style.removeProperty(cssVar);
+    }
+    for (const [token, value] of Object.entries(theme.tokens || {})) {
+      const cssVar = THEME_TOKEN_TO_CSS[token];
+      if (cssVar && isSafeThemeColor(value))
+        root.style.setProperty(cssVar, value);
+    }
+    if (options.persist !== false)
+      localStorage.setItem(THEME_STORAGE_KEY, theme.id);
+  }
+
+  function restoreTheme() {
+    applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "vix.light", {
+      persist: false,
+    });
+  }
+
+  function openColorThemePicker() {
+    const themes = normalizedThemes();
+    const active = document.documentElement.dataset.vnTheme || "vix.light";
+    const root = ensurePickerRoot("command-palette");
+    root.innerHTML = `
+      <div class="vn-PickerOverlay" data-picker-close></div>
+      <section class="vn-Picker" role="dialog" aria-modal="true" aria-label="Color Theme">
+        <input class="vn-Picker__input" aria-label="Filter color themes" placeholder="Preferences: Color Theme" value="" />
+        <div class="vn-Picker__list" role="listbox">
+          ${themes
+            .map(
+              (theme) => `
+            <button type="button" class="vn-Picker__item${theme.id === active ? " is-selected" : ""}" data-theme-id="${escapeHtml(theme.id)}" role="option" aria-selected="${theme.id === active ? "true" : "false"}">
+              <span class="vn-Picker__label"><small>${escapeHtml(theme.kind || "theme")}</small>${escapeHtml(theme.label)}</span>
+              <code>${escapeHtml(theme.id)}</code>
+            </button>`,
+            )
+            .join("")}
+        </div>
+      </section>`;
+    root.querySelector("input")?.focus({ preventScroll: true });
   }
 
   function extensionStatus(ext) {
@@ -302,8 +482,8 @@
     if (!root) return;
 
     const view = state.extensionWorkbench.activeView || "installed";
-    for (const tab of $all("[data-extension-view]")) {
-      const active = tab.dataset.extensionView === view;
+    for (const tab of $all("[data-extension-filter]")) {
+      const active = tab.dataset.extensionFilter === view;
       tab.classList.toggle("is-active", active);
       tab.setAttribute("aria-selected", active ? "true" : "false");
     }
@@ -380,7 +560,6 @@
               ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.installed ? "uninstall" : "install"}" data-extension-id="${escapeHtml(id)}">${ext.installed ? "Uninstall" : "Install"}</button>`}
               ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.enabled === false ? "enable" : "disable"}" data-extension-id="${escapeHtml(id)}">${ext.enabled === false ? "Enable" : "Disable"}</button>`}
             </div>
-            ${selected ? extensionDetailsHtml(ext) : ""}
           </article>`;
       })
       .join("");
@@ -406,6 +585,56 @@
           <dt>Health</dt><dd>${runtime.healthy === false ? "Broken" : "Healthy"}</dd>
         </dl>
       </div>`;
+  }
+
+  function renderExtensionDetailMain(ext) {
+    const root = $(sel.cells);
+    if (!root || !ext) return;
+    const runtime = ext.runtime || {};
+    const cells = Array.isArray(ext.cellTypes) ? ext.cellTypes : [];
+    const caps = Array.isArray(ext.capabilities) ? ext.capabilities : [];
+    root.innerHTML = `
+      <section class="vn-ExtensionMain" aria-label="Extension details">
+        <div class="vn-ExtensionMain__hero">
+          <div class="vn-ExtensionMain__icon">${escapeHtml((ext.name || ext.id || "E").slice(0, 1).toUpperCase())}</div>
+          <div>
+            <h1>${escapeHtml(ext.name || ext.id)}</h1>
+            <p class="vn-ExtensionMain__id">${escapeHtml(ext.id || "")}</p>
+            <p>${escapeHtml(ext.description || (cells.length ? `${extensionCellLabels(ext)} for Vix Note.` : "Vix Note extension"))}</p>
+            <div class="vn-ExtensionMain__badges">
+              <span>${escapeHtml(extensionStatus(ext))}</span>
+              ${ext.version ? `<span>v${escapeHtml(ext.version)}</span>` : ""}
+              ${ext.source ? `<span>${escapeHtml(ext.source)}</span>` : ""}
+            </div>
+          </div>
+        </div>
+        <div class="vn-ExtensionMain__actions">
+          ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.installed ? "uninstall" : "install"}" data-extension-id="${escapeHtml(ext.id)}">${ext.installed ? "Uninstall" : "Install"}</button>`}
+          ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.enabled === false ? "enable" : "disable"}" data-extension-id="${escapeHtml(ext.id)}">${ext.enabled === false ? "Enable" : "Disable"}</button>`}
+          <button type="button" data-command="extensions.refresh">Reload</button>
+        </div>
+        <nav class="vn-ExtensionMain__tabs" aria-label="Extension detail tabs">
+          <span class="is-active">Details</span><span>README</span><span>Changelog</span><span>Features</span>
+        </nav>
+        <div class="vn-ExtensionMain__grid">
+          <section>
+            <h2>Contributes</h2>
+            <ul>${cells.map((cell) => `<li>${escapeHtml(cell.label || cell.id)} cell type (${escapeHtml(cell.id)})</li>`).join("") || "<li>No cell types.</li>"}${caps.map((cap) => `<li>${escapeHtml(cap)}</li>`).join("")}</ul>
+            <h2>README</h2>
+            <p class="vn-ExtensionMain__empty">README is not available in the local registry cache yet.</p>
+          </section>
+          <aside>
+            <h2>Runtime</h2>
+            <dl>
+              <dt>protocol</dt><dd>${escapeHtml(runtime.protocol || "none")}</dd>
+              <dt>mode</dt><dd>${escapeHtml(runtime.mode || "none")}</dd>
+              <dt>command</dt><dd>${escapeHtml(runtime.resolvedCommand || runtime.command || "none")}</dd>
+              <dt>status</dt><dd>${runtime.healthy === false ? "Broken" : "Healthy"}</dd>
+            </dl>
+          </aside>
+        </div>
+      </section>`;
+    setText(sel.statusKind, `Extension · ${ext.name || ext.id}`);
   }
 
   async function refreshExtensionsView() {
@@ -562,7 +791,7 @@
 
     if (
       first &&
-      normalizeKind(first.kind) === "markdown" &&
+      cellTypeOf(first) === "markdown" &&
       isDefaultIntroSource(first.source, oldTitle)
     ) {
       first.source = defaultIntroSource(newTitle);
@@ -570,8 +799,8 @@
       await api(`/api/cells/${encodeURIComponent(first.id)}`, {
         method: "PUT",
         body: JSON.stringify({
-          type: first.type || first.kind,
-          kind: first.kind,
+          type: cellTypeOf(first),
+          kind: cellTypeOf(first),
           source: first.source,
         }),
       });
@@ -599,20 +828,8 @@
   }
 
   function kindLabel(kind) {
-    switch (normalizeKind(kind)) {
-      case "markdown":
-        return "Markdown";
-      case "reply":
-        return "Reply";
-      case "cpp":
-        return "C++";
-      case "html":
-        return "HTML";
-      default: {
-        const desc = cellTypeDescriptor(kind);
-        return desc && desc.label ? desc.label : String(kind || "Code");
-      }
-    }
+    const desc = cellTypeDescriptor(kind);
+    return desc && desc.label ? desc.label : cellTypeDisplayLabel(kind);
   }
 
   function relativeTime(epochMs) {
@@ -1546,8 +1763,9 @@
   }
 
   function cellToolbar(cell) {
-    const firstBtn = isCodeKind(cellTypeOf(cell))
-      ? `<button type="button" data-cell-action="run" title="Run">${ICONS.run}</button>`
+    const availability = executionAvailabilityForCell(cell);
+    const firstBtn = availability.executable
+      ? `<button type="button" data-cell-action="run" title="${escapeHtml(availability.available ? "Run" : availability.reason)}" ${availability.available ? "" : "disabled"}>${ICONS.run}</button>`
       : `<button type="button" data-cell-action="edit" title="Edit source">${ICONS.edit}</button>`;
     return `
       <div class="vn-Cell__toolbar">
@@ -1631,14 +1849,30 @@
       `Cell ${idx >= 0 ? idx + 1 : 0} of ${list.length}`,
     );
     const cell = findCell(state.selectedId);
-    setText(sel.statusKind, cell ? kindLabel(cell.kind) : "—");
+    if (!cell) {
+      setText(sel.statusKind, "—");
+    } else {
+      const availability = executionAvailabilityForCell(cell);
+      const label = kindLabel(cellTypeOf(cell));
+      const ext = availability.extension
+        ? extensionDescriptorForCellType(cellTypeOf(cell))
+        : null;
+      setText(
+        sel.statusKind,
+        availability.executable && availability.available && ext && !ext.builtin
+          ? `${label} · ${ext.name || ext.id}`
+          : availability.executable && !availability.available
+            ? `${label} unavailable`
+            : label,
+      );
+    }
   }
 
   /* ==========================================================
    * Keyed reconcile — guarantees one cell = one DOM node
    * ======================================================== */
   function cellSignature(cell) {
-    const kind = normalizeKind(cell.kind);
+    const kind = cellTypeOf(cell);
     const exec = Number(cell.executionCount || 0);
     const outs = Array.isArray(cell.outputs) ? cell.outputs.length : 0;
     const selected = state.selectedId === String(cell.id);
@@ -2299,7 +2533,7 @@
     const id = encodeURIComponent(cellEl.dataset.cellId);
     const result = await api(`/api/cells/${id}`, {
       method: "PUT",
-      body: JSON.stringify({ kind: cell.kind, source: cell.source }),
+      body: JSON.stringify({ type: cellTypeOf(cell), source: cell.source }),
     });
     if (result.document) state.document = unwrapDocument(result.document);
   }
@@ -2368,13 +2602,26 @@
    * Cell actions
    * ======================================================== */
   function defaultSource(kind) {
-    const k = normalizeKind(kind);
-    if (k === "cpp")
-      return '#include <iostream>\n\nint main()\n{\n  std::cout << "Hello from Vix Note\\n";\n  return 0;\n}\n';
-    if (k === "reply") return 'x = 1 + 2 * 3\nprintln("x =", x)\n';
-    if (k === "html")
-      return "<section>\n  <h2>Hello</h2>\n  <p>Rendered by the note UI.</p>\n</section>\n";
-    return "Write your explanation here.";
+    const desc = cellTypeDescriptor(kind);
+    if (desc && desc.defaultSource) return desc.defaultSource;
+    const lang = normalizeKind((desc && desc.language) || kind);
+    const line = desc && desc.commentLine;
+    if (line) return `${line} Write your explanation here.\n`;
+    if (lang === "markdown") return "Write your explanation here.";
+    if (lang === "python" || lang === "py")
+      return "# Write your explanation here.\n";
+    if (lang === "html") return "<!-- Write your explanation here. -->\n";
+    if (
+      lang === "css" ||
+      lang === "javascript" ||
+      lang === "typescript" ||
+      lang === "cpp" ||
+      lang === "c++" ||
+      lang === "reply"
+    ) {
+      return "// Write your explanation here.\n";
+    }
+    return "# Write your explanation here.\n";
   }
 
   async function addCell(
@@ -2383,9 +2630,12 @@
   ) {
     setMessage("");
     setBusy(true);
+    const requestedType = cellTypeDescriptor(kind)
+      ? normalizeKind(kind)
+      : "cpp";
     const body = {
-      kind,
-      source: source != null ? source : defaultSource(kind),
+      type: requestedType,
+      source: source != null ? source : defaultSource(requestedType),
     };
     if (atIndex != null) body.index = atIndex;
     else if (afterId != null) {
@@ -2403,7 +2653,8 @@
         renderDocument(result.document);
       } else await loadDocument();
       if (newId) {
-        selectCell(newId, { edit: normalizeKind(kind) !== "markdown" });
+        const created = findCell(newId);
+        selectCell(newId, { edit: cellTypeOf(created) !== "markdown" });
         const el = cellElById(newId);
         if (el) el.scrollIntoView({ block: "nearest" });
       }
@@ -2418,7 +2669,7 @@
   async function duplicateCell(id) {
     const cell = findCell(id);
     if (!cell) return;
-    await addCell(normalizeKind(cell.kind), {
+    await addCell(cellTypeOf(cell), {
       afterId: id,
       source: String(cell.source || ""),
     });
@@ -2429,11 +2680,23 @@
     const cell = findCell(id);
     if (!cellEl || !cell) return;
 
-    if (!isCodeKind(cellTypeOf(cell))) {
+    const availability = executionAvailabilityForCell(cell);
+    if (!availability.executable) {
       localUpdateFromDom(cellEl);
       try {
         await pushCell(cellEl);
       } catch (_) {}
+      return;
+    }
+    if (!availability.available) {
+      setMessage(
+        availability.reason || "Cell runtime is unavailable.",
+        "warning",
+      );
+      showNotification({
+        type: "warning",
+        message: availability.reason || "Cell runtime is unavailable",
+      });
       return;
     }
 
@@ -2619,29 +2882,45 @@
     const cellEl = cellElById(id);
     const cell = findCell(id);
     if (!cellEl || !cell) return;
-    if (normalizeKind(cell.kind) === normalizeKind(newKind)) {
+    const previousType = cellTypeOf(cell);
+    const nextType = cellTypeDescriptor(newKind)
+      ? normalizeKind(newKind)
+      : previousType;
+    if (previousType === nextType) {
       selectCell(id, { edit: false });
       return;
     }
     localUpdateFromDom(cellEl);
-    cell.kind = newKind || "cpp";
-    setBusy(true);
+    setCellType(cell, nextType);
+    cellEl.classList.add("is-updating-type");
     try {
       const key = encodeURIComponent(id);
       const result = await api(`/api/cells/${key}`, {
         method: "PUT",
-        body: JSON.stringify({ kind: cell.kind, source: cell.source }),
+        body: JSON.stringify({ type: nextType, source: cell.source }),
       });
       if (result.document) {
         state.selectedId = String(id);
         renderDocument(result.document);
+      } else if (result.cell) {
+        Object.assign(cell, result.cell);
+        setCellType(cell, cell.type || nextType);
+        renderCells();
       }
       selectCell(id, { edit: false });
+      setToolbarKind(cellTypeOf(findCell(id) || cell), { applyToCell: false });
       setDirty(true);
     } catch (error) {
+      setCellType(cell, previousType);
+      setToolbarKind(previousType, { applyToCell: false });
       setMessage(error.message || "Failed to change cell type.", "error");
+      showNotification({
+        type: "error",
+        message: error.message || "Failed to change cell type.",
+      });
     } finally {
-      setBusy(false);
+      const el = cellElById(id);
+      if (el) el.classList.remove("is-updating-type");
     }
   }
 
@@ -3386,7 +3665,7 @@
       mode,
       cell: {
         type: cellTypeOf(cell),
-        kind: cell.kind || cellTypeOf(cell),
+        kind: cellTypeOf(cell),
         source: cell.source || "",
         metadata: cell.metadata || {},
       },
@@ -3503,6 +3782,7 @@
         cellTypes: Array.isArray(payload && payload.cellTypes)
           ? payload.cellTypes
           : [],
+        themes: Array.isArray(payload && payload.themes) ? payload.themes : [],
       };
       state.extensionWorkbench.error = "";
     } catch (error) {
@@ -4395,7 +4675,9 @@
 
   function setRunAllDiagnostics(runResult) {
     const results = Array.isArray(runResult?.results) ? runResult.results : [];
-    const executable = cells().filter((c) => isCodeKind(c.kind));
+    const executable = cells().filter(
+      (c) => executionAvailabilityForCell(c).executable,
+    );
     state.diagnostics.items = [];
     const n = Math.min(results.length, executable.length);
     for (let i = 0; i < n; i++) {
@@ -5263,6 +5545,11 @@
     registerCommand("view.resetLayout", () => resetLayout(), {
       label: "Reset Layout",
       category: "View",
+    });
+    registerCommand("preferences.colorTheme", () => openColorThemePicker(), {
+      label: "Color Theme",
+      category: "Preferences",
+      aliases: ["theme", "appearance"],
     });
     registerCommand(
       "developer.reloadInterface",
@@ -6206,12 +6493,12 @@
       }
 
       const extensionView = target
-        ? target.closest("[data-extension-view]")
+        ? target.closest("[data-extension-filter]")
         : null;
       if (extensionView) {
         event.preventDefault();
         state.extensionWorkbench.activeView =
-          extensionView.dataset.extensionView || "installed";
+          extensionView.dataset.extensionFilter || "installed";
         renderExtensionsPanel();
         return;
       }
@@ -6224,6 +6511,12 @@
         state.extensionWorkbench.selectedId =
           extensionDetails.dataset.extensionDetails || "";
         renderExtensionsPanel();
+        const selectedExtension = (
+          Array.isArray(state.extensions.extensions)
+            ? state.extensions.extensions
+            : []
+        ).find((ext) => ext && ext.id === state.extensionWorkbench.selectedId);
+        renderExtensionDetailMain(selectedExtension);
         return;
       }
 
@@ -6237,6 +6530,18 @@
           extensionActionButton.dataset.extensionAction || "",
           extensionActionButton.dataset.extensionId || "",
         );
+        return;
+      }
+
+      const themeButton = target ? target.closest("[data-theme-id]") : null;
+      if (themeButton) {
+        event.preventDefault();
+        applyTheme(themeButton.dataset.themeId || "vix.light");
+        closePicker("command-palette");
+        showNotification({
+          type: "success",
+          message: `Theme: ${themeButton.textContent.trim()}`,
+        });
         return;
       }
 
@@ -7286,6 +7591,7 @@
   function init() {
     registerCoreCommands();
     restoreUiState();
+    restoreTheme();
     restorePersistedTabs();
     restoreSession();
     applySidebarWidth(state.sidebarWidth || DEFAULT_SIDEBAR_WIDTH);

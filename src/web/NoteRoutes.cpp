@@ -28,6 +28,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
+
+#ifndef _WIN32
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 namespace vix::note
 {
@@ -379,7 +385,6 @@ namespace vix::note
       return std::nullopt;
     }
 
-
     std::string output_mime(NoteOutputKind kind)
     {
       switch (kind)
@@ -487,9 +492,11 @@ namespace vix::note
         std::string fallback = "markdown")
     {
       const std::optional<std::string> type = json_string_field(body, "type");
-      if (type && !type->empty()) return normalize_cell_type_id(*type);
+      if (type && !type->empty())
+        return normalize_cell_type_id(*type);
       const std::optional<std::string> kind = json_string_field(body, "kind");
-      if (kind && !kind->empty()) return normalize_cell_type_id(*kind);
+      if (kind && !kind->empty())
+        return normalize_cell_type_id(*kind);
       return normalize_cell_type_id(fallback);
     }
 
@@ -761,6 +768,85 @@ namespace vix::note
     {
       return "{\"ok\":true,\"hasDocument\":false,\"document\":null}";
     }
+
+    bool is_safe_package_id(std::string_view value)
+    {
+      const std::size_t slash = value.find('/');
+      if (slash == std::string_view::npos || slash == 0 || slash + 1 >= value.size()) return false;
+      if (value.find('/', slash + 1) != std::string_view::npos) return false;
+      if (value.find("--") != std::string_view::npos) return false;
+      for (char c : value)
+      {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '/';
+        if (!ok) return false;
+      }
+      return true;
+    }
+
+    std::string current_vix_executable()
+    {
+#ifndef _WIN32
+#ifdef __linux__
+      std::vector<char> buffer(4096);
+      for (;;)
+      {
+        const ssize_t size = ::readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+        if (size < 0) break;
+        if (static_cast<std::size_t>(size) < buffer.size() - 1)
+        {
+          buffer[static_cast<std::size_t>(size)] = '\0';
+          return std::string(buffer.data());
+        }
+        buffer.resize(buffer.size() * 2);
+      }
+#endif
+#endif
+      return "vix";
+    }
+
+    NoteRouteResponse package_mutation_response(std::string_view action, std::string_view body)
+    {
+      const std::string package = json_string_field(body, "package").value_or(std::string{});
+      if (!is_safe_package_id(package)) return json_error(400, "invalid extension package id");
+#ifdef _WIN32
+      (void)action;
+      return json_error(501, "extension package mutations are not implemented on Windows yet");
+#else
+      std::vector<std::string> args;
+      args.push_back(current_vix_executable());
+      if (action == "install") { args.push_back("install"); args.push_back("-g"); args.push_back(package); }
+      else if (action == "uninstall") { args.push_back("uninstall"); args.push_back("-g"); args.push_back(package); }
+      else if (action == "update") { args.push_back("install"); args.push_back("-g"); args.push_back(package); }
+      else if (action == "enable" || action == "disable") { return json_error(501, "extension enable/disable persistence is not implemented yet"); }
+      else return json_error(400, "unsupported extension action");
+
+      std::vector<char *> argv;
+      argv.reserve(args.size() + 1);
+      for (std::string &arg : args) argv.push_back(arg.data());
+      argv.push_back(nullptr);
+      const pid_t pid = fork();
+      if (pid < 0) return json_error(500, "failed to start vix package command");
+      if (pid == 0)
+      {
+        execv(args[0].c_str(), argv.data());
+        execvp("vix", argv.data());
+        _exit(127);
+      }
+      int status = 0;
+      if (waitpid(pid, &status, 0) < 0) return json_error(500, "failed to wait for vix package command");
+      if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+      {
+        std::ostringstream message;
+        message << "vix " << action << " failed for " << package;
+        return json_error(500, message.str());
+      }
+      std::ostringstream out;
+      out << "{\"ok\":true,\"package\":\"" << json_escape(package) << "\",\"action\":\"" << json_escape(std::string(action)) << "\"}";
+      return NoteRouteResponse::json(200, out.str());
+#endif
+    }
+
   }
 
   NoteRouteResponse NoteRouteResponse::text(int status, std::string body)
@@ -1015,10 +1101,15 @@ namespace vix::note
       {
         return NoteRouteResponse::json(200, extensions_json());
       }
-
-      return json_error(
-          501,
-          "Extension package mutations are not enabled in this build. Use vix install -g or vix uninstall -g from the CLI.");
+      if (!options_.allowPackageMutations)
+      {
+        return json_error(403, "extension package mutations are disabled because Vix Note is not listening on loopback");
+      }
+      if (request.path == "/api/extensions/install") return package_mutation_response("install", request.body);
+      if (request.path == "/api/extensions/uninstall") return package_mutation_response("uninstall", request.body);
+      if (request.path == "/api/extensions/update") return package_mutation_response("update", request.body);
+      if (request.path == "/api/extensions/enable") return package_mutation_response("enable", request.body);
+      if (request.path == "/api/extensions/disable") return package_mutation_response("disable", request.body);
     }
 
     if (request.method == NoteRouteMethod::Get &&
@@ -2205,7 +2296,6 @@ namespace vix::note
     return out.str();
   }
 
-
   std::string NoteRoutes::extensions_json() const
   {
     std::ostringstream out;
@@ -2213,12 +2303,16 @@ namespace vix::note
     const auto extensions = registry.list_extensions();
     const auto cells = registry.list_cell_types();
 
-    auto sourceToString = [](NoteExtensionSource source) {
+    auto sourceToString = [](NoteExtensionSource source)
+    {
       switch (source)
       {
-      case NoteExtensionSource::Builtin: return std::string("builtin");
-      case NoteExtensionSource::Global: return std::string("global");
-      case NoteExtensionSource::Project: return std::string("project");
+      case NoteExtensionSource::Builtin:
+        return std::string("builtin");
+      case NoteExtensionSource::Global:
+        return std::string("global");
+      case NoteExtensionSource::Project:
+        return std::string("project");
       }
       return std::string("unknown");
     };
@@ -2229,7 +2323,8 @@ namespace vix::note
     for (std::size_t i = 0; i < extensions.size(); ++i)
     {
       const auto &ext = extensions[i];
-      if (i > 0) out << ",";
+      if (i > 0)
+        out << ",";
       const std::string source = sourceToString(ext.source);
       const bool builtin = ext.source == NoteExtensionSource::Builtin;
       const bool installed = ext.source == NoteExtensionSource::Global || ext.source == NoteExtensionSource::Project;
@@ -2258,34 +2353,50 @@ namespace vix::note
       out << "\"resolvedCommand\":\"" << json_escape(ext.runtimeCommand) << "\",";
       out << "\"healthy\":" << (ext.available ? "true" : "false") << ",";
       out << "\"error\":\"";
-      if (!ext.available && !ext.diagnostics.empty()) out << json_escape(ext.diagnostics.front());
+      if (!ext.available && !ext.diagnostics.empty())
+        out << json_escape(ext.diagnostics.front());
       out << "\"},";
       out << "\"capabilities\":[";
       for (std::size_t c = 0; c < ext.capabilities.size(); ++c)
-      { if (c > 0) out << ","; out << "\"" << json_escape(ext.capabilities[c]) << "\""; }
+      {
+        if (c > 0)
+          out << ",";
+        out << "\"" << json_escape(ext.capabilities[c]) << "\"";
+      }
       out << "],\"cellTypes\":[";
       for (std::size_t c = 0; c < ext.cellTypes.size(); ++c)
       {
         const auto &cell = ext.cellTypes[c];
-        if (c > 0) out << ",";
-        out << "{\"id\":\"" << json_escape(cell.id) << "\",\"label\":\"" << json_escape(cell.label) << "\",\"language\":\"" << json_escape(cell.language) << "\",\"executable\":" << (cell.executable ? "true" : "false") << ",\"extension\":\"" << json_escape(ext.id) << "\",\"aliases\":[";
+        if (c > 0)
+          out << ",";
+        out << "{\"id\":\"" << json_escape(cell.id) << "\",\"label\":\"" << json_escape(cell.label) << "\",\"language\":\"" << json_escape(cell.language) << "\",\"executable\":" << (cell.executable ? "true" : "false") << ",\"extension\":\"" << json_escape(ext.id) << "\",\"commentLine\":\"" << json_escape(cell.commentLine) << "\",\"commentBlock\":\"" << json_escape(cell.commentBlock) << "\",\"defaultSource\":\"" << json_escape(cell.defaultSource) << "\",\"placeholder\":\"" << json_escape(cell.placeholder) << "\",\"aliases\":[";
         for (std::size_t a = 0; a < cell.aliases.size(); ++a)
-        { if (a > 0) out << ","; out << "\"" << json_escape(cell.aliases[a]) << "\""; }
+        {
+          if (a > 0)
+            out << ",";
+          out << "\"" << json_escape(cell.aliases[a]) << "\"";
+        }
         out << "]}";
       }
       out << "],\"diagnostics\":[";
       for (std::size_t d = 0; d < ext.diagnostics.size(); ++d)
-      { if (d > 0) out << ","; out << "\"" << json_escape(ext.diagnostics[d]) << "\""; }
+      {
+        if (d > 0)
+          out << ",";
+        out << "\"" << json_escape(ext.diagnostics[d]) << "\"";
+      }
       out << "]}";
     }
     out << "],\"cellTypes\":[";
     for (std::size_t i = 0; i < cells.size(); ++i)
     {
       const auto &cell = cells[i];
-      if (i > 0) out << ",";
+      if (i > 0)
+        out << ",";
       out << "{\"id\":\"" << json_escape(cell.id) << "\",\"label\":\"" << json_escape(cell.label) << "\",\"language\":\"" << json_escape(cell.language) << "\",\"builtin\":" << (cell.builtin ? "true" : "false") << ",\"executable\":" << (cell.executable ? "true" : "false");
-      if (!cell.extensionId.empty()) out << ",\"extension\":\"" << json_escape(cell.extensionId) << "\"";
-      out << "}";
+      if (!cell.extensionId.empty())
+        out << ",\"extension\":\"" << json_escape(cell.extensionId) << "\"";
+      out << ",\"commentLine\":\"" << json_escape(cell.commentLine) << "\",\"commentBlock\":\"" << json_escape(cell.commentBlock) << "\",\"defaultSource\":\"" << json_escape(cell.defaultSource) << "\",\"placeholder\":\"" << json_escape(cell.placeholder) << "\"}";
     }
     out << "]}";
     return out.str();

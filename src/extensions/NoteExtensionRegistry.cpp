@@ -104,6 +104,12 @@ namespace vix::note
       cell.language = normalize_cell_type_id(item.value("language", cell.id));
       cell.aliases = string_array(item, "aliases");
       cell.executable = item.value("executable", false);
+      cell.commentLine = item.value("commentLine", std::string{});
+      cell.commentBlock = item.value("commentBlock", std::string{});
+      cell.defaultSource = item.value("defaultSource", std::string{});
+      cell.placeholder = item.value("placeholder", std::string{});
+      if (cell.placeholder.empty())
+        cell.placeholder = "Write your explanation here.";
       return cell;
     }
 
@@ -377,15 +383,54 @@ namespace vix::note
         ext.capabilities.push_back("kernel");
       cell.builtin = true;
       cell.extensionId = ext.id;
+      cell.placeholder = cell.placeholder.empty() ? "Write your explanation here." : cell.placeholder;
+      if (cell.id == "markdown" && cell.defaultSource.empty())
+        cell.defaultSource = "Write your explanation here.";
+      if (cell.id == "html" && cell.defaultSource.empty())
+        cell.defaultSource = "<!-- Write your explanation here. -->\n";
+      if ((cell.id == "cpp" || cell.id == "reply") && cell.commentLine.empty())
+        cell.commentLine = "//";
+      if ((cell.id == "cpp" || cell.id == "reply") && cell.defaultSource.empty())
+        cell.defaultSource = "// Write your explanation here.\n";
       ext.cellTypes.push_back(cell);
       registry_.register_extension(ext);
       registry_.register_cell_type(cell, std::move(factory));
     };
-    add("vix.note.markdown", {"markdown", "Markdown", "markdown", {"md"}, false, true, {}}, {});
-    add("vix.note.html", {"html", "HTML", "html", {}, false, true, {}}, {});
-    add("vix.note.cpp", {"cpp", "C++", "cpp", {"c++"}, true, true, {}}, [cppOptions]
+    NoteCellTypeDescriptor markdown;
+    markdown.id = "markdown";
+    markdown.label = "Markdown";
+    markdown.language = "markdown";
+    markdown.aliases = {"md"};
+    markdown.defaultSource = "Write your explanation here.";
+    add("vix.note.markdown", std::move(markdown), {});
+
+    NoteCellTypeDescriptor html;
+    html.id = "html";
+    html.label = "HTML";
+    html.language = "html";
+    html.defaultSource = "<!-- Write your explanation here. -->\n";
+    add("vix.note.html", std::move(html), {});
+
+    NoteCellTypeDescriptor cpp;
+    cpp.id = "cpp";
+    cpp.label = "C++";
+    cpp.language = "cpp";
+    cpp.aliases = {"c++"};
+    cpp.executable = true;
+    cpp.commentLine = "//";
+    cpp.defaultSource = "// Write your explanation here.\n";
+    add("vix.note.cpp", std::move(cpp), [cppOptions]
         { return std::make_unique<CppRunnerAdapter>(cppOptions); });
-    add("vix.note.reply", {"reply", "Reply", "reply", {"repl"}, true, true, {}}, [replyOptions]
+
+    NoteCellTypeDescriptor reply;
+    reply.id = "reply";
+    reply.label = "Reply";
+    reply.language = "reply";
+    reply.aliases = {"repl"};
+    reply.executable = true;
+    reply.commentLine = "//";
+    reply.defaultSource = "// Write your explanation here.\n";
+    add("vix.note.reply", std::move(reply), [replyOptions]
         { return std::make_unique<ReplyRunnerAdapter>(replyOptions); });
   }
 

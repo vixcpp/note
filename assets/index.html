@@ -902,7 +902,9 @@
             aria-label="Extensions"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z" />
+              <path
+                d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z"
+              />
             </svg>
           </button>
 
@@ -1189,7 +1191,11 @@
             </section>
 
             <!-- EXTENSIONS PANEL -->
-            <section class="vn-Panel vn-ExtensionsPanel" data-panel="extensions" hidden>
+            <section
+              class="vn-Panel vn-ExtensionsPanel"
+              data-panel="extensions"
+              hidden
+            >
               <header class="vn-Panel__head">
                 <span class="vn-Panel__title">
                   Extensions
@@ -1204,17 +1210,48 @@
                     aria-label="Refresh extensions"
                   >
                     <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 1 0-2.3 5.7" />
-                      <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M20 5v6h-6" />
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M20 11a8 8 0 1 0-2.3 5.7"
+                      />
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M20 5v6h-6"
+                      />
                     </svg>
                   </button>
                 </div>
               </header>
 
               <div class="vn-Panel__search">
-                <svg viewBox="0 0 24 24" class="vn-Panel__searchIcon" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2" />
-                  <path d="M21 21l-4.35-4.35" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                <svg
+                  viewBox="0 0 24 24"
+                  class="vn-Panel__searchIcon"
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx="11"
+                    cy="11"
+                    r="7"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  />
+                  <path
+                    d="M21 21l-4.35-4.35"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
                 </svg>
                 <input
                   type="text"
@@ -1225,14 +1262,52 @@
                 />
               </div>
 
-              <div class="vn-Extensions__tabs" role="tablist" aria-label="Extension views">
-                <button type="button" class="is-active" data-extension-view="marketplace" role="tab" aria-selected="true">Marketplace</button>
-                <button type="button" data-extension-view="installed" role="tab" aria-selected="false">Installed</button>
-                <button type="button" data-extension-view="builtin" role="tab" aria-selected="false">Built-in</button>
-                <button type="button" data-extension-view="updates" role="tab" aria-selected="false">Updates</button>
+              <div
+                class="vn-Extensions__tabs"
+                role="tablist"
+                aria-label="Extension views"
+              >
+                <button
+                  type="button"
+                  class="is-active"
+                  data-extension-filter="marketplace"
+                  role="tab"
+                  aria-selected="true"
+                >
+                  Marketplace
+                </button>
+                <button
+                  type="button"
+                  data-extension-filter="installed"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Installed
+                </button>
+                <button
+                  type="button"
+                  data-extension-filter="builtin"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Built-in
+                </button>
+                <button
+                  type="button"
+                  data-extension-filter="updates"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Updates
+                </button>
               </div>
 
-              <div class="vn-Extensions" data-extensions-list aria-label="Extensions" role="list">
+              <div
+                class="vn-Extensions"
+                data-extensions-list
+                aria-label="Extensions"
+                role="list"
+              >
                 <p class="vn-Tree__empty">Loading extensions…</p>
               </div>
             </section>
