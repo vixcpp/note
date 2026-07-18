@@ -32,15 +32,23 @@
     document: null,
     extensions: { ok: true, extensions: [], cellTypes: [] },
     extensionWorkbench: {
-      activeView: "installed",
       query: "",
       loading: false,
       error: "",
       selectedId: null,
+
       marketplace: [],
       installed: [],
       builtins: [],
       updates: [],
+
+      sections: {
+        search: true,
+        updates: true,
+        installed: true,
+        recommended: true,
+        builtin: false,
+      },
     },
     selectedId: null,
     editing: false,
@@ -451,118 +459,403 @@
     return "Available";
   }
 
-  function refreshExtensionWorkbenchFromRegistry() {
-    const list = Array.isArray(state.extensions.extensions)
-      ? state.extensions.extensions
-      : [];
-    state.extensionWorkbench.installed = list.filter(
-      (ext) => ext && !ext.builtin && ext.installed !== false,
+  function extensionIdentifier(ext) {
+    if (!ext) return "";
+
+    const fallback = `${ext.namespace || ""}/${ext.name || ""}`.replace(
+      /^\/+|\/+$/g,
+      "",
     );
-    state.extensionWorkbench.builtins = list.filter(
-      (ext) => ext && ext.builtin,
-    );
-    state.extensionWorkbench.updates = list.filter(
-      (ext) => ext && ext.updateAvailable,
-    );
-    if (!state.extensionWorkbench.marketplace.length) {
-      state.extensionWorkbench.marketplace = state.extensionWorkbench.installed;
+
+    return String(ext.id || fallback || "extension");
+  }
+
+  function uniqueExtensions(items) {
+    const byId = new Map();
+
+    for (const ext of Array.isArray(items) ? items : []) {
+      if (!ext) continue;
+
+      const id = extensionIdentifier(ext);
+      if (!id) continue;
+
+      byId.set(id, ext);
     }
+
+    return Array.from(byId.values());
+  }
+
+  function refreshExtensionWorkbenchFromRegistry() {
+    const list = uniqueExtensions(
+      Array.isArray(state.extensions.extensions)
+        ? state.extensions.extensions
+        : [],
+    );
+
+    state.extensionWorkbench.installed = list.filter(
+      (ext) => !ext.builtin && ext.installed !== false,
+    );
+
+    state.extensionWorkbench.builtins = list.filter((ext) => ext.builtin);
+
+    state.extensionWorkbench.updates =
+      state.extensionWorkbench.installed.filter((ext) => ext.updateAvailable);
+
+    state.extensionWorkbench.marketplace = list.filter(
+      (ext) => !ext.builtin && ext.installed === false,
+    );
   }
 
   function extensionCellLabels(ext) {
     const cells = Array.isArray(ext && ext.cellTypes) ? ext.cellTypes : [];
+
     return cells
       .map((cell) => cell.label || cell.id)
       .filter(Boolean)
       .join(", ");
   }
 
+  function recommendedExtensions() {
+    return uniqueExtensions(
+      state.extensionWorkbench.marketplace.filter(
+        (ext) => ext && !ext.builtin && ext.installed === false,
+      ),
+    );
+  }
+
+  function extensionSearchText(ext) {
+    return [
+      extensionIdentifier(ext),
+      ext && ext.name,
+      ext && ext.namespace,
+      ext && ext.publisher,
+      ext && ext.description,
+      ext && ext.version,
+      extensionCellLabels(ext),
+      Array.isArray(ext && ext.capabilities) ? ext.capabilities.join(" ") : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+  }
+
+  function extensionMatchesQuery(ext, query) {
+    const words = String(query || "")
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (!words.length) return true;
+
+    const text = extensionSearchText(ext);
+
+    return words.every((word) => text.includes(word));
+  }
+
+  function renderExtensionItem(ext) {
+    const id = extensionIdentifier(ext);
+    const name = ext.name || id.split("/").pop() || id;
+    const status = extensionStatus(ext);
+    const cells = extensionCellLabels(ext);
+    const runtimeError =
+      ext.runtime && ext.runtime.error ? ext.runtime.error : "";
+
+    const selected = state.extensionWorkbench.selectedId === id;
+
+    const publisher =
+      ext.publisher ||
+      ext.namespace ||
+      (id.includes("/") ? id.split("/")[0] : "Vix Registry");
+
+    const metadata = [
+      publisher,
+      ext.version ? `v${ext.version}` : "",
+      cells,
+    ].filter(Boolean);
+
+    const initial =
+      String(name || "E")
+        .trim()
+        .charAt(0)
+        .toUpperCase() || "E";
+
+    const installed = !ext.builtin && ext.installed !== false;
+
+    let actions = "";
+
+    if (!ext.builtin && !installed) {
+      actions = `
+      <button
+        type="button"
+        class="vn-ExtensionItem__button vn-ExtensionItem__button--primary"
+        data-extension-action="install"
+        data-extension-id="${escapeHtml(id)}"
+      >
+        Install
+      </button>
+    `;
+    } else if (!ext.builtin) {
+      actions = `
+      <button
+        type="button"
+        class="vn-ExtensionItem__button"
+        data-extension-action="${ext.enabled === false ? "enable" : "disable"}"
+        data-extension-id="${escapeHtml(id)}"
+      >
+        ${ext.enabled === false ? "Enable" : "Disable"}
+      </button>
+
+      <button
+        type="button"
+        class="vn-ExtensionItem__button"
+        data-extension-action="uninstall"
+        data-extension-id="${escapeHtml(id)}"
+      >
+        Uninstall
+      </button>
+    `;
+    }
+
+    return `
+    <article
+      class="vn-ExtensionItem${selected ? " is-selected" : ""}"
+      data-extension-id="${escapeHtml(id)}"
+      role="listitem"
+    >
+      <button
+        type="button"
+        class="vn-ExtensionItem__main"
+        data-extension-details="${escapeHtml(id)}"
+        aria-label="Open ${escapeHtml(name)} extension details"
+      >
+        <span class="vn-ExtensionItem__icon" aria-hidden="true">
+          ${escapeHtml(initial)}
+        </span>
+
+        <span class="vn-ExtensionItem__content">
+          <span class="vn-ExtensionItem__header">
+            <span class="vn-ExtensionItem__name">
+              ${escapeHtml(name)}
+            </span>
+
+            <span
+              class="vn-ExtensionItem__status"
+              data-state="${safeClass(status)}"
+            >
+              ${escapeHtml(status)}
+            </span>
+          </span>
+
+          <span class="vn-ExtensionItem__description">
+            ${escapeHtml(
+              ext.description ||
+                (cells ? `${cells} cells for Vix Note.` : "Vix Note extension"),
+            )}
+          </span>
+
+          <span class="vn-ExtensionItem__metadata">
+            ${metadata
+              .map((value) => `<span>${escapeHtml(value)}</span>`)
+              .join("")}
+          </span>
+        </span>
+      </button>
+
+      ${
+        actions
+          ? `
+            <div class="vn-ExtensionItem__actions">
+              ${actions}
+            </div>
+          `
+          : ""
+      }
+
+      ${
+        runtimeError
+          ? `
+            <p class="vn-ExtensionItem__error">
+              ${escapeHtml(runtimeError)}
+            </p>
+          `
+          : ""
+      }
+    </article>
+  `;
+  }
+
+  function renderExtensionGroup(group) {
+    const open = state.extensionWorkbench.sections[group.id] !== false;
+
+    const bodyId = `vn-extension-group-${safeClass(group.id)}`;
+
+    const items = Array.isArray(group.items) ? group.items : [];
+
+    const content = items.length
+      ? items.map(renderExtensionItem).join("")
+      : `
+      <p class="vn-ExtensionGroup__empty">
+        ${escapeHtml(group.emptyMessage || "No extensions.")}
+      </p>
+    `;
+
+    return `
+    <section
+      class="vn-ExtensionGroup${open ? " is-open" : " is-closed"}"
+      data-extension-group="${escapeHtml(group.id)}"
+    >
+      <button
+        type="button"
+        class="vn-ExtensionGroup__header"
+        data-extension-group-toggle="${escapeHtml(group.id)}"
+        aria-expanded="${open ? "true" : "false"}"
+        aria-controls="${bodyId}"
+      >
+        <svg
+          class="vn-ExtensionGroup__chevron"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+        >
+          <path
+            d="M5 3.5 10 8l-5 4.5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+
+        <span class="vn-ExtensionGroup__title">
+          ${escapeHtml(group.label)}
+        </span>
+
+        <span class="vn-ExtensionGroup__count">
+          ${items.length}
+        </span>
+      </button>
+
+      <div
+        id="${bodyId}"
+        class="vn-ExtensionGroup__body"
+        ${open ? "" : "hidden"}
+        role="list"
+      >
+        ${content}
+      </div>
+    </section>
+  `;
+  }
+
+  function extensionGroups() {
+    const updates = uniqueExtensions(state.extensionWorkbench.updates);
+
+    const installed = uniqueExtensions(
+      state.extensionWorkbench.installed.filter((ext) => !ext.updateAvailable),
+    );
+
+    const recommended = recommendedExtensions();
+
+    const builtins = uniqueExtensions(state.extensionWorkbench.builtins);
+
+    const groups = [];
+
+    if (updates.length) {
+      groups.push({
+        id: "updates",
+        label: "Updates",
+        items: updates,
+        emptyMessage: "No extension updates.",
+      });
+    }
+
+    groups.push(
+      {
+        id: "installed",
+        label: "Installed",
+        items: installed,
+        emptyMessage: "No extensions installed.",
+      },
+      {
+        id: "recommended",
+        label: "Recommended",
+        items: recommended,
+        emptyMessage: "No recommendations available.",
+      },
+      {
+        id: "builtin",
+        label: "Built-in",
+        items: builtins,
+        emptyMessage: "No built-in extensions.",
+      },
+    );
+
+    return groups;
+  }
+
+  function toggleExtensionGroup(groupId) {
+    if (!groupId) return;
+
+    const sections = state.extensionWorkbench.sections;
+
+    sections[groupId] = sections[groupId] === false;
+
+    renderExtensionsPanel();
+  }
+
   function renderExtensionsPanel() {
     const root = $(sel.extensionsList);
     if (!root) return;
 
-    const view = state.extensionWorkbench.activeView || "installed";
-    for (const tab of $all("[data-extension-filter]")) {
-      const active = tab.dataset.extensionFilter === view;
-      tab.classList.toggle("is-active", active);
-      tab.setAttribute("aria-selected", active ? "true" : "false");
-    }
-
-    let items = [];
-    if (view === "marketplace") items = state.extensionWorkbench.marketplace;
-    else if (view === "builtin") items = state.extensionWorkbench.builtins;
-    else if (view === "updates") items = state.extensionWorkbench.updates;
-    else items = state.extensionWorkbench.installed;
-
-    const query = state.extensionWorkbench.query.trim().toLowerCase();
-    if (query) {
-      items = items.filter((ext) => {
-        const text = [
-          ext.id,
-          ext.name,
-          ext.namespace,
-          ext.description,
-          extensionCellLabels(ext),
-          Array.isArray(ext.capabilities) ? ext.capabilities.join(" ") : "",
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return query.split(/\s+/).every((word) => text.includes(word));
-      });
-    }
+    const allExtensions = uniqueExtensions([
+      ...(Array.isArray(state.extensions.extensions)
+        ? state.extensions.extensions
+        : []),
+      ...state.extensionWorkbench.marketplace,
+    ]);
 
     const count = $(sel.extensionsCount);
-    if (count) count.textContent = String(items.length);
+    if (count) {
+      count.textContent = String(allExtensions.length);
+    }
 
     if (state.extensionWorkbench.loading) {
-      root.innerHTML = '<p class="vn-Tree__empty">Searching extensions…</p>';
+      root.innerHTML = `
+      <p class="vn-Tree__empty">
+        Searching extensions…
+      </p>
+    `;
       return;
     }
 
     if (state.extensionWorkbench.error) {
-      root.innerHTML = `<p class="vn-Tree__empty">${escapeHtml(state.extensionWorkbench.error)}</p>`;
+      root.innerHTML = `
+      <p class="vn-Tree__empty">
+        ${escapeHtml(state.extensionWorkbench.error)}
+      </p>
+    `;
       return;
     }
 
-    if (!items.length) {
-      const label =
-        view === "marketplace"
-          ? "No marketplace results."
-          : "No extensions in this view.";
-      root.innerHTML = `<p class="vn-Tree__empty">${label}</p>`;
+    const query = state.extensionWorkbench.query.trim().toLowerCase();
+
+    if (query) {
+      const results = allExtensions.filter((ext) =>
+        extensionMatchesQuery(ext, query),
+      );
+
+      root.innerHTML = renderExtensionGroup({
+        id: "search",
+        label: "Marketplace results",
+        items: results,
+        emptyMessage: `No extensions found for "${query}".`,
+      });
+
       return;
     }
 
-    root.innerHTML = items
-      .map((ext) => {
-        const id = ext.id || `${ext.namespace || ""}/${ext.name || ""}`;
-        const name = ext.name || id.split("/").pop() || id;
-        const status = extensionStatus(ext);
-        const cells = extensionCellLabels(ext);
-        const runtimeError =
-          ext.runtime && ext.runtime.error ? ext.runtime.error : "";
-        const selected = state.extensionWorkbench.selectedId === id;
-        return `
-          <article class="vn-ExtensionCard${selected ? " is-selected" : ""}" data-extension-id="${escapeHtml(id)}" role="listitem">
-            <button type="button" class="vn-ExtensionCard__main" data-extension-details="${escapeHtml(id)}">
-              <span class="vn-ExtensionCard__title">${escapeHtml(name)}</span>
-              <span class="vn-ExtensionCard__id">${escapeHtml(id)}</span>
-              <span class="vn-ExtensionCard__desc">${escapeHtml(ext.description || (cells ? `${cells} cells for Vix Note.` : "Vix Note extension"))}</span>
-              ${cells ? `<span class="vn-ExtensionCard__cells">${escapeHtml(cells)}</span>` : ""}
-            </button>
-            <div class="vn-ExtensionCard__meta">
-              <span>${escapeHtml(ext.version || "")}</span>
-              <span class="vn-ExtensionCard__status" data-state="${safeClass(status)}">${escapeHtml(status)}</span>
-            </div>
-            ${runtimeError ? `<p class="vn-ExtensionCard__error">${escapeHtml(runtimeError)}</p>` : ""}
-            <div class="vn-ExtensionCard__actions">
-              ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.installed ? "uninstall" : "install"}" data-extension-id="${escapeHtml(id)}">${ext.installed ? "Uninstall" : "Install"}</button>`}
-              ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.enabled === false ? "enable" : "disable"}" data-extension-id="${escapeHtml(id)}">${ext.enabled === false ? "Enable" : "Disable"}</button>`}
-            </div>
-          </article>`;
-      })
-      .join("");
+    root.innerHTML = extensionGroups().map(renderExtensionGroup).join("");
   }
 
   function extensionDetailsHtml(ext) {
@@ -590,51 +883,433 @@
   function renderExtensionDetailMain(ext) {
     const root = $(sel.cells);
     if (!root || !ext) return;
+
+    const id = extensionIdentifier(ext);
+    const name = ext.name || id.split("/").pop() || id;
+    const status = extensionStatus(ext);
     const runtime = ext.runtime || {};
+
     const cells = Array.isArray(ext.cellTypes) ? ext.cellTypes : [];
-    const caps = Array.isArray(ext.capabilities) ? ext.capabilities : [];
-    root.innerHTML = `
-      <section class="vn-ExtensionMain" aria-label="Extension details">
-        <div class="vn-ExtensionMain__hero">
-          <div class="vn-ExtensionMain__icon">${escapeHtml((ext.name || ext.id || "E").slice(0, 1).toUpperCase())}</div>
+
+    const capabilities = Array.isArray(ext.capabilities)
+      ? ext.capabilities
+      : [];
+
+    const diagnostics = Array.isArray(ext.diagnostics)
+      ? ext.diagnostics.filter(Boolean)
+      : [];
+
+    const publisher =
+      ext.publisher ||
+      ext.namespace ||
+      (id.includes("/") ? id.split("/")[0] : "Vix Registry");
+
+    const description =
+      ext.description ||
+      (cells.length
+        ? `${extensionCellLabels(ext)} for Vix Note.`
+        : "Extension for the Vix Note workspace.");
+
+    const initial =
+      String(name || "E")
+        .trim()
+        .charAt(0)
+        .toUpperCase() || "E";
+
+    const installed = !ext.builtin && ext.installed !== false;
+
+    const runtimeCommand = runtime.resolvedCommand || runtime.command || "";
+
+    const runtimeStatus =
+      runtime.healthy === false || ext.available === false
+        ? "Broken"
+        : "Healthy";
+
+    const contributionCount = cells.length + capabilities.length;
+
+    let primaryAction = "";
+
+    if (!ext.builtin && !installed) {
+      primaryAction = `
+      <button
+        type="button"
+        class="vn-ExtensionShow__button vn-ExtensionShow__button--primary"
+        data-extension-action="install"
+        data-extension-id="${escapeHtml(id)}"
+      >
+        Install
+      </button>
+    `;
+    } else if (!ext.builtin && ext.updateAvailable) {
+      primaryAction = `
+      <button
+        type="button"
+        class="vn-ExtensionShow__button vn-ExtensionShow__button--primary"
+        data-extension-action="update"
+        data-extension-id="${escapeHtml(id)}"
+      >
+        Update
+      </button>
+    `;
+    }
+
+    const manageActions =
+      !ext.builtin && installed
+        ? `
+        <button
+          type="button"
+          class="vn-ExtensionShow__button"
+          data-extension-action="${ext.enabled === false ? "enable" : "disable"}"
+          data-extension-id="${escapeHtml(id)}"
+        >
+          ${ext.enabled === false ? "Enable" : "Disable"}
+        </button>
+
+        <button
+          type="button"
+          class="vn-ExtensionShow__button vn-ExtensionShow__button--danger"
+          data-extension-action="uninstall"
+          data-extension-id="${escapeHtml(id)}"
+        >
+          Uninstall
+        </button>
+      `
+        : "";
+
+    const cellTypesHtml = cells.length
+      ? cells
+          .map((cell) => {
+            const cellId = cell.id || "unknown";
+            const label = cell.label || cellId;
+
+            return `
+            <article class="vn-ExtensionShow__contribution">
+              <div
+                class="vn-ExtensionShow__contributionIcon"
+                aria-hidden="true"
+              >
+                &lt;/&gt;
+              </div>
+
+              <div class="vn-ExtensionShow__contributionBody">
+                <strong>${escapeHtml(label)}</strong>
+                <span>Cell type</span>
+                <code>${escapeHtml(cellId)}</code>
+              </div>
+            </article>
+          `;
+          })
+          .join("")
+      : `
+      <p class="vn-ExtensionShow__empty">
+        This extension does not contribute any cell types.
+      </p>
+    `;
+
+    const capabilitiesHtml = capabilities.length
+      ? capabilities
+          .map(
+            (capability) => `
+            <span class="vn-ExtensionShow__capability">
+              ${escapeHtml(capability)}
+            </span>
+          `,
+          )
+          .join("")
+      : `
+      <span class="vn-ExtensionShow__muted">
+        No additional capabilities declared.
+      </span>
+    `;
+
+    const diagnosticsHtml = diagnostics.length
+      ? `
+      <section class="vn-ExtensionShow__section">
+        <div class="vn-ExtensionShow__sectionHead">
           <div>
-            <h1>${escapeHtml(ext.name || ext.id)}</h1>
-            <p class="vn-ExtensionMain__id">${escapeHtml(ext.id || "")}</p>
-            <p>${escapeHtml(ext.description || (cells.length ? `${extensionCellLabels(ext)} for Vix Note.` : "Vix Note extension"))}</p>
-            <div class="vn-ExtensionMain__badges">
-              <span>${escapeHtml(extensionStatus(ext))}</span>
-              ${ext.version ? `<span>v${escapeHtml(ext.version)}</span>` : ""}
-              ${ext.source ? `<span>${escapeHtml(ext.source)}</span>` : ""}
+            <p class="vn-ExtensionShow__eyebrow">
+              Diagnostics
+            </p>
+            <h2>Extension issues</h2>
+          </div>
+
+          <span class="vn-ExtensionShow__sectionCount">
+            ${diagnostics.length}
+          </span>
+        </div>
+
+        <div class="vn-ExtensionShow__diagnostics">
+          ${diagnostics
+            .map(
+              (diagnostic) => `
+                <p class="vn-ExtensionShow__diagnostic">
+                  ${escapeHtml(diagnostic)}
+                </p>
+              `,
+            )
+            .join("")}
+        </div>
+      </section>
+    `
+      : "";
+
+    root.innerHTML = `
+    <section
+      class="vn-ExtensionShow"
+      aria-label="${escapeHtml(name)} extension details"
+    >
+      <header class="vn-ExtensionShow__hero">
+        <div
+          class="vn-ExtensionShow__icon"
+          aria-hidden="true"
+        >
+          ${escapeHtml(initial)}
+        </div>
+
+        <div class="vn-ExtensionShow__identity">
+          <div class="vn-ExtensionShow__titleRow">
+            <div>
+              <h1>${escapeHtml(name)}</h1>
+
+              <p class="vn-ExtensionShow__identifier">
+                ${escapeHtml(id)}
+              </p>
             </div>
+
+            <span
+              class="vn-ExtensionShow__status"
+              data-state="${safeClass(status)}"
+            >
+              ${escapeHtml(status)}
+            </span>
+          </div>
+
+          <p class="vn-ExtensionShow__description">
+            ${escapeHtml(description)}
+          </p>
+
+          <div class="vn-ExtensionShow__publisher">
+            <span>Published by</span>
+            <strong>${escapeHtml(publisher)}</strong>
+
+            ${
+              ext.version
+                ? `
+                  <span aria-hidden="true">·</span>
+                  <span>Version ${escapeHtml(ext.version)}</span>
+                `
+                : ""
+            }
+
+            ${
+              ext.source
+                ? `
+                  <span aria-hidden="true">·</span>
+                  <span>${escapeHtml(ext.source)}</span>
+                `
+                : ""
+            }
+          </div>
+
+          <div class="vn-ExtensionShow__actions">
+            ${primaryAction}
+            ${manageActions}
+
+            <button
+              type="button"
+              class="vn-ExtensionShow__button"
+              data-command="extensions.refresh"
+            >
+              Reload
+            </button>
           </div>
         </div>
-        <div class="vn-ExtensionMain__actions">
-          ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.installed ? "uninstall" : "install"}" data-extension-id="${escapeHtml(ext.id)}">${ext.installed ? "Uninstall" : "Install"}</button>`}
-          ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.enabled === false ? "enable" : "disable"}" data-extension-id="${escapeHtml(ext.id)}">${ext.enabled === false ? "Enable" : "Disable"}</button>`}
-          <button type="button" data-command="extensions.refresh">Reload</button>
-        </div>
-        <nav class="vn-ExtensionMain__tabs" aria-label="Extension detail tabs">
-          <span class="is-active">Details</span><span>README</span><span>Changelog</span><span>Features</span>
-        </nav>
-        <div class="vn-ExtensionMain__grid">
-          <section>
-            <h2>Contributes</h2>
-            <ul>${cells.map((cell) => `<li>${escapeHtml(cell.label || cell.id)} cell type (${escapeHtml(cell.id)})</li>`).join("") || "<li>No cell types.</li>"}${caps.map((cap) => `<li>${escapeHtml(cap)}</li>`).join("")}</ul>
-            <h2>README</h2>
-            <p class="vn-ExtensionMain__empty">README is not available in the local registry cache yet.</p>
+      </header>
+
+      <nav
+        class="vn-ExtensionShow__tabs"
+        aria-label="Extension information"
+      >
+        <button
+          type="button"
+          class="is-active"
+          aria-current="page"
+        >
+          Overview
+        </button>
+
+        <button
+          type="button"
+          disabled
+          title="README support will be added later"
+        >
+          README
+        </button>
+
+        <button
+          type="button"
+          disabled
+          title="Changelog support will be added later"
+        >
+          Changelog
+        </button>
+      </nav>
+
+      <div class="vn-ExtensionShow__layout">
+        <main class="vn-ExtensionShow__content">
+          <section class="vn-ExtensionShow__section">
+            <div class="vn-ExtensionShow__sectionHead">
+              <div>
+                <p class="vn-ExtensionShow__eyebrow">
+                  Contributions
+                </p>
+                <h2>What this extension adds</h2>
+              </div>
+
+              <span class="vn-ExtensionShow__sectionCount">
+                ${contributionCount}
+              </span>
+            </div>
+
+            <div class="vn-ExtensionShow__contributions">
+              ${cellTypesHtml}
+            </div>
+
+            <div class="vn-ExtensionShow__capabilities">
+              ${capabilitiesHtml}
+            </div>
           </section>
-          <aside>
-            <h2>Runtime</h2>
-            <dl>
-              <dt>protocol</dt><dd>${escapeHtml(runtime.protocol || "none")}</dd>
-              <dt>mode</dt><dd>${escapeHtml(runtime.mode || "none")}</dd>
-              <dt>command</dt><dd>${escapeHtml(runtime.resolvedCommand || runtime.command || "none")}</dd>
-              <dt>status</dt><dd>${runtime.healthy === false ? "Broken" : "Healthy"}</dd>
+
+          <section class="vn-ExtensionShow__section">
+            <div class="vn-ExtensionShow__sectionHead">
+              <div>
+                <p class="vn-ExtensionShow__eyebrow">
+                  Runtime
+                </p>
+                <h2>Execution environment</h2>
+              </div>
+
+              <span
+                class="vn-ExtensionShow__health"
+                data-state="${safeClass(runtimeStatus)}"
+              >
+                <span aria-hidden="true"></span>
+                ${escapeHtml(runtimeStatus)}
+              </span>
+            </div>
+
+            <dl class="vn-ExtensionShow__runtime">
+              <div>
+                <dt>Protocol</dt>
+                <dd>${escapeHtml(runtime.protocol || "Not declared")}</dd>
+              </div>
+
+              <div>
+                <dt>Mode</dt>
+                <dd>${escapeHtml(runtime.mode || "Not declared")}</dd>
+              </div>
+
+              <div>
+                <dt>Command</dt>
+                <dd>
+                  ${
+                    runtimeCommand
+                      ? `<code>${escapeHtml(runtimeCommand)}</code>`
+                      : `<span class="vn-ExtensionShow__muted">No command</span>`
+                  }
+                </dd>
+              </div>
+
+              <div>
+                <dt>Availability</dt>
+                <dd>
+                  ${ext.available === false ? "Unavailable" : "Available"}
+                </dd>
+              </div>
             </dl>
-          </aside>
-        </div>
-      </section>`;
-    setText(sel.statusKind, `Extension · ${ext.name || ext.id}`);
+          </section>
+
+          ${diagnosticsHtml}
+
+          <section class="vn-ExtensionShow__section">
+            <div class="vn-ExtensionShow__sectionHead">
+              <div>
+                <p class="vn-ExtensionShow__eyebrow">
+                  Documentation
+                </p>
+                <h2>README</h2>
+              </div>
+            </div>
+
+            <div class="vn-ExtensionShow__readme">
+              <h3>${escapeHtml(name)}</h3>
+
+              <p>
+                ${escapeHtml(description)}
+              </p>
+
+              <p class="vn-ExtensionShow__muted">
+                Full README content is not available in the local
+                extension registry cache yet.
+              </p>
+            </div>
+          </section>
+        </main>
+
+        <aside class="vn-ExtensionShow__sidebar">
+          <section class="vn-ExtensionShow__about">
+            <h2>Extension details</h2>
+
+            <dl>
+              <div>
+                <dt>Identifier</dt>
+                <dd>
+                  <code>${escapeHtml(id)}</code>
+                </dd>
+              </div>
+
+              <div>
+                <dt>Publisher</dt>
+                <dd>${escapeHtml(publisher)}</dd>
+              </div>
+
+              <div>
+                <dt>Version</dt>
+                <dd>${escapeHtml(ext.version || "Unknown")}</dd>
+              </div>
+
+              <div>
+                <dt>Source</dt>
+                <dd>${escapeHtml(ext.source || "Unknown")}</dd>
+              </div>
+
+              <div>
+                <dt>Type</dt>
+                <dd>${ext.builtin ? "Built-in" : "External"}</dd>
+              </div>
+
+              <div>
+                <dt>State</dt>
+                <dd>${escapeHtml(status)}</dd>
+              </div>
+
+              <div>
+                <dt>Cell types</dt>
+                <dd>${cells.length}</dd>
+              </div>
+
+              <div>
+                <dt>Capabilities</dt>
+                <dd>${capabilities.length}</dd>
+              </div>
+            </dl>
+          </section>
+        </aside>
+      </div>
+    </section>
+  `;
+
+    setText(sel.statusKind, `Extension · ${name}`);
   }
 
   async function refreshExtensionsView() {
@@ -6492,14 +7167,17 @@
         closeToolbarKindMenu();
       }
 
-      const extensionView = target
-        ? target.closest("[data-extension-filter]")
+      const extensionGroupToggle = target
+        ? target.closest("[data-extension-group-toggle]")
         : null;
-      if (extensionView) {
+
+      if (extensionGroupToggle) {
         event.preventDefault();
-        state.extensionWorkbench.activeView =
-          extensionView.dataset.extensionFilter || "installed";
-        renderExtensionsPanel();
+
+        toggleExtensionGroup(
+          extensionGroupToggle.dataset.extensionGroupToggle || "",
+        );
+
         return;
       }
 

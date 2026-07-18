@@ -557,59 +557,96 @@ namespace vix::note
 #endif
   }
 
-  std::vector<std::filesystem::path> note_asset_search_paths(const NoteAssetResolveOptions &options)
+  std::vector<std::filesystem::path> note_asset_search_paths(
+      const NoteAssetResolveOptions &options)
   {
     std::vector<std::filesystem::path> paths;
+
+    // Explicit override always has the highest priority.
     append_if_valid(paths, options.customDirectory);
 
+    // Environment overrides are mainly useful during development.
     if (options.useEnvironmentDirectory)
     {
       if (const char *env = std::getenv("VIX_NOTE_ASSETS_DIR"))
       {
         append_if_valid(paths, env);
       }
+
       if (const char *legacy = std::getenv("VIX_NOTE_ASSET_DIR"))
       {
         append_if_valid(paths, legacy);
       }
     }
 
-    if (options.useBuildDirectory)
-    {
-      append_if_valid(paths, note_build_asset_directory());
-    }
-
+    // Prefer assets installed beside the running Vix executable.
+    // /usr/local/bin/vix -> /usr/local/share/vix/note
     if (options.useExecutableRelativeDirectory)
     {
       if (auto exe = note_current_executable_path())
       {
         const auto bin = exe->parent_path();
-        append_if_valid(paths, bin.parent_path() / "share" / "vix" / "note");
-        append_if_valid(paths, bin / ".." / "share" / "vix" / "note");
+
+        append_if_valid(
+            paths,
+            bin.parent_path() / "share" / "vix" / "note");
+
+        append_if_valid(
+            paths,
+            bin / ".." / "share" / "vix" / "note");
       }
     }
 
+    // CMake-configured installation path.
     if (options.useInstalledDirectory)
     {
-      append_if_valid(paths, note_installed_asset_directory());
+      append_if_valid(
+          paths,
+          note_installed_asset_directory());
     }
 
+    // User-global Vix installation paths.
     if (options.useGlobalDirectory)
     {
       if (const char *prefix = std::getenv("VIX_GLOBAL_PREFIX"))
       {
-        append_if_valid(paths, std::filesystem::path(prefix) / "share" / "vix" / "note");
+        append_if_valid(
+            paths,
+            std::filesystem::path(prefix) /
+                "share" /
+                "vix" /
+                "note");
       }
+
       const auto home = home_directory();
+
       if (!home.empty())
       {
-        append_if_valid(paths, home / ".vix" / "global" / "share" / "vix" / "note");
+        append_if_valid(
+            paths,
+            home /
+                ".vix" /
+                "global" /
+                "share" /
+                "vix" /
+                "note");
       }
     }
 
+    // Source directory fallback for local development.
     if (options.useSourceDirectory)
     {
-      append_if_valid(paths, note_source_asset_directory());
+      append_if_valid(
+          paths,
+          note_source_asset_directory());
+    }
+
+    // Build directory must remain last because it may contain stale assets.
+    if (options.useBuildDirectory)
+    {
+      append_if_valid(
+          paths,
+          note_build_asset_directory());
     }
 
     return paths;
