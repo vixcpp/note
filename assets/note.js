@@ -2910,6 +2910,95 @@
       </div>`;
   }
 
+  function cellTypeForInsertionAfter(id) {
+    const cell = findCell(id);
+    const type = cell ? cellTypeOf(cell) : currentToolbarKind();
+    return type && type !== "unknown" ? type : currentToolbarKind();
+  }
+
+  function cellKindOptionsHtml(current) {
+    const selected = normalizeKind(current);
+    const byId = new Map();
+    for (const type of normalizedCellTypes()) {
+      const id = normalizeKind(type.id);
+      if (id) byId.set(id, { ...type, id });
+    }
+    if (selected && selected !== "unknown" && !byId.has(selected)) {
+      byId.set(selected, {
+        id: selected,
+        label: cellTypeDisplayLabel(selected),
+        language: selected,
+        executable: false,
+        unavailable: true,
+      });
+    }
+    return Array.from(byId.values())
+      .map((type) => {
+        const id = normalizeKind(type.id);
+        const active = id === selected;
+        const hint = type.unavailable
+          ? "Unavailable"
+          : type.extension
+            ? type.extension
+            : type.builtin
+              ? "Built-in"
+              : type.executable
+                ? "Executable"
+                : "Text";
+        return `<button type="button" class="vn-CellKindSelect__option${active ? " is-active" : ""}" data-cell-kind-option="${escapeHtml(id)}" role="menuitemradio" aria-checked="${active ? "true" : "false"}">
+          <span>${escapeHtml(type.label || id)}</span>
+          <small>${escapeHtml(hint)}</small>
+        </button>`;
+      })
+      .join("");
+  }
+
+  function cellKindMenu(cell) {
+    const id = String(cell.id || "");
+    const kind = cellTypeOf(cell);
+    const label = toolbarKindLabel(kind);
+    return `<div class="vn-CellKindSelect" data-cell-kind-select>
+      <button type="button" class="vn-CellKindSelect__button" data-cell-kind-menu="${escapeHtml(id)}" aria-haspopup="menu" aria-expanded="false" title="Change cell type">
+        <span>${escapeHtml(label)}</span>
+        <small>${escapeHtml(kind)}</small>
+      </button>
+      <div class="vn-CellKindSelect__menu" data-cell-kind-menu-panel hidden role="menu" aria-label="Cell type">
+        ${cellKindOptionsHtml(kind)}
+      </div>
+    </div>`;
+  }
+
+  function closeCellKindMenus(exceptId = "") {
+    for (const root of $all("[data-cell-kind-select]")) {
+      const button = root.querySelector("[data-cell-kind-menu]");
+      const panel = root.querySelector("[data-cell-kind-menu-panel]");
+      if (!button || !panel) continue;
+      if (exceptId && button.getAttribute("data-cell-kind-menu") === exceptId) continue;
+      button.setAttribute("aria-expanded", "false");
+      panel.setAttribute("hidden", "");
+      root.classList.remove("is-open");
+    }
+  }
+
+  function toggleCellKindMenu(id) {
+    const safeId = String(id || "");
+    const button = $(`[data-cell-kind-menu="${cssEscape(safeId)}"]`);
+    const root = button ? button.closest("[data-cell-kind-select]") : null;
+    const panel = root ? root.querySelector("[data-cell-kind-menu-panel]") : null;
+    if (!button || !root || !panel) return;
+    const opening = panel.hasAttribute("hidden");
+    closeCellKindMenus(safeId);
+    if (opening) {
+      panel.removeAttribute("hidden");
+      button.setAttribute("aria-expanded", "true");
+      root.classList.add("is-open");
+    } else {
+      panel.setAttribute("hidden", "");
+      button.setAttribute("aria-expanded", "false");
+      root.classList.remove("is-open");
+    }
+  }
+
   function cellToolbar(cell) {
     const availability = executionAvailabilityForCell(cell);
     const firstBtn = availability.executable
@@ -2917,6 +3006,7 @@
       : `<button type="button" data-cell-action="edit" title="Edit source">${ICONS.edit}</button>`;
     return `
       <div class="vn-Cell__toolbar">
+        ${cellKindMenu(cell)}
         ${firstBtn}
         <button type="button" data-cell-action="duplicate" title="Duplicate">${ICONS.copy}</button>
         <button type="button" data-cell-action="up" title="Move up">${ICONS.up}</button>
@@ -3675,15 +3765,28 @@
     if (ta) cell.source = ta.value;
     return cell;
   }
-  async function pushCell(cellEl) {
+  async function pushCell(cellEl, options = {}) {
     const cell = localUpdateFromDom(cellEl);
     if (!cell) return;
+    const requestedType = normalizeKind(options.type || cellTypeOf(cell));
+    setCellType(cell, requestedType);
+    cellEl.dataset.kind = requestedType;
     const id = encodeURIComponent(cellEl.dataset.cellId);
     const result = await api(`/api/cells/${id}`, {
       method: "PUT",
-      body: JSON.stringify({ type: cellTypeOf(cell), source: cell.source }),
+      body: JSON.stringify({ type: requestedType, source: cell.source }),
     });
-    if (result.document) state.document = unwrapDocument(result.document);
+    if (result.document) {
+      state.document = unwrapDocument(result.document);
+      const updated = findCell(cellEl.dataset.cellId);
+      if (updated && cellTypeOf(updated) !== requestedType) {
+        console.warn("Cell type changed during sync", {
+          id: cellEl.dataset.cellId,
+          requestedType,
+          receivedType: cellTypeOf(updated),
+        });
+      }
+    }
   }
 
   /* ==========================================================
@@ -3828,11 +3931,22 @@
     const cell = findCell(id);
     if (!cellEl || !cell) return;
 
+    const realType = cellTypeOf(cell);
+    const domType = normalizeKind(cellEl.dataset.kind || realType);
+    if (domType !== realType) {
+      console.warn("Cell DOM type diverged from model before run", {
+        id,
+        domType,
+        modelType: realType,
+      });
+      cellEl.dataset.kind = realType;
+    }
+
     const availability = executionAvailabilityForCell(cell);
     if (!availability.executable) {
       localUpdateFromDom(cellEl);
       try {
-        await pushCell(cellEl);
+        await pushCell(cellEl, { type: realType });
       } catch (_) {}
       return;
     }
@@ -3868,7 +3982,15 @@
     }
 
     try {
-      await pushCell(cellEl);
+      await pushCell(cellEl, { type: realType });
+      const synced = findCell(id);
+      if (synced && cellTypeOf(synced) !== realType) {
+        console.warn("Cell type changed after sync before run", {
+          id,
+          requestedType: realType,
+          receivedType: cellTypeOf(synced),
+        });
+      }
       const key = encodeURIComponent(id);
       const result = await api(
         `/api/cells/${key}/run`,
@@ -6255,6 +6377,7 @@
       const d = $(".vn-Menu__dropdown", m);
       if (d) d.hidden = true;
     }
+    closeCellKindMenus();
   }
 
   function bindMenus() {
@@ -6418,7 +6541,7 @@
     );
     registerCommand(
       "cell.insertBelow",
-      () => addCell(currentToolbarKind(), { afterId: targetId() }),
+      () => addCell(targetId() ? cellTypeForInsertionAfter(targetId()) : currentToolbarKind(), { afterId: targetId() }),
       {
         label: "Insert Cell Below",
         category: "Cell",
@@ -6479,7 +6602,7 @@
         const id = targetId();
         if (!id) return;
         await runCellById(id);
-        await addCell(currentToolbarKind(), { afterId: id });
+        await addCell(cellTypeForInsertionAfter(id), { afterId: id });
       },
       {
         label: "Run Cell and Insert Below",
@@ -7793,7 +7916,7 @@
           restartKernel(false);
           break;
         case "insert-below":
-          addCell(currentToolbarKind(), { afterId: targetId() });
+          addCell(targetId() ? cellTypeForInsertionAfter(targetId()) : currentToolbarKind(), { afterId: targetId() });
           break;
         case "cut-cell":
           if (targetId()) deleteCellById(targetId());
@@ -8360,10 +8483,37 @@
       const target = event.target;
       if (!(target instanceof Element)) return;
 
+      const kindOption = target.closest("[data-cell-kind-option]");
+      if (kindOption) {
+        event.preventDefault();
+        event.stopPropagation();
+        const cellEl = kindOption.closest(".vn-Cell");
+        const id = cellEl ? cellEl.dataset.cellId : "";
+        const kind = kindOption.getAttribute("data-cell-kind-option");
+        closeCellKindMenus();
+        if (id && kind) void changeKind(id, kind);
+        return;
+      }
+
+      const kindButton = target.closest("[data-cell-kind-menu]");
+      if (kindButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = kindButton.getAttribute("data-cell-kind-menu");
+        if (id) {
+          selectCell(id, { edit: false });
+          toggleCellKindMenu(id);
+        }
+        return;
+      }
+
+      if (!target.closest("[data-cell-kind-select]")) closeCellKindMenus();
+
       const insertBtn = target.closest("[data-insert-after]");
       if (insertBtn) {
-        addCell(currentToolbarKind(), {
-          afterId: insertBtn.getAttribute("data-insert-after"),
+        const afterId = insertBtn.getAttribute("data-insert-after");
+        addCell(cellTypeForInsertionAfter(afterId), {
+          afterId,
         });
         return;
       }
@@ -8588,7 +8738,7 @@
   async function insertAbove(id) {
     const idx = cellIndex(id);
     if (idx < 0) return;
-    await addCell(currentToolbarKind(), { atIndex: idx });
+    await addCell(cellTypeForInsertionAfter(id), { atIndex: idx });
   }
 
   function inlineInputActive() {

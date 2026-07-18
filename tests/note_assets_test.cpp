@@ -108,6 +108,12 @@ int main()
     assert(js.find("/api/extensions") != std::string::npos);
     assert(js.find("normalizedCellTypes") != std::string::npos);
     assert(js.find("data-change-cell-type") != std::string::npos);
+    assert(js.find("data-cell-kind-menu") != std::string::npos);
+    assert(js.find("data-cell-kind-option") != std::string::npos);
+    assert(js.find("function cellTypeForInsertionAfter") != std::string::npos);
+    assert(js.find("async function pushCell(cellEl, options = {})") != std::string::npos);
+    assert(js.find("await pushCell(cellEl, { type: realType })") != std::string::npos);
+    assert(js.find("Cell DOM type diverged from model before run") != std::string::npos);
     assert(js.find("UI_STATE_KEY") != std::string::npos);
     assert(js.find("window.confirm") == std::string::npos);
     assert(js.find("confirm(") == std::string::npos);

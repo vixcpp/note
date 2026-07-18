@@ -1528,21 +1528,12 @@ namespace vix::note
         const std::string source =
             json_string_field(request.body, "source").value_or(cell->source());
 
-        const bool updated =
-            doc.update_cell(*id, builtin_kind_from_type_id(typeId), source);
-
-        if (updated)
-        {
-          NoteCell *updatedCell = doc.find_cell(*id);
-          if (updatedCell != nullptr)
-          {
-            updatedCell->set_type_id(typeId);
-          }
-        }
+        cell->set_type_id(typeId);
+        cell->set_source(source);
 
         return NoteRouteResponse::json(
-            updated ? 200 : 404,
-            cell_mutation_json(updated, updated ? "cell updated" : "cell not found", *id));
+            200,
+            cell_mutation_json(true, "cell updated", *id));
       }
     }
 

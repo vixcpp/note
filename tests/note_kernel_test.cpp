@@ -17,6 +17,7 @@
 #include <vix/note/core/NoteCell.hpp>
 #include <vix/note/core/NoteDocument.hpp>
 #include <vix/note/core/NoteResult.hpp>
+#include <vix/note/extensions/NoteExtensionRegistry.hpp>
 #include <vix/note/runtime/NoteKernel.hpp>
 
 #include <cassert>
@@ -25,6 +26,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <vector>
 
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -128,6 +130,57 @@ namespace
     }
 
     return false;
+  }
+
+  std::vector<std::string> pythonRunnerSources;
+  std::vector<std::string> pythonRunnerTypes;
+
+  class PythonTestRunner final : public vix::note::NoteCellRunner
+  {
+  public:
+    vix::note::NoteResult run(
+        const vix::note::NoteCell &cell,
+        vix::note::NoteExecutionContext &context) override
+    {
+      pythonRunnerSources.push_back(cell.source());
+      pythonRunnerTypes.push_back(context.cellType);
+
+      vix::note::NoteResult result =
+          vix::note::NoteResult::success("Python cell executed");
+      result.add_stdout("python runner: " + cell.type_id() + "\n");
+      return result;
+    }
+  };
+
+  void register_python_test_extension(vix::note::NoteExtensionRegistry &registry)
+  {
+    vix::note::NoteExtensionDescriptor extension;
+    extension.id = "softadastra/pyrelune";
+    extension.packageId = "softadastra/pyrelune";
+    extension.version = "test";
+    extension.apiVersion = "1";
+    extension.source = vix::note::NoteExtensionSource::Global;
+    extension.runtimeCommand = "pyrelune";
+    extension.runtimeProtocol = "vix-note-extension-1";
+    extension.runtimeMode = "oneshot";
+    extension.capabilities = {"kernel"};
+
+    vix::note::NoteCellTypeDescriptor python;
+    python.id = "python";
+    python.label = "Python";
+    python.language = "python";
+    python.aliases = {"py"};
+    python.executable = true;
+    python.extensionId = extension.id;
+    extension.cellTypes.push_back(python);
+
+    assert(registry.register_extension(extension));
+    assert(registry.register_cell_type(
+        python,
+        []()
+        {
+          return std::make_unique<PythonTestRunner>();
+        }));
   }
 }
 
@@ -683,6 +736,107 @@ int main()
     assert(result.message() == "cell not found: missing");
     assert(result.has_outputs());
     assert(result.outputs()[0].kind == vix::note::NoteOutputKind::Error);
+  }
+
+  {
+    vix::note::NoteDocument doc;
+    doc.add_cell(
+        vix::note::NoteCell(
+            "py",
+            "python",
+            "# Calculate basic statistics from a list of numbers.\n"
+            "numbers = [3, 7, 2, 9, 5]\n"
+            "print(max(numbers))\n"));
+    doc.add_cell(
+        vix::note::NoteCell(
+            "cpp",
+            vix::note::NoteCellKind::Cpp,
+            "#include <iostream>\n"
+            "int main()\n"
+            "{\n"
+            "  std::cout << \"Hello, world\\n\";\n"
+            "  return 0;\n"
+            "}\n"));
+
+    vix::note::NoteKernelOptions options =
+        make_kernel_options(fakeVix, root / "tmp-mixed-notebook");
+
+    vix::note::NoteExtensionManager manager;
+    manager.register_builtins(options.cppOptions, options.replyOptions);
+    register_python_test_extension(manager.registry());
+    options.extensionRegistry = &manager.registry();
+
+    pythonRunnerSources.clear();
+    pythonRunnerTypes.clear();
+
+    vix::note::NoteKernel kernel(doc, options);
+
+    assert(kernel.can_execute_cell("py"));
+    assert(kernel.can_execute_cell("cpp"));
+
+    vix::note::NoteResult python =
+        kernel.run_cell("py");
+
+    assert(python.ok());
+    assert(output_contains(python, vix::note::NoteOutputKind::Stdout, "python runner: python"));
+    assert(!has_output_kind(python, vix::note::NoteOutputKind::CompilerError));
+    assert(pythonRunnerSources.size() == 1);
+    assert(pythonRunnerSources[0].find("# Calculate basic statistics") != std::string::npos);
+    assert(pythonRunnerTypes[0] == "python");
+    assert(kernel.document().cells()[0].type_id() == "python");
+
+    vix::note::NoteResult cpp =
+        kernel.run_cell("cpp");
+
+    assert(cpp.ok());
+    assert(output_contains(cpp, vix::note::NoteOutputKind::Stdout, "Hello, world"));
+    assert(kernel.document().cells()[1].type_id() == "cpp");
+  }
+
+  {
+    vix::note::NoteDocument doc;
+    doc.add_cell(
+        vix::note::NoteCell(
+            "py-all",
+            "python",
+            "numbers = [3, 7, 2, 9, 5]\nprint(max(numbers))\n"));
+    doc.add_cell(
+        vix::note::NoteCell(
+            "cpp-all",
+            vix::note::NoteCellKind::Cpp,
+            "#include <iostream>\n"
+            "int main()\n"
+            "{\n"
+            "  std::cout << \"Hello, world\\n\";\n"
+            "  return 0;\n"
+            "}\n"));
+
+    vix::note::NoteKernelOptions options =
+        make_kernel_options(fakeVix, root / "tmp-mixed-notebook-run-all");
+
+    vix::note::NoteExtensionManager manager;
+    manager.register_builtins(options.cppOptions, options.replyOptions);
+    register_python_test_extension(manager.registry());
+    options.extensionRegistry = &manager.registry();
+
+    pythonRunnerSources.clear();
+    pythonRunnerTypes.clear();
+
+    vix::note::NoteKernel kernel(doc, options);
+    vix::note::NoteKernelRunResult result =
+        kernel.run_all();
+
+    assert(result.ok);
+    assert(result.visited == 2);
+    assert(result.executed == 2);
+    assert(result.failed == 0);
+    assert(result.results.size() == 2);
+    assert(output_contains(result.results[0], vix::note::NoteOutputKind::Stdout, "python runner: python"));
+    assert(output_contains(result.results[1], vix::note::NoteOutputKind::Stdout, "Hello, world"));
+    assert(pythonRunnerSources.size() == 1);
+    assert(pythonRunnerTypes[0] == "python");
+    assert(kernel.document().cells()[0].type_id() == "python");
+    assert(kernel.document().cells()[1].type_id() == "cpp");
   }
 
   std::filesystem::remove_all(root);
