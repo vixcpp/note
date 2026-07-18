@@ -39,9 +39,19 @@
       pendingActions: new Set(),
 
       marketplace: [],
+      recommended: [],
       installed: [],
       builtins: [],
       updates: [],
+      registry: {
+        source: "none",
+        syncedAt: null,
+        stale: false,
+        syncing: false,
+        error: "",
+      },
+      searchTimer: 0,
+      searchSerial: 0,
 
       sections: {
         search: true,
@@ -698,6 +708,7 @@
         ? state.extensions.extensions
         : []),
       ...state.extensionWorkbench.marketplace,
+      ...state.extensionWorkbench.recommended,
     ]);
 
     return all.find((ext) => extensionIdentifier(ext) === wanted) || null;
@@ -723,12 +734,98 @@
       extensions: Array.isArray(payload.extensions) ? payload.extensions : [],
       cellTypes: Array.isArray(payload.cellTypes) ? payload.cellTypes : [],
       themes: Array.isArray(payload.themes) ? payload.themes : [],
+      registry: payload.registry || state.extensions.registry || null,
     };
+
+    if (payload.registry) {
+      state.extensionWorkbench.registry = {
+        ...state.extensionWorkbench.registry,
+        ...payload.registry,
+      };
+    }
 
     state.extensionWorkbench.error = "";
     refreshExtensionWorkbenchFromRegistry();
     renderToolbarKindOptions();
     renderExtensionsPanel();
+  }
+
+  function applyCatalogPayload(payload, target = "recommended") {
+    if (!payload || payload.ok === false) {
+      const message = (payload && (payload.error || payload.syncError)) || "Registry catalog unavailable";
+      state.extensionWorkbench.registry = {
+        ...state.extensionWorkbench.registry,
+        ...(payload && payload.registry ? payload.registry : {}),
+        error: message,
+      };
+      if (target === "marketplace") state.extensionWorkbench.marketplace = [];
+      if (target === "recommended") state.extensionWorkbench.recommended = [];
+      throw new Error(message);
+    }
+
+    const items = uniqueExtensions(Array.isArray(payload.extensions) ? payload.extensions : []);
+    if (target === "marketplace") {
+      state.extensionWorkbench.marketplace = items;
+    } else {
+      state.extensionWorkbench.recommended = items;
+    }
+
+    state.extensionWorkbench.registry = {
+      ...state.extensionWorkbench.registry,
+      ...(payload.registry || {}),
+      source: payload.source || (payload.registry && payload.registry.source) || state.extensionWorkbench.registry.source,
+      syncedAt: payload.syncedAt || (payload.registry && payload.registry.syncedAt) || state.extensionWorkbench.registry.syncedAt,
+      stale: !!payload.stale,
+      syncing: !!payload.syncing,
+      error: payload.error || payload.syncError || "",
+    };
+  }
+
+  async function loadRecommendedExtensions({ silent = true } = {}) {
+    try {
+      const payload = await api("/api/extensions/recommended");
+      applyCatalogPayload(payload, "recommended");
+      if (!state.extensionWorkbench.query.trim()) renderExtensionsPanel();
+    } catch (error) {
+      if (!silent) reportError(error, { label: "Load recommended extensions" });
+      renderExtensionsPanel();
+    }
+  }
+
+  async function searchMarketplace(query) {
+    const serial = ++state.extensionWorkbench.searchSerial;
+    state.extensionWorkbench.loading = true;
+    state.extensionWorkbench.error = "";
+    renderExtensionsPanel();
+    try {
+      const payload = await api(`/api/extensions/marketplace?q=${encodeURIComponent(query)}`);
+      if (serial !== state.extensionWorkbench.searchSerial) return;
+      applyCatalogPayload(payload, "marketplace");
+    } catch (error) {
+      if (serial !== state.extensionWorkbench.searchSerial) return;
+      state.extensionWorkbench.error = error && error.message ? error.message : "Registry catalog unavailable";
+      state.extensionWorkbench.marketplace = [];
+      reportError(error, { label: "Search extensions" });
+    } finally {
+      if (serial === state.extensionWorkbench.searchSerial) {
+        state.extensionWorkbench.loading = false;
+        renderExtensionsPanel();
+      }
+    }
+  }
+
+  function scheduleMarketplaceSearch() {
+    clearTimeout(state.extensionWorkbench.searchTimer);
+    const query = state.extensionWorkbench.query.trim();
+    if (!query) {
+      state.extensionWorkbench.marketplace = [];
+      loadRecommendedExtensions({ silent: true });
+      renderExtensionsPanel();
+      return;
+    }
+    state.extensionWorkbench.searchTimer = window.setTimeout(() => {
+      searchMarketplace(query);
+    }, 200);
   }
 
   function refreshExtensionDetailAfterAction(action, id) {
@@ -764,17 +861,15 @@
 
     state.extensionWorkbench.updates =
       state.extensionWorkbench.installed.filter((ext) => ext.updateAvailable);
-
-    state.extensionWorkbench.marketplace = list.filter(
-      (ext) => !ext.builtin && ext.installed === false,
-    );
   }
 
   function extensionCellLabels(ext) {
     const cells = Array.isArray(ext && ext.cellTypes) ? ext.cellTypes : [];
 
     return cells
-      .map((cell) => cell.label || cell.id)
+      .map((cell) =>
+        typeof cell === "string" ? cell : cell && (cell.label || cell.id),
+      )
       .filter(Boolean)
       .join(", ");
   }
@@ -836,10 +931,14 @@
   }
 
   function recommendedExtensions() {
+    const installed = new Set(
+      state.extensionWorkbench.installed.map((ext) => extensionIdentifier(ext)),
+    );
     return uniqueExtensions(
-      state.extensionWorkbench.marketplace.filter(
-        (ext) => ext && !ext.builtin && ext.installed === false,
-      ),
+      state.extensionWorkbench.recommended.filter((ext) => {
+        const id = extensionIdentifier(ext);
+        return ext && !ext.builtin && ext.installed === false && !installed.has(id);
+      }),
     );
   }
 
@@ -1129,6 +1228,32 @@
     renderExtensionsPanel();
   }
 
+  function renderRegistryStatus() {
+    const registry = state.extensionWorkbench.registry || {};
+    if (!registry || registry.source === "none") {
+      return `
+        <p class="vn-ExtensionsRegistryStatus is-warning">
+          Registry catalog unavailable. Run <code>vix registry sync</code> or refresh the Registry catalog.
+        </p>
+      `;
+    }
+    if (registry.error) {
+      return `
+        <p class="vn-ExtensionsRegistryStatus is-warning">
+          Registry unavailable — showing cached results.
+        </p>
+      `;
+    }
+    if (registry.stale || registry.source === "cache") {
+      return `
+        <p class="vn-ExtensionsRegistryStatus">
+          Showing cached Registry results${registry.syncedAt ? ` · ${escapeHtml(String(registry.syncedAt))}` : ""}.
+        </p>
+      `;
+    }
+    return "";
+  }
+
   function renderExtensionsPanel() {
     const root = $(sel.extensionsList);
     if (!root) return;
@@ -1138,6 +1263,7 @@
         ? state.extensions.extensions
         : []),
       ...state.extensionWorkbench.marketplace,
+      ...state.extensionWorkbench.recommended,
     ]);
 
     const count = $(sel.extensionsCount);
@@ -1166,21 +1292,19 @@
     const query = state.extensionWorkbench.query.trim().toLowerCase();
 
     if (query) {
-      const results = allExtensions.filter((ext) =>
-        extensionMatchesQuery(ext, query),
-      );
+      const results = uniqueExtensions(state.extensionWorkbench.marketplace);
 
-      root.innerHTML = renderExtensionGroup({
+      root.innerHTML = renderRegistryStatus() + renderExtensionGroup({
         id: "search",
-        label: "Marketplace results",
+        label: `Marketplace Results · ${results.length}`,
         items: results,
-        emptyMessage: `No extensions found for "${query}".`,
+        emptyMessage: `No Note extensions match "${query}".`,
       });
 
       return;
     }
 
-    root.innerHTML = extensionGroups().map(renderExtensionGroup).join("");
+    root.innerHTML = renderRegistryStatus() + extensionGroups().map(renderExtensionGroup).join("");
   }
 
   function extensionDetailsHtml(ext) {
@@ -1645,15 +1769,42 @@
   async function refreshExtensionsView() {
     state.extensionWorkbench.loading = true;
     state.extensionWorkbench.error = "";
+    state.extensionWorkbench.registry = {
+      ...state.extensionWorkbench.registry,
+      syncing: true,
+    };
     renderExtensionsPanel();
     try {
       const payload = await api("/api/extensions/reload", { method: "POST" });
       applyExtensionsPayload(payload);
-      showNotification({ type: "success", message: "Extensions refreshed" });
+
+      try {
+        const catalog = await api("/api/extensions/registry/sync", { method: "POST" });
+        applyCatalogPayload(catalog, "recommended");
+        if (state.extensionWorkbench.query.trim()) {
+          await searchMarketplace(state.extensionWorkbench.query.trim());
+        }
+        showNotification({
+          type: catalog.synced === false ? "warning" : "success",
+          message: catalog.synced === false
+            ? "Registry unavailable — showing cached results"
+            : "Registry updated",
+        });
+      } catch (catalogError) {
+        await loadRecommendedExtensions({ silent: true });
+        showNotification({
+          type: "warning",
+          message: "Registry unavailable — showing cached results",
+        });
+      }
     } catch (error) {
       reportError(error, { label: "Refresh extensions" });
     } finally {
       state.extensionWorkbench.loading = false;
+      state.extensionWorkbench.registry = {
+        ...state.extensionWorkbench.registry,
+        syncing: false,
+      };
       renderExtensionsPanel();
     }
   }
@@ -1805,6 +1956,11 @@
       });
 
       applyExtensionsPayload(payload);
+      if (state.extensionWorkbench.query.trim()) {
+        await searchMarketplace(state.extensionWorkbench.query.trim());
+      } else {
+        await loadRecommendedExtensions({ silent: true });
+      }
       refreshExtensionDetailAfterAction(action, id);
 
       showNotification({
@@ -5043,6 +5199,7 @@
     try {
       const payload = await api("/api/extensions");
       applyExtensionsPayload(payload);
+      await loadRecommendedExtensions({ silent: true });
       applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "system", {
         persist: false,
       });
@@ -8453,7 +8610,7 @@
       const input =
         event.target instanceof HTMLInputElement ? event.target : null;
       state.extensionWorkbench.query = input ? input.value : "";
-      renderExtensionsPanel();
+      scheduleMarketplaceSearch();
     });
   }
 

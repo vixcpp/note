@@ -490,6 +490,21 @@ namespace vix::note
         std::string_view package);
 
     /**
+     * @brief Returns note extensions from the local Registry catalog.
+     */
+    NoteRouteResponse registry_recommended_response() const;
+
+    /**
+     * @brief Searches note extensions in the local Registry catalog.
+     */
+    NoteRouteResponse registry_marketplace_response(std::string_view path) const;
+
+    /**
+     * @brief Synchronizes the Registry catalog and returns fresh recommendations.
+     */
+    NoteRouteResponse registry_sync_response();
+
+    /**
      * @brief Serializes one note cell into JSON.
      *
      * @param cell  Cell to serialize.

@@ -1096,6 +1096,57 @@ int main()
         "  ]\n"
         "}\n");
 
+
+    const std::filesystem::path registryIndex = home / ".vix" / "registry" / "index" / "index";
+    write_file(
+        registryIndex / "softadastra.pyrelune.json",
+        "{\n"
+        "  \"namespace\": \"softadastra\",\n"
+        "  \"name\": \"pyrelune\",\n"
+        "  \"version\": \"0.1.1\",\n"
+        "  \"type\": \"executable\",\n"
+        "  \"description\": \"Python cells for Vix Note.\",\n"
+        "  \"featured\": true,\n"
+        "  \"verified\": true,\n"
+        "  \"extensions\": {\n"
+        "    \"note\": {\n"
+        "      \"api\": \"1\",\n"
+        "      \"capabilities\": [\"execute\", \"stdout\"],\n"
+        "      \"cellTypes\": [{\"id\": \"python\", \"label\": \"Python\"}],\n"
+        "      \"runtime\": {\"mode\": \"oneshot\", \"protocol\": \"vix-note-extension-1\"}\n"
+        "    }\n"
+        "  },\n"
+        "  \"versions\": {\"0.1.1\": {}}\n"
+        "}\n");
+    write_file(
+        registryIndex / "example.note-rust.json",
+        "{\n"
+        "  \"namespace\": \"example\",\n"
+        "  \"name\": \"note-rust\",\n"
+        "  \"version\": \"0.2.0\",\n"
+        "  \"type\": \"executable\",\n"
+        "  \"description\": \"Rust cells for Vix Note.\",\n"
+        "  \"extensions\": {\n"
+        "    \"note\": {\n"
+        "      \"api\": \"1\",\n"
+        "      \"capabilities\": [\"execute\"],\n"
+        "      \"cellTypes\": [{\"id\": \"rust\", \"label\": \"Rust\"}],\n"
+        "      \"runtime\": {\"mode\": \"oneshot\", \"protocol\": \"vix-note-extension-1\"}\n"
+        "    }\n"
+        "  },\n"
+        "  \"versions\": {\"0.2.0\": {}}\n"
+        "}\n");
+    write_file(
+        registryIndex / "example.json.json",
+        "{\n"
+        "  \"namespace\": \"example\",\n"
+        "  \"name\": \"json\",\n"
+        "  \"version\": \"1.0.0\",\n"
+        "  \"type\": \"library\",\n"
+        "  \"description\": \"Ordinary JSON package.\",\n"
+        "  \"versions\": {\"1.0.0\": {}}\n"
+        "}\n");
+
     vix::note::NoteExtensionManager manager;
     manager.reload({}, true);
 
@@ -1129,6 +1180,28 @@ int main()
     assert(contains(before.body, "softadastra/pyrelune"));
     assert(contains(before.body, "\"enabled\":true"));
     assert(contains(before.body, "\"id\":\"python\""));
+
+
+    vix::note::NoteRouteResponse recommended =
+        routes.get("/api/extensions/recommended");
+    assert(recommended.ok());
+    assert(contains(recommended.body, "\"source\":\"cache\""));
+    assert(contains(recommended.body, "example/note-rust"));
+    assert(!contains(recommended.body, "softadastra/pyrelune"));
+    assert(!contains(recommended.body, "example/json"));
+
+    vix::note::NoteRouteResponse marketplace =
+        routes.get("/api/extensions/marketplace?q=python");
+    assert(marketplace.ok());
+    assert(contains(marketplace.body, "softadastra/pyrelune"));
+    assert(contains(marketplace.body, "\"installed\":true"));
+    assert(contains(marketplace.body, "\"updateAvailable\":true"));
+    assert(!contains(marketplace.body, "example/json"));
+
+    vix::note::NoteRoutes noMutationRoutes;
+    vix::note::NoteRouteResponse forbiddenSync =
+        noMutationRoutes.post("/api/extensions/registry/sync");
+    assert(forbiddenSync.status == 403);
 
     vix::note::NoteRouteResponse disabled =
         routes.post("/api/extensions/disable", "{\"package\":\"softadastra/pyrelune\"}");

@@ -106,6 +106,16 @@ int main()
     assert(js.find("openCommandPalette") != std::string::npos);
     assert(js.find("openQuickOpen") != std::string::npos);
     assert(js.find("/api/extensions") != std::string::npos);
+    assert(js.find("/api/extensions/recommended") != std::string::npos);
+    assert(js.find("/api/extensions/marketplace") != std::string::npos);
+    assert(js.find("/api/extensions/registry/sync") != std::string::npos);
+    assert(js.find("loadRecommendedExtensions") != std::string::npos);
+    assert(js.find("searchMarketplace") != std::string::npos);
+    const auto extensionActionPos = js.find("async function extensionAction");
+    const auto safeClassPos = js.find("function safeClass");
+    assert(extensionActionPos != std::string::npos);
+    assert(safeClassPos != std::string::npos);
+    assert(js.substr(extensionActionPos, safeClassPos - extensionActionPos).find("location.reload") == std::string::npos);
     assert(js.find("normalizedCellTypes") != std::string::npos);
     assert(js.find("data-change-cell-type") != std::string::npos);
     assert(js.find("data-cell-kind-menu") != std::string::npos);
