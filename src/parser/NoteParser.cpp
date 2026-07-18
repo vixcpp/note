@@ -416,7 +416,15 @@ namespace vix::note
 
       if (inFence && is_fence_line(line, language))
       {
-        if (fenceTypeId.empty() || fenceTypeId == "markdown")
+        const bool hasExplicitCellType =
+            pendingMetadata && !pendingMetadata->typeId.empty();
+
+        const bool shouldCreateCell =
+            !fenceTypeId.empty() &&
+            fenceTypeId != "markdown" &&
+            (is_builtin_cell_type(fenceTypeId) || hasExplicitCellType);
+
+        if (!shouldCreateCell)
         {
           std::string fencedMarkdown;
 

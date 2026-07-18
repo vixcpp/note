@@ -377,6 +377,7 @@ namespace vix::note
   void NoteKernel::sync_options()
   {
     options_.sessionOptions.stopOnFirstFailure = options_.stopOnFirstFailure;
+    options_.sessionOptions.allowDynamicCellResults = true;
     options_.cppOptions.projectContext = options_.projectContext;
 
     if (options_.extensionRegistry == nullptr)

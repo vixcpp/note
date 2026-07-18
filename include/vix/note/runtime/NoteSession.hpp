@@ -40,6 +40,15 @@ namespace vix::note
     bool clearOutputsBeforeRun = true;
 
     /**
+     * @brief Allows a higher-level kernel to apply results for dynamically
+     * registered extension cell types.
+     *
+     * Direct NoteSession usage remains conservative and rejects results for
+     * cells that are not executable according to their built-in kind.
+     */
+    bool allowDynamicCellResults = false;
+
+    /**
      * @brief Stops multi-cell execution after the first failure.
      *
      * This option is stored at session level and is mainly consumed by higher

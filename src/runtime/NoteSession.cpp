@@ -125,6 +125,12 @@ namespace vix::note
           .add_error("cell index out of range");
     }
 
+    if (!cell->executable() && !options_.allowDynamicCellResults)
+    {
+      return NoteResult::failure("cell is not executable", 1)
+          .add_error("cell is not executable");
+    }
+
     if (options_.clearOutputsBeforeRun)
     {
       cell->clear_outputs();

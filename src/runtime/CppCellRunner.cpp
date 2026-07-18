@@ -1224,6 +1224,24 @@ namespace vix::note
       }
     }
 
+    std::string raw_log_text(const ProcessOutput &process)
+    {
+      if (!process.mergedText.empty())
+      {
+        return process.mergedText;
+      }
+
+      std::string text = process.stdoutText;
+
+      if (!text.empty() && !process.stderrText.empty() && text.back() != '\n')
+      {
+        text += '\n';
+      }
+
+      text += process.stderrText;
+      return text;
+    }
+
     void add_failure_outputs(
         NoteResult &result,
         const CppCellRunnerOptions &options,
@@ -1240,18 +1258,20 @@ namespace vix::note
       {
         errorText = process.stderrText;
       }
-      else if (process.stdoutText.empty())
+      else if (!process.mergedText.empty())
       {
         errorText = process.mergedText;
+      }
+      else if (!process.stdoutText.empty())
+      {
+        errorText = process.stdoutText;
       }
 
       if (errorText.empty())
       {
-        result.add_error(
+        errorText =
             "C++ cell exited with code " +
-            std::to_string(process.exitCode));
-
-        return;
+            std::to_string(process.exitCode);
       }
 
       if (looks_like_runtime_error(errorText, process.exitCode))
@@ -1275,9 +1295,14 @@ namespace vix::note
         }
       }
 
-      if (options.debugMode && options.includeRawLog && !process.mergedText.empty())
+      if (options.debugMode && options.includeRawLog)
       {
-        result.add_raw_log(process.mergedText);
+        const std::string rawLog = raw_log_text(process);
+
+        if (!rawLog.empty())
+        {
+          result.add_raw_log(rawLog);
+        }
       }
     }
 
@@ -1305,9 +1330,14 @@ namespace vix::note
         result.add_text("Program finished successfully.\nExit code: 0\nNo output.");
       }
 
-      if (options.debugMode && options.includeRawLog && !process.mergedText.empty())
+      if (options.debugMode && options.includeRawLog)
       {
-        result.add_raw_log(process.mergedText);
+        const std::string rawLog = raw_log_text(process);
+
+        if (!rawLog.empty())
+        {
+          result.add_raw_log(rawLog);
+        }
       }
     }
   }
