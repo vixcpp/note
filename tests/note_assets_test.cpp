@@ -137,6 +137,17 @@ int main()
     assert(js.find("fill=%22#") == std::string::npos);
     assert(js.find("stroke=%22#") == std::string::npos);
     assert(js.find("VIX_LOGO_SVG") != std::string::npos);
+    assert(js.find("pendingActions: new Map") != std::string::npos);
+    assert(js.find("function extensionPendingAction") != std::string::npos);
+    assert(js.find("function beginExtensionAction") != std::string::npos);
+    assert(js.find("function endExtensionAction") != std::string::npos);
+    assert(js.find("function extensionActionLabel") != std::string::npos);
+    assert(js.find("Installing…") != std::string::npos);
+    assert(js.find("filterCatalogExtensions") != std::string::npos);
+    assert(js.find("ext.installed === true") != std::string::npos);
+    assert(js.find("ext.installed !== false") == std::string::npos);
+    assert(js.find("vn-ExtensionItem__pendingLabel") != std::string::npos);
+    assert(js.find("vn-ExtensionActionSpinner") != std::string::npos);
     assert(js.find("function extensionTabId") != std::string::npos);
     assert(js.find("async function openExtensionTab") != std::string::npos);
     assert(js.find("data-tab-id") != std::string::npos);
@@ -148,6 +159,12 @@ int main()
     assert(openExtensionTabPos != std::string::npos);
     assert(switchTabPos != std::string::npos);
     assert(js.substr(openExtensionTabPos, switchTabPos - openExtensionTabPos).find("openNotePath") == std::string::npos);
+    assert(js.find("const activeId = state.activeEditorTabId || \"\";") != std::string::npos);
+    assert(js.find("class=\"vn-Tab${active}${preview}${t.dirty ? \" is-dirty\" : \"\"}\"") != std::string::npos);
+    assert(css.find("vn-ExtensionActionSpinner") != std::string::npos);
+    assert(css.find("vn-ExtensionItem.is-pending") != std::string::npos);
+    assert(css.find("data-state=\"installing\"") != std::string::npos);
+    assert(css.find("vn-ExtensionShow__pending") != std::string::npos);
   }
 
   const auto validRoot = make_test_root("valid");

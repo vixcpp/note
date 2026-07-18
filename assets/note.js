@@ -36,7 +36,7 @@
       loading: false,
       error: "",
       selectedId: null,
-      pendingActions: new Set(),
+      pendingActions: new Map(),
 
       marketplace: [],
       recommended: [],
@@ -660,17 +660,113 @@
     toggleThemeMenu();
   }
 
+  function extensionPendingAction(extensionId) {
+    const id = String(extensionId || "");
+    if (!id) return null;
+    const pending = state.extensionWorkbench.pendingActions;
+    if (pending instanceof Map) return pending.get(id) || null;
+    if (pending && typeof pending.has === "function") {
+      for (const key of pending) {
+        if (String(key).startsWith(`${id}:`)) {
+          return { action: String(key).slice(id.length + 1), stage: "working", startedAt: Date.now() };
+        }
+      }
+    }
+    return null;
+  }
+
+  function isExtensionActionPending(extensionId) {
+    return !!extensionPendingAction(extensionId);
+  }
+
+  function beginExtensionAction(extensionId, action, stage = "preparing") {
+    const id = String(extensionId || "");
+    if (!id) return false;
+    if (!(state.extensionWorkbench.pendingActions instanceof Map)) {
+      state.extensionWorkbench.pendingActions = new Map();
+    }
+    if (state.extensionWorkbench.pendingActions.has(id)) return false;
+    state.extensionWorkbench.pendingActions.set(id, {
+      action: String(action || "working"),
+      stage,
+      startedAt: Date.now(),
+    });
+    return true;
+  }
+
+  function updateExtensionActionStage(extensionId, stage) {
+    const current = extensionPendingAction(extensionId);
+    if (!current) return;
+    state.extensionWorkbench.pendingActions.set(String(extensionId), {
+      ...current,
+      stage,
+    });
+  }
+
+  function endExtensionAction(extensionId) {
+    if (state.extensionWorkbench.pendingActions instanceof Map) {
+      state.extensionWorkbench.pendingActions.delete(String(extensionId || ""));
+    }
+  }
+
+  function extensionActionLabel(action) {
+    const labels = {
+      install: "Installing…",
+      update: "Updating…",
+      uninstall: "Uninstalling…",
+      enable: "Enabling…",
+      disable: "Disabling…",
+      reload: "Refreshing…",
+      working: "Working…",
+    };
+    return labels[action] || "Working…";
+  }
+
+  function extensionActionStatus(action) {
+    const labels = {
+      install: "Installing",
+      update: "Updating",
+      uninstall: "Uninstalling",
+      enable: "Enabling",
+      disable: "Disabling",
+      reload: "Refreshing",
+      working: "Working",
+    };
+    return labels[action] || "Working";
+  }
+
+  function installedExtensionIds() {
+    return new Set(
+      uniqueExtensions(state.extensionWorkbench.installed)
+        .map((ext) => extensionIdentifier(ext))
+        .filter(Boolean),
+    );
+  }
+
+  function filterCatalogExtensions(items) {
+    const installed = installedExtensionIds();
+    return uniqueExtensions(items).filter((ext) => {
+      const id = extensionIdentifier(ext);
+      return ext && id && !ext.builtin && ext.installed !== true && !installed.has(id);
+    });
+  }
+
   function extensionStatus(ext) {
     if (!ext) return "Unknown";
+    const id = extensionIdentifier(ext);
+    const pending = extensionPendingAction(id);
+    if (pending) return extensionActionStatus(pending.action);
     if (ext.builtin) return "Built-in";
-    if (ext.enabled === false) return "Disabled";
+    const installed = ext.installed === true;
+    if (installed && ext.enabled === false) return "Disabled";
     if (
-      ext.available === false ||
-      (ext.runtime && ext.runtime.healthy === false)
+      installed &&
+      (ext.available === false ||
+        (ext.runtime && ext.runtime.healthy === false))
     ) {
       return "Broken";
     }
-    if (ext.installed) return "Installed";
+    if (installed) return "Installed";
     return "Available";
   }
 
@@ -704,25 +800,21 @@
     const wanted = String(id || "");
     if (!wanted) return null;
 
-    const all = uniqueExtensions([
-      ...(Array.isArray(state.extensions.extensions)
-        ? state.extensions.extensions
-        : []),
-      ...state.extensionWorkbench.marketplace,
-      ...state.extensionWorkbench.recommended,
-    ]);
+    const groups = [
+      state.extensionWorkbench.installed,
+      state.extensionWorkbench.builtins,
+      state.extensionWorkbench.marketplace,
+      state.extensionWorkbench.recommended,
+      Array.isArray(state.extensions.extensions) ? state.extensions.extensions : [],
+    ];
 
-    return all.find((ext) => extensionIdentifier(ext) === wanted) || null;
-  }
-
-  function isExtensionActionPending(id, action = "") {
-    const prefix = `${id}:`;
-    if (action)
-      return state.extensionWorkbench.pendingActions.has(`${id}:${action}`);
-    for (const key of state.extensionWorkbench.pendingActions) {
-      if (key.startsWith(prefix)) return true;
+    for (const group of groups) {
+      const found = uniqueExtensions(group).find(
+        (ext) => extensionIdentifier(ext) === wanted,
+      );
+      if (found) return found;
     }
-    return false;
+    return null;
   }
 
   function applyExtensionsPayload(payload) {
@@ -764,7 +856,7 @@
       throw new Error(message);
     }
 
-    const items = uniqueExtensions(Array.isArray(payload.extensions) ? payload.extensions : []);
+    const items = filterCatalogExtensions(Array.isArray(payload.extensions) ? payload.extensions : []);
     if (target === "marketplace") {
       state.extensionWorkbench.marketplace = items;
     } else {
@@ -831,18 +923,20 @@
 
   function refreshExtensionDetailAfterAction(action, id) {
     const current = findExtensionById(id);
+    const activeExtension = state.activeEditorTabId === extensionTabId(id);
 
-    if (action === "uninstall" && !current) {
+    if (!current) {
       if (state.extensionWorkbench.selectedId === id) {
         state.extensionWorkbench.selectedId = null;
       }
-      if (state.document) {
-        renderDocument(state.document, { fullRepaint: true });
+      if (activeExtension) {
+        clearExtensionDetailMain();
       }
       return;
     }
 
-    if (state.extensionWorkbench.selectedId === id && current) {
+    if (state.extensionWorkbench.selectedId === id || activeExtension) {
+      state.extensionWorkbench.selectedId = id;
       renderExtensionDetailMain(current);
     }
   }
@@ -855,13 +949,20 @@
     );
 
     state.extensionWorkbench.installed = list.filter(
-      (ext) => !ext.builtin && ext.installed !== false,
+      (ext) => !ext.builtin && ext.installed === true,
     );
 
     state.extensionWorkbench.builtins = list.filter((ext) => ext.builtin);
 
     state.extensionWorkbench.updates =
       state.extensionWorkbench.installed.filter((ext) => ext.updateAvailable);
+
+    state.extensionWorkbench.recommended = filterCatalogExtensions(
+      state.extensionWorkbench.recommended,
+    );
+    state.extensionWorkbench.marketplace = filterCatalogExtensions(
+      state.extensionWorkbench.marketplace,
+    );
   }
 
   function extensionCellLabels(ext) {
@@ -932,15 +1033,7 @@
   }
 
   function recommendedExtensions() {
-    const installed = new Set(
-      state.extensionWorkbench.installed.map((ext) => extensionIdentifier(ext)),
-    );
-    return uniqueExtensions(
-      state.extensionWorkbench.recommended.filter((ext) => {
-        const id = extensionIdentifier(ext);
-        return ext && !ext.builtin && ext.installed === false && !installed.has(id);
-      }),
-    );
+    return filterCatalogExtensions(state.extensionWorkbench.recommended);
   }
 
   function extensionSearchText(ext) {
@@ -1000,8 +1093,10 @@
         .charAt(0)
         .toUpperCase() || "E";
 
-    const installed = !ext.builtin && ext.installed !== false;
-    const pending = isExtensionActionPending(id);
+    const installed = !ext.builtin && ext.installed === true;
+    const pendingAction = extensionPendingAction(id);
+    const pending = !!pendingAction;
+    const pendingLabel = pending ? extensionActionLabel(pendingAction.action) : "";
 
     let actions = "";
 
@@ -1014,7 +1109,7 @@
         data-extension-id="${escapeHtml(id)}"
         ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
-        ${pending ? "Working…" : "Install"}
+        ${pending ? `<span class="vn-ExtensionActionSpinner" aria-hidden="true"></span>${escapeHtml(pendingLabel)}` : "Install"}
       </button>
     `;
     } else if (!ext.builtin) {
@@ -1026,7 +1121,7 @@
         data-extension-id="${escapeHtml(id)}"
         ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
-        ${pending ? "Working…" : ext.enabled === false ? "Enable" : "Disable"}
+        ${pending ? `<span class="vn-ExtensionActionSpinner" aria-hidden="true"></span>${escapeHtml(pendingLabel)}` : ext.enabled === false ? "Enable" : "Disable"}
       </button>
 
       <button
@@ -1036,14 +1131,14 @@
         data-extension-id="${escapeHtml(id)}"
         ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
-        ${pending ? "Working…" : "Uninstall"}
+        ${pending ? `<span class="vn-ExtensionActionSpinner" aria-hidden="true"></span>${escapeHtml(pendingLabel)}` : "Uninstall"}
       </button>
     `;
     }
 
     return `
     <article
-      class="vn-ExtensionItem${selected ? " is-selected" : ""}"
+      class="vn-ExtensionItem${selected ? " is-selected" : ""}${pending ? " is-pending" : ""}"
       data-extension-id="${escapeHtml(id)}"
       role="listitem"
     >
@@ -1055,6 +1150,7 @@
       >
         <span class="vn-ExtensionIcon vn-ExtensionItem__icon" aria-hidden="true">
           ${extensionIconHtml(ext, initial)}
+          ${pending ? `<span class="vn-ExtensionItem__spinner"><span class="vn-ExtensionActionSpinner" aria-hidden="true"></span></span>` : ""}
         </span>
 
         <span class="vn-ExtensionItem__content">
@@ -1083,6 +1179,7 @@
               .map((value) => `<span>${escapeHtml(value)}</span>`)
               .join("")}
           </span>
+          ${pending ? `<span class="vn-ExtensionItem__pendingLabel">${escapeHtml(pendingLabel)}</span>` : ""}
         </span>
       </button>
 
@@ -1340,6 +1437,7 @@
       state.activeEditorTabId = tabId;
     }
     setExtensionEditorActive(true);
+    renderTabsBar();
     const name = ext.name || id.split("/").pop() || id;
     const status = extensionStatus(ext);
     const runtime = ext.runtime || {};
@@ -1371,8 +1469,10 @@
         .charAt(0)
         .toUpperCase() || "E";
 
-    const installed = !ext.builtin && ext.installed !== false;
-    const pending = isExtensionActionPending(id);
+    const installed = !ext.builtin && ext.installed === true;
+    const pendingAction = extensionPendingAction(id);
+    const pending = !!pendingAction;
+    const pendingLabel = pending ? extensionActionLabel(pendingAction.action) : "";
 
     const runtimeCommand = runtime.resolvedCommand || runtime.command || "";
 
@@ -1394,7 +1494,7 @@
         data-extension-id="${escapeHtml(id)}"
         ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
-        ${pending ? "Working…" : "Install"}
+        ${pending ? `<span class="vn-ExtensionActionSpinner" aria-hidden="true"></span>${escapeHtml(pendingLabel)}` : "Install"}
       </button>
     `;
     } else if (!ext.builtin && ext.updateAvailable) {
@@ -1406,7 +1506,7 @@
         data-extension-id="${escapeHtml(id)}"
         ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
-        ${pending ? "Working…" : "Update"}
+        ${pending ? `<span class="vn-ExtensionActionSpinner" aria-hidden="true"></span>${escapeHtml(pendingLabel)}` : "Update"}
       </button>
     `;
     }
@@ -1421,7 +1521,7 @@
           data-extension-id="${escapeHtml(id)}"
           ${pending ? 'disabled aria-disabled=\"true\"' : ""}
         >
-          ${pending ? "Working…" : ext.enabled === false ? "Enable" : "Disable"}
+          ${pending ? `<span class="vn-ExtensionActionSpinner" aria-hidden="true"></span>${escapeHtml(pendingLabel)}` : ext.enabled === false ? "Enable" : "Disable"}
         </button>
 
         <button
@@ -1431,7 +1531,7 @@
           data-extension-id="${escapeHtml(id)}"
           ${pending ? 'disabled aria-disabled=\"true\"' : ""}
         >
-          ${pending ? "Working…" : "Uninstall"}
+          ${pending ? `<span class="vn-ExtensionActionSpinner" aria-hidden="true"></span>${escapeHtml(pendingLabel)}` : "Uninstall"}
         </button>
       `
         : "";
@@ -1515,7 +1615,7 @@
 
     root.innerHTML = `
     <section
-      class="vn-ExtensionShow vn-ExtensionEditorView"
+      class="vn-ExtensionShow vn-ExtensionEditorView${pending ? " is-pending" : ""}"
       aria-label="${escapeHtml(name)} extension details"
     >
       <header class="vn-ExtensionShow__hero">
@@ -1571,6 +1671,8 @@
             }
           </div>
 
+          ${pending ? `<div class="vn-ExtensionShow__pending"><span class="vn-ExtensionActionSpinner" aria-hidden="true"></span>${escapeHtml(pendingLabel)}</div>` : ""}
+
           <div class="vn-ExtensionShow__actions">
             ${primaryAction}
             ${manageActions}
@@ -1579,6 +1681,7 @@
               type="button"
               class="vn-ExtensionShow__button"
               data-command="extensions.refresh"
+              ${pending ? 'disabled aria-disabled="true"' : ""}
             >
               Reload
             </button>
@@ -1943,31 +2046,36 @@
       return;
     }
 
-    const actionKey = `${id}:${action}`;
-    if (state.extensionWorkbench.pendingActions.has(actionKey)) return;
+    if (isExtensionActionPending(id)) return;
 
     const modal = await showExtensionActionModal(action, ext, id);
     if (!modal) return;
 
-    state.extensionWorkbench.pendingActions.add(actionKey);
+    if (!beginExtensionAction(id, action, "preparing")) return;
     renderExtensionsPanel();
-    if (state.extensionWorkbench.selectedId === id && ext) {
-      renderExtensionDetailMain(ext);
+    if (state.activeEditorTabId === extensionTabId(id)) {
+      renderExtensionDetailMain(findExtensionById(id) || ext);
     }
 
     try {
+      updateExtensionActionStage(id, action === "install" ? "installing" : "working");
+      renderExtensionsPanel();
+      if (state.activeEditorTabId === extensionTabId(id)) {
+        renderExtensionDetailMain(findExtensionById(id) || ext);
+      }
+
       const payload = await api(`/api/extensions/${action}`, {
         method: "POST",
         body: JSON.stringify({ package: id, scope: "global" }),
       });
 
+      updateExtensionActionStage(id, "refreshing");
       applyExtensionsPayload(payload);
       if (state.extensionWorkbench.query.trim()) {
         await searchMarketplace(state.extensionWorkbench.query.trim());
       } else {
         await loadRecommendedExtensions({ silent: true });
       }
-      refreshExtensionDetailAfterAction(action, id);
 
       showNotification({
         type: "success",
@@ -1987,12 +2095,10 @@
       }
       if (cancelBtn) cancelBtn.disabled = false;
     } finally {
-      state.extensionWorkbench.pendingActions.delete(actionKey);
+      endExtensionAction(id);
       renderExtensionsPanel();
-      const current = findExtensionById(id);
-      if (state.extensionWorkbench.selectedId === id && current) {
-        renderExtensionDetailMain(current);
-      }
+      refreshExtensionDetailAfterAction(action, id);
+      renderTabsBar();
     }
   }
 
@@ -6096,7 +6202,7 @@
 
   async function activateRelativeTab(delta) {
     if (!state.tabs.length) return;
-    const activeId = state.activeEditorTabId || (state.activeTabPath ? documentTabId(state.activeTabPath) : "");
+    const activeId = state.activeEditorTabId || "";
     const current = state.tabs.findIndex((tab) => editorTabId(tab) === activeId);
     const next = (current + delta + state.tabs.length) % state.tabs.length;
     await switchTab(editorTabId(state.tabs[next]));
@@ -6143,7 +6249,7 @@
       return;
     }
     bar.setAttribute("role", "tablist");
-    const activeId = state.activeEditorTabId || (state.activeTabPath ? documentTabId(state.activeTabPath) : "");
+    const activeId = state.activeEditorTabId || "";
     bar.innerHTML = state.tabs
       .map((t) => {
         const id = editorTabId(t);
@@ -6158,7 +6264,7 @@
               <button class="vn-Tab__close" type="button" data-tab-close="${escapeHtml(id)}" aria-label="Close tab">×</button>
             </div>`;
         }
-        return `<div class="vn-Tab${active}${preview}" role="tab" aria-selected="${id === activeId ? "true" : "false"}" aria-label="${escapeHtml(t.title)}${t.dirty ? " unsaved" : ""}" data-tab-id="${escapeHtml(id)}" data-tab-kind="document" data-tab-path="${escapeHtml(t.path)}" title="${escapeHtml(t.path)}" draggable="true" tabindex="0">
+        return `<div class="vn-Tab${active}${preview}${t.dirty ? " is-dirty" : ""}" role="tab" aria-selected="${id === activeId ? "true" : "false"}" aria-label="${escapeHtml(t.title)}${t.dirty ? " unsaved" : ""}" data-tab-id="${escapeHtml(id)}" data-tab-kind="document" data-tab-path="${escapeHtml(t.path)}" title="${escapeHtml(t.path)}" draggable="true" tabindex="0">
             ${tabDot(t)}
             <span class="vn-Tab__label">${escapeHtml(t.title)}${t.preview ? " ◦" : ""}</span>
             <button class="vn-Tab__close" type="button" data-tab-close="${escapeHtml(id)}" aria-label="Close tab">×</button>

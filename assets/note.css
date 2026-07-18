@@ -4542,3 +4542,127 @@ html[data-theme="softadastra"] .vn-Editor textarea::selection {
 .vn-ExtensionEditorView {
   min-height: 100%;
 }
+
+
+/* ============================================================
+   EXTENSION PENDING STATE
+   ============================================================ */
+
+.vn-ExtensionActionSpinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  margin-right: 6px;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 999px;
+  animation: vn-extension-spin 780ms linear infinite;
+  vertical-align: -2px;
+}
+
+@keyframes vn-extension-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vn-ExtensionActionSpinner {
+    animation-duration: 1.8s;
+  }
+}
+
+.vn-ExtensionItem.is-pending {
+  position: relative;
+}
+
+.vn-ExtensionItem.is-pending .vn-ExtensionItem__main {
+  opacity: 0.84;
+}
+
+.vn-ExtensionItem__icon {
+  position: relative;
+}
+
+.vn-ExtensionItem__spinner {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--vn-border1);
+  border-radius: 999px;
+  background: var(--vn-color0);
+  color: var(--vn-brand1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.vn-ExtensionItem__spinner .vn-ExtensionActionSpinner {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.vn-ExtensionItem__pendingLabel {
+  color: var(--vn-brand0);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.vn-ExtensionItem__button:disabled,
+.vn-ExtensionShow__button:disabled {
+  cursor: progress;
+  opacity: 0.72;
+  transform: none;
+}
+
+.vn-ExtensionItem__button,
+.vn-ExtensionShow__button {
+  gap: 6px;
+}
+
+.vn-ExtensionItem__button--primary {
+  min-width: 86px;
+}
+
+.vn-ExtensionItem__status[data-state="installing"],
+.vn-ExtensionItem__status[data-state="updating"],
+.vn-ExtensionItem__status[data-state="uninstalling"],
+.vn-ExtensionItem__status[data-state="enabling"],
+.vn-ExtensionItem__status[data-state="disabling"],
+.vn-ExtensionItem__status[data-state="refreshing"],
+.vn-ExtensionShow__status[data-state="installing"],
+.vn-ExtensionShow__status[data-state="updating"],
+.vn-ExtensionShow__status[data-state="uninstalling"],
+.vn-ExtensionShow__status[data-state="enabling"],
+.vn-ExtensionShow__status[data-state="disabling"],
+.vn-ExtensionShow__status[data-state="refreshing"] {
+  border-color: color-mix(in srgb, var(--vn-brand1) 38%, var(--vn-border2));
+  background: color-mix(in srgb, var(--vn-brand1) 10%, var(--vn-color1));
+  color: var(--vn-brand0);
+}
+
+.vn-ExtensionShow.is-pending .vn-ExtensionShow__hero {
+  opacity: 0.94;
+}
+
+.vn-ExtensionShow__pending {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 16px;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--vn-brand1) 28%, var(--vn-border2));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vn-brand1) 7%, var(--vn-color1));
+  color: var(--vn-brand0);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.vn-Tab--extension.is-active {
+  background: var(--vn-color1);
+  color: var(--vn-text1);
+  box-shadow: inset 0 -2px 0 var(--vn-brand1);
+}
