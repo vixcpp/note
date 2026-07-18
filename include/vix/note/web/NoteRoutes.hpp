@@ -452,6 +452,8 @@ namespace vix::note
      */
     std::string project_context_json() const;
 
+    std::string extensions_json() const;
+
     /**
      * @brief Serializes one note cell into JSON.
      *

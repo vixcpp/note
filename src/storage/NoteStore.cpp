@@ -209,7 +209,7 @@ namespace vix::note
       }
 
       out += " kind=\"";
-      out += std::string(to_string(cell.kind()));
+      out += cell.type_id();
       out += "\"";
 
       if (!cell.title().empty())
@@ -379,28 +379,13 @@ namespace vix::note
       append_cell_separator(out);
       append_cell_metadata_comment(out, cell);
 
-      switch (cell.kind())
+      if (cell.type_id() == "markdown")
       {
-      case NoteCellKind::Markdown:
         out += cell.source();
-        break;
-
-      case NoteCellKind::Reply:
-        append_fenced_cell(out, "reply", cell.source());
-        break;
-
-      case NoteCellKind::Cpp:
-        append_fenced_cell(out, "cpp", cell.source());
-        break;
-
-      case NoteCellKind::Html:
-        append_fenced_cell(out, "html", cell.source());
-        break;
-
-      case NoteCellKind::Unknown:
-      default:
-        out += cell.source();
-        break;
+      }
+      else
+      {
+        append_fenced_cell(out, cell.type_id(), cell.source());
       }
     }
 

@@ -33,6 +33,7 @@ namespace vix::note
       std::string id;
       std::string title;
       NoteCellKind kind = NoteCellKind::Unknown;
+      std::string typeId;
     };
 
     std::string trim_copy(std::string_view value)
@@ -100,26 +101,9 @@ namespace vix::note
       return true;
     }
 
-    NoteCellKind language_to_cell_kind(std::string language)
+    std::string language_to_cell_type_id(std::string language)
     {
-      language = lower_copy(trim_copy(language));
-
-      if (language == "reply" || language == "repl")
-      {
-        return NoteCellKind::Reply;
-      }
-
-      if (language == "cpp" || language == "c++")
-      {
-        return NoteCellKind::Cpp;
-      }
-
-      if (language == "html")
-      {
-        return NoteCellKind::Html;
-      }
-
-      return NoteCellKind::Markdown;
+      return normalize_cell_type_id(lower_copy(trim_copy(language)));
     }
 
     std::string extract_quoted_attribute(
@@ -186,7 +170,8 @@ namespace vix::note
 
       if (!kind.empty())
       {
-        metadata.kind = note_cell_kind_from_string(kind);
+        metadata.typeId = normalize_cell_type_id(kind);
+        metadata.kind = builtin_kind_from_type_id(metadata.typeId);
       }
 
       return true;
@@ -301,6 +286,11 @@ namespace vix::note
         cell.set_title(pendingMetadata->title);
       }
 
+      if (!pendingMetadata->typeId.empty())
+      {
+        cell.set_type_id(pendingMetadata->typeId);
+      }
+
       pendingMetadata.reset();
     }
 
@@ -329,14 +319,14 @@ namespace vix::note
 
     void append_code_cell(
         NoteDocument &document,
-        NoteCellKind kind,
+        std::string typeId,
         std::string source,
         const NoteParseOptions &options,
         std::optional<CellMetadata> &pendingMetadata)
     {
       remove_final_newline(source);
 
-      NoteCell cell(kind, std::move(source));
+      NoteCell cell({}, std::move(typeId), std::move(source));
 
       apply_pending_metadata(cell, pendingMetadata);
       assign_id_if_needed(cell, options, document.cell_count() + 1);
@@ -377,7 +367,7 @@ namespace vix::note
     std::string fenceLanguage;
 
     bool inFence = false;
-    NoteCellKind fenceKind = NoteCellKind::Unknown;
+    std::string fenceTypeId;
     std::size_t fenceStartLine = 0;
     std::size_t lineNumber = 0;
 
@@ -417,7 +407,7 @@ namespace vix::note
 
         inFence = true;
         fenceLanguage = language;
-        fenceKind = language_to_cell_kind(language);
+        fenceTypeId = language_to_cell_type_id(language);
         fenceStartLine = lineNumber;
         codeBuffer.clear();
 
@@ -426,7 +416,7 @@ namespace vix::note
 
       if (inFence && is_fence_line(line, language))
       {
-        if (fenceKind == NoteCellKind::Markdown)
+        if (fenceTypeId.empty() || fenceTypeId == "markdown")
         {
           std::string fencedMarkdown;
 
@@ -442,7 +432,7 @@ namespace vix::note
         {
           append_code_cell(
               document,
-              fenceKind,
+              fenceTypeId,
               std::move(codeBuffer),
               options_,
               pendingMetadata);
@@ -452,7 +442,7 @@ namespace vix::note
 
         inFence = false;
         fenceLanguage.clear();
-        fenceKind = NoteCellKind::Unknown;
+        fenceTypeId.clear();
         fenceStartLine = 0;
 
         continue;

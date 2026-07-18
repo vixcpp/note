@@ -24,52 +24,52 @@ namespace vix::note
 {
   NoteOutput NoteOutput::text(std::string content)
   {
-    return {NoteOutputKind::Text, std::move(content)};
+    return {NoteOutputKind::Text, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::stdout_text(std::string content)
   {
-    return {NoteOutputKind::Stdout, std::move(content)};
+    return {NoteOutputKind::Stdout, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::stderr_text(std::string content)
   {
-    return {NoteOutputKind::Stderr, std::move(content)};
+    return {NoteOutputKind::Stderr, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::html(std::string content)
   {
-    return {NoteOutputKind::Html, std::move(content)};
+    return {NoteOutputKind::Html, std::move(content), "text/html", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::error(std::string content)
   {
-    return {NoteOutputKind::Error, std::move(content)};
+    return {NoteOutputKind::Error, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::compiler_error(std::string content)
   {
-    return {NoteOutputKind::CompilerError, std::move(content)};
+    return {NoteOutputKind::CompilerError, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::runtime_error(std::string content)
   {
-    return {NoteOutputKind::RuntimeError, std::move(content)};
+    return {NoteOutputKind::RuntimeError, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::debug(std::string content)
   {
-    return {NoteOutputKind::Debug, std::move(content)};
+    return {NoteOutputKind::Debug, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::hint(std::string content)
   {
-    return {NoteOutputKind::Hint, std::move(content)};
+    return {NoteOutputKind::Hint, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   NoteOutput NoteOutput::raw_log(std::string content)
   {
-    return {NoteOutputKind::RawLog, std::move(content)};
+    return {NoteOutputKind::RawLog, std::move(content), "text/plain", nlohmann::json::object()};
   }
 
   bool NoteOutput::empty() const noexcept

@@ -105,6 +105,11 @@ namespace vix::note
     return options_.projectContext;
   }
 
+  const NoteExtensionRegistry &NoteKernel::extension_registry() const noexcept
+  {
+    return options_.extensionRegistry ? *options_.extensionRegistry : defaultExtensionManager_.registry();
+  }
+
   void NoteKernel::set_project_context(ProjectContext context)
   {
     options_.projectContext = std::move(context);
@@ -148,7 +153,10 @@ namespace vix::note
 
   bool NoteKernel::can_execute_cell(std::size_t index) const noexcept
   {
-    return session_.can_execute_cell(index);
+    const NoteCell *cell = session_.cell_at(index);
+    const NoteExtensionRegistry *registry = options_.extensionRegistry ? options_.extensionRegistry : &defaultExtensionManager_.registry();
+    const NoteCellTypeDescriptor *cellType = cell == nullptr ? nullptr : registry->find_cell_type(cell->type_id());
+    return cellType != nullptr && cellType->executable;
   }
 
   bool NoteKernel::can_execute_cell(const std::string &id) const noexcept
@@ -179,32 +187,9 @@ namespace vix::note
           .add_error("cell index out of range");
     }
 
-    if (!cell->executable())
-    {
-      return NoteResult::skipped("cell is not executable");
-    }
+    NoteResult result = run_registered_cell(*cell);
 
-    NoteResult result;
-
-    switch (cell->kind())
-    {
-    case NoteCellKind::Reply:
-      result = run_reply_cell(*cell);
-      break;
-
-    case NoteCellKind::Cpp:
-      result = run_cpp_cell_internal(*cell);
-      break;
-
-    case NoteCellKind::Markdown:
-    case NoteCellKind::Html:
-    case NoteCellKind::Unknown:
-    default:
-      result = NoteResult::skipped("cell is not executable");
-      break;
-    }
-
-    if (cell->executable())
+    if (!result.was_skipped())
     {
       (void)session_.apply_result(index, result);
     }
@@ -241,7 +226,9 @@ namespace vix::note
         continue;
       }
 
-      if (!cell->executable())
+      const NoteExtensionRegistry *registry = options_.extensionRegistry ? options_.extensionRegistry : &defaultExtensionManager_.registry();
+      const NoteCellTypeDescriptor *cellType = registry->find_cell_type(cell->type_id());
+      if (cellType == nullptr || !cellType->executable)
       {
         if (options_.includeNonExecutableAsSkipped)
         {
@@ -292,7 +279,9 @@ namespace vix::note
     {
       const NoteCell *cell = session_.cell_at(i);
 
-      if (cell == nullptr || !cell->executable())
+      const NoteExtensionRegistry *registry = options_.extensionRegistry ? options_.extensionRegistry : &defaultExtensionManager_.registry();
+      const NoteCellTypeDescriptor *cellType = cell == nullptr ? nullptr : registry->find_cell_type(cell->type_id());
+      if (cell == nullptr || cellType == nullptr || !cellType->executable)
       {
         continue;
       }
@@ -356,10 +345,44 @@ namespace vix::note
     return cppRunner_.run_cell(cell);
   }
 
+  NoteResult NoteKernel::run_registered_cell(NoteCell &cell)
+  {
+    const NoteExtensionRegistry *registry = options_.extensionRegistry ? options_.extensionRegistry : &defaultExtensionManager_.registry();
+    const NoteCellTypeDescriptor *cellType = registry->find_cell_type(cell.type_id());
+    if (cellType == nullptr)
+    {
+      return NoteResult::failure("Cell type '" + cell.type_id() + "' is not available. Install a compatible Vix Note extension.", 1)
+          .add_error("Cell type '" + cell.type_id() + "' is not available. Install a compatible Vix Note extension.");
+    }
+    if (!cellType->executable)
+    {
+      return NoteResult::skipped("cell is not executable");
+    }
+    auto runner = registry->create_runner_for(cell.type_id());
+    if (!runner)
+    {
+      return NoteResult::failure("missing runner for cell type: " + cell.type_id(), 1)
+          .add_error("missing runner for cell type: " + cell.type_id());
+    }
+    NoteExecutionContext context;
+    context.documentId = document().id();
+    context.documentPath = document().path();
+    context.cellId = cell.id();
+    context.cellType = cell.type_id();
+    context.executionCount = cell.execution_count() + 1;
+    context.projectContext = options_.projectContext;
+    return runner->run(cell, context);
+  }
+
   void NoteKernel::sync_options()
   {
     options_.sessionOptions.stopOnFirstFailure = options_.stopOnFirstFailure;
     options_.cppOptions.projectContext = options_.projectContext;
+
+    if (options_.extensionRegistry == nullptr && defaultExtensionManager_.registry().list_cell_types().empty())
+    {
+      defaultExtensionManager_.register_builtins(options_.cppOptions, options_.replyOptions);
+    }
 
     session_.set_options(options_.sessionOptions);
     cppRunner_.set_options(options_.cppOptions);

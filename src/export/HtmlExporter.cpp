@@ -694,12 +694,12 @@ namespace vix::note
     out << "    <article id=\""
         << heading_id(index)
         << "\" class=\"vix-note-cell vix-note-cell--"
-        << cell_kind_class(cell.kind())
+        << (is_builtin_cell_type(cell.type_id()) ? cell_kind_class(cell.kind()) : std::string("custom"))
         << "\">\n";
 
     out << "      <div class=\"vix-note-cell__bar\">\n";
     out << "        <span>"
-        << cell_language_label(cell.kind())
+        << (is_builtin_cell_type(cell.type_id()) ? cell_language_label(cell.kind()) : cell.type_id())
         << " cell "
         << (index + 1)
         << "</span>\n";

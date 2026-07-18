@@ -17,6 +17,7 @@
 #include <vix/note/core/NoteCell.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -28,6 +29,7 @@ namespace vix::note
 
   NoteCell::NoteCell(NoteCellKind kind, std::string source)
       : kind_(kind),
+        typeId_(type_id_from_builtin_kind(kind)),
         source_(std::move(source))
   {
   }
@@ -35,8 +37,17 @@ namespace vix::note
   NoteCell::NoteCell(std::string id, NoteCellKind kind, std::string source)
       : id_(std::move(id)),
         kind_(kind),
+        typeId_(type_id_from_builtin_kind(kind)),
         source_(std::move(source))
   {
+  }
+
+  NoteCell::NoteCell(std::string id, std::string typeId, std::string source)
+      : id_(std::move(id)),
+        typeId_(normalize_cell_type_id(typeId)),
+        source_(std::move(source))
+  {
+    kind_ = builtin_kind_from_type_id(typeId_);
   }
 
   NoteCell NoteCell::markdown(std::string source)
@@ -69,6 +80,11 @@ namespace vix::note
     return kind_;
   }
 
+  const std::string &NoteCell::type_id() const noexcept
+  {
+    return typeId_;
+  }
+
   const std::string &NoteCell::source() const noexcept
   {
     return source_;
@@ -97,6 +113,13 @@ namespace vix::note
   void NoteCell::set_kind(NoteCellKind kind) noexcept
   {
     kind_ = kind;
+    typeId_ = type_id_from_builtin_kind(kind);
+  }
+
+  void NoteCell::set_type_id(std::string typeId)
+  {
+    typeId_ = normalize_cell_type_id(typeId);
+    kind_ = builtin_kind_from_type_id(typeId_);
   }
 
   void NoteCell::set_source(std::string source)
@@ -201,6 +224,44 @@ namespace vix::note
     }
 
     return NoteCellKind::Unknown;
+  }
+
+
+  std::string normalize_cell_type_id(std::string_view value)
+  {
+    std::string out(value);
+    while (!out.empty() && std::isspace(static_cast<unsigned char>(out.front())))
+      out.erase(out.begin());
+    while (!out.empty() && std::isspace(static_cast<unsigned char>(out.back())))
+      out.pop_back();
+    for (char &c : out)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (out == "md")
+      return "markdown";
+    if (out == "repl")
+      return "reply";
+    if (out == "c++")
+      return "cpp";
+    return out.empty() ? std::string("unknown") : out;
+  }
+
+  std::string type_id_from_builtin_kind(NoteCellKind kind)
+  {
+    return std::string(to_string(kind));
+  }
+
+  NoteCellKind builtin_kind_from_type_id(std::string_view value) noexcept
+  {
+    return note_cell_kind_from_string(value);
+  }
+
+  bool is_builtin_cell_type(std::string_view value) noexcept
+  {
+    const NoteCellKind kind = note_cell_kind_from_string(value);
+    return kind == NoteCellKind::Markdown ||
+           kind == NoteCellKind::Reply ||
+           kind == NoteCellKind::Cpp ||
+           kind == NoteCellKind::Html;
   }
 
   bool is_executable(NoteCellKind kind) noexcept

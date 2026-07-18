@@ -22,6 +22,7 @@
 #include <vix/note/core/NoteDocument.hpp>
 #include <vix/note/core/NoteResult.hpp>
 #include <vix/note/runtime/CppCellRunner.hpp>
+#include <vix/note/extensions/NoteExtensionRegistry.hpp>
 #include <vix/note/runtime/NoteSession.hpp>
 #include <vix/note/runtime/ReplyCellRunner.hpp>
 #include <vix/note/project/ProjectContext.hpp>
@@ -57,6 +58,8 @@ namespace vix::note
      * @brief Project context used for project-aware cell execution.
      */
     ProjectContext projectContext;
+
+    const NoteExtensionRegistry *extensionRegistry{nullptr};
 
     /**
      * @brief Stops run_all() after the first failed executable cell.
@@ -191,6 +194,8 @@ namespace vix::note
      * @return Project context.
      */
     const ProjectContext &project_context() const noexcept;
+
+    const NoteExtensionRegistry &extension_registry() const noexcept;
 
     /**
      * @brief Replaces the current project context.
@@ -338,6 +343,8 @@ namespace vix::note
      */
     NoteResult run_cpp_cell_internal(const NoteCell &cell);
 
+    NoteResult run_registered_cell(NoteCell &cell);
+
     /**
      * @brief Applies current options to internal runtime components.
      */
@@ -362,6 +369,8 @@ namespace vix::note
      * @brief Reply cell runner.
      */
     ReplyCellRunner replyRunner_;
+
+    NoteExtensionManager defaultExtensionManager_;
   };
 
   /**

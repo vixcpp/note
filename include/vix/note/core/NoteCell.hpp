@@ -27,6 +27,8 @@
 
 namespace vix::note
 {
+  using NoteCellTypeId = std::string;
+
   /**
    * @brief Type of content stored in a note cell.
    *
@@ -92,6 +94,8 @@ namespace vix::note
      */
     NoteCell(std::string id, NoteCellKind kind, std::string source);
 
+    NoteCell(std::string id, std::string typeId, std::string source);
+
     /**
      * @brief Creates a markdown cell.
      *
@@ -138,6 +142,8 @@ namespace vix::note
      */
     NoteCellKind kind() const noexcept;
 
+    const std::string &type_id() const noexcept;
+
     /**
      * @brief Returns the cell source content.
      *
@@ -181,6 +187,8 @@ namespace vix::note
      * @param kind New cell kind.
      */
     void set_kind(NoteCellKind kind) noexcept;
+
+    void set_type_id(std::string typeId);
 
     /**
      * @brief Changes the cell source content.
@@ -268,6 +276,11 @@ namespace vix::note
     NoteCellKind kind_{NoteCellKind::Unknown};
 
     /**
+     * @brief Text cell type id.
+     */
+    std::string typeId_{"unknown"};
+
+    /**
      * @brief Cell source content.
      */
     std::string source_;
@@ -303,6 +316,14 @@ namespace vix::note
    * @return Parsed cell kind, or Unknown when unsupported.
    */
   NoteCellKind note_cell_kind_from_string(std::string_view value) noexcept;
+
+  std::string normalize_cell_type_id(std::string_view value);
+
+  std::string type_id_from_builtin_kind(NoteCellKind kind);
+
+  NoteCellKind builtin_kind_from_type_id(std::string_view value) noexcept;
+
+  bool is_builtin_cell_type(std::string_view value) noexcept;
 
   /**
    * @brief Checks whether a cell kind can be executed.

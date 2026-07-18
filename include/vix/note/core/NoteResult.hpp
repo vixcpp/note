@@ -22,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 namespace vix::note
 {
@@ -120,6 +121,10 @@ namespace vix::note
      * @brief Output content.
      */
     std::string content;
+
+    std::string mime{"text/plain"};
+
+    nlohmann::json metadata = nlohmann::json::object();
 
     /**
      * @brief Creates a text output.

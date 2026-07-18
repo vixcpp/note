@@ -379,6 +379,27 @@ namespace vix::note
       return std::nullopt;
     }
 
+
+    std::string output_mime(NoteOutputKind kind)
+    {
+      switch (kind)
+      {
+      case NoteOutputKind::Html:
+        return "text/html";
+      case NoteOutputKind::Text:
+      case NoteOutputKind::Stdout:
+      case NoteOutputKind::Stderr:
+      case NoteOutputKind::Error:
+      case NoteOutputKind::CompilerError:
+      case NoteOutputKind::RuntimeError:
+      case NoteOutputKind::Debug:
+      case NoteOutputKind::Hint:
+      case NoteOutputKind::RawLog:
+      default:
+        return "text/plain";
+      }
+    }
+
     std::optional<std::string> parse_cell_run_path(std::string_view path)
     {
       constexpr std::string_view prefix = "/api/cells/";
@@ -461,27 +482,15 @@ namespace vix::note
       return std::string(raw);
     }
 
-    NoteCellKind json_cell_kind(
+    std::string json_cell_type_id(
         std::string_view body,
-        NoteCellKind fallback = NoteCellKind::Markdown)
+        std::string fallback = "markdown")
     {
-      const std::optional<std::string> kind =
-          json_string_field(body, "kind");
-
-      if (!kind)
-      {
-        return fallback;
-      }
-
-      const NoteCellKind parsed =
-          note_cell_kind_from_string(*kind);
-
-      if (parsed == NoteCellKind::Unknown)
-      {
-        return fallback;
-      }
-
-      return parsed;
+      const std::optional<std::string> type = json_string_field(body, "type");
+      if (type && !type->empty()) return normalize_cell_type_id(*type);
+      const std::optional<std::string> kind = json_string_field(body, "kind");
+      if (kind && !kind->empty()) return normalize_cell_type_id(*kind);
+      return normalize_cell_type_id(fallback);
     }
 
     std::string make_unique_cell_id(const NoteDocument &doc)
@@ -981,6 +990,12 @@ namespace vix::note
     // Document routes
     // ----------------------------------------------------------------
     if (request.method == NoteRouteMethod::Get &&
+        request.path == "/api/extensions")
+    {
+      return NoteRouteResponse::json(200, extensions_json());
+    }
+
+    if (request.method == NoteRouteMethod::Get &&
         request.path == "/api/document")
     {
       if (is_startup_scratch_document(kernel_.document()))
@@ -1170,13 +1185,13 @@ namespace vix::note
         return json_error(409, "cell id already exists");
       }
 
-      const NoteCellKind kind =
-          json_cell_kind(request.body, NoteCellKind::Cpp);
+      const std::string typeId =
+          json_cell_type_id(request.body, "cpp");
 
       const std::string source =
           json_string_field(request.body, "source").value_or(std::string{});
 
-      NoteCell cell(id, kind, source);
+      NoteCell cell(id, typeId, source);
 
       const std::optional<std::size_t> index =
           json_size_field(request.body, "index");
@@ -1226,14 +1241,23 @@ namespace vix::note
           return json_error(404, "cell not found");
         }
 
-        const NoteCellKind kind =
-            json_cell_kind(request.body, cell->kind());
+        const std::string typeId =
+            json_cell_type_id(request.body, cell->type_id());
 
         const std::string source =
             json_string_field(request.body, "source").value_or(cell->source());
 
         const bool updated =
-            doc.update_cell(*id, kind, source);
+            doc.update_cell(*id, builtin_kind_from_type_id(typeId), source);
+
+        if (updated)
+        {
+          NoteCell *updatedCell = doc.find_cell(*id);
+          if (updatedCell != nullptr)
+          {
+            updatedCell->set_type_id(typeId);
+          }
+        }
 
         return NoteRouteResponse::json(
             updated ? 200 : 404,
@@ -2155,20 +2179,80 @@ namespace vix::note
     return out.str();
   }
 
+
+  std::string NoteRoutes::extensions_json() const
+  {
+    std::ostringstream out;
+    const NoteExtensionRegistry &registry = kernel_.extension_registry();
+    const auto extensions = registry.list_extensions();
+    const auto cells = registry.list_cell_types();
+
+    auto sourceToString = [](NoteExtensionSource source) {
+      switch (source)
+      {
+      case NoteExtensionSource::Builtin: return std::string("builtin");
+      case NoteExtensionSource::Global: return std::string("global");
+      case NoteExtensionSource::Project: return std::string("project");
+      }
+      return std::string("unknown");
+    };
+
+    out << "{";
+    out << "\"extensions\":[";
+    for (std::size_t i = 0; i < extensions.size(); ++i)
+    {
+      const auto &ext = extensions[i];
+      if (i > 0) out << ",";
+      out << "{";
+      out << "\"id\":\"" << json_escape(ext.id) << "\",";
+      out << "\"version\":\"" << json_escape(ext.version) << "\",";
+      out << "\"source\":\"" << sourceToString(ext.source) << "\",";
+      out << "\"available\":" << (ext.available ? "true" : "false") << ",";
+      out << "\"capabilities\":[";
+      for (std::size_t c = 0; c < ext.capabilities.size(); ++c)
+      { if (c > 0) out << ","; out << "\"" << json_escape(ext.capabilities[c]) << "\""; }
+      out << "],\"cellTypes\":[";
+      for (std::size_t c = 0; c < ext.cellTypes.size(); ++c)
+      {
+        const auto &cell = ext.cellTypes[c];
+        if (c > 0) out << ",";
+        out << "{\"id\":\"" << json_escape(cell.id) << "\",\"label\":\"" << json_escape(cell.label) << "\",\"language\":\"" << json_escape(cell.language) << "\",\"executable\":" << (cell.executable ? "true" : "false") << "}";
+      }
+      out << "],\"diagnostics\":[";
+      for (std::size_t d = 0; d < ext.diagnostics.size(); ++d)
+      { if (d > 0) out << ","; out << "\"" << json_escape(ext.diagnostics[d]) << "\""; }
+      out << "]}";
+    }
+    out << "],\"cellTypes\":[";
+    for (std::size_t i = 0; i < cells.size(); ++i)
+    {
+      const auto &cell = cells[i];
+      if (i > 0) out << ",";
+      out << "{\"id\":\"" << json_escape(cell.id) << "\",\"label\":\"" << json_escape(cell.label) << "\",\"language\":\"" << json_escape(cell.language) << "\",\"builtin\":" << (cell.builtin ? "true" : "false") << ",\"executable\":" << (cell.executable ? "true" : "false");
+      if (!cell.extensionId.empty()) out << ",\"extension\":\"" << json_escape(cell.extensionId) << "\"";
+      out << "}";
+    }
+    out << "]}";
+    return out.str();
+  }
+
   std::string NoteRoutes::cell_json(
       const NoteCell &cell,
       std::size_t index) const
   {
     std::ostringstream out;
+    const NoteCellTypeDescriptor *cellType =
+        kernel_.extension_registry().find_cell_type(cell.type_id());
 
     out << "{";
     out << "\"index\":" << index << ",";
     out << "\"id\":\"" << json_escape(cell.id()) << "\",";
     out << "\"kind\":\"" << to_string(cell.kind()) << "\",";
+    out << "\"type\":\"" << json_escape(cell.type_id()) << "\",";
     out << "\"title\":\"" << json_escape(cell.title()) << "\",";
     out << "\"source\":\"" << json_escape(cell.source()) << "\",";
     out << "\"executionCount\":" << cell.execution_count() << ",";
-    out << "\"executable\":" << (cell.executable() ? "true" : "false") << ",";
+    out << "\"executable\":" << (cellType != nullptr && cellType->executable ? "true" : "false") << ",";
     out << "\"outputCount\":" << cell.outputs().size() << ",";
     out << "\"outputs\":" << outputs_json(cell.outputs());
     out << "}";
@@ -2182,7 +2266,9 @@ namespace vix::note
 
     out << "{";
     out << "\"kind\":\"" << to_string(output.kind) << "\",";
-    out << "\"content\":\"" << json_escape(output.content) << "\"";
+    out << "\"mime\":\"" << json_escape(output.mime.empty() ? output_mime(output.kind) : output.mime) << "\",";
+    out << "\"content\":\"" << json_escape(output.content) << "\",";
+    out << "\"data\":\"" << json_escape(output.content) << "\"";
     out << "}";
 
     return out.str();

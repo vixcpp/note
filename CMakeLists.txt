@@ -87,6 +87,8 @@ set(VIX_NOTE_SOURCES
   src/runtime/NoteSession.cpp
   src/runtime/NoteKernel.cpp
 
+  src/extensions/NoteExtensionRegistry.cpp
+
   src/web/NoteAssets.cpp
   src/web/NoteRoutes.cpp
   src/web/NoteServer.cpp
