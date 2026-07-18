@@ -20,11 +20,21 @@
       (() => {
         try {
           const key = "vix.note.theme";
-          const stored = localStorage.getItem(key) || localStorage.getItem("vix-note:theme:v1") || "system";
-          const theme = ["system", "light", "dark", "softadastra"].includes(stored) ? stored : "system";
-          const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const stored =
+            localStorage.getItem(key) ||
+            localStorage.getItem("vix-note:theme:v1") ||
+            "system";
+          const theme = ["system", "light", "dark", "softadastra"].includes(
+            stored,
+          )
+            ? stored
+            : "system";
+          const dark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
           document.documentElement.dataset.themeChoice = theme;
-          document.documentElement.dataset.theme = theme === "system" ? (dark ? "dark" : "light") : theme;
+          document.documentElement.dataset.theme =
+            theme === "system" ? (dark ? "dark" : "light") : theme;
         } catch (_) {
           document.documentElement.dataset.themeChoice = "system";
           document.documentElement.dataset.theme = "light";

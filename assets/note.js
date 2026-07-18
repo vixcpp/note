@@ -478,14 +478,18 @@
   }
 
   function normalizeTheme(value) {
-    const raw = String(value || "system").trim().toLowerCase();
+    const raw = String(value || "system")
+      .trim()
+      .toLowerCase();
     if (["system", "light", "dark", "softadastra"].includes(raw)) return raw;
     if (raw === "vix.light") return "light";
     if (raw === "vix.dark") return "dark";
     const external = Array.isArray(state.extensions.themes)
       ? state.extensions.themes
       : [];
-    if (external.some((theme) => String(theme?.id || "").toLowerCase() === raw)) {
+    if (
+      external.some((theme) => String(theme?.id || "").toLowerCase() === raw)
+    ) {
       return raw;
     }
     return "system";
@@ -534,7 +538,8 @@
     root.dataset.themeChoice = selected;
     root.dataset.theme = resolved;
     root.dataset.vnTheme = resolved;
-    root.style.colorScheme = resolved === "dark" || resolved === "softadastra" ? "dark" : "light";
+    root.style.colorScheme =
+      resolved === "dark" || resolved === "softadastra" ? "dark" : "light";
 
     clearThemeVariables(root);
     for (const [token, value] of Object.entries(theme.tokens || {})) {
@@ -572,7 +577,9 @@
     if (window.matchMedia) {
       systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
       systemThemeMedia.addEventListener?.("change", () => {
-        if (normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY)) === "system") {
+        if (
+          normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY)) === "system"
+        ) {
           applyTheme("system", { persist: false });
         }
       });
@@ -589,12 +596,14 @@
         "system",
     );
 
-    menu.innerHTML = normalizedThemes().map((theme) => {
-      const selected = normalizeTheme(theme.id) === active;
-      const source = theme.system || BUILTIN_THEMES.some((item) => item.id === theme.id)
-        ? "Built-in"
-        : "Extension";
-      return `
+    menu.innerHTML = normalizedThemes()
+      .map((theme) => {
+        const selected = normalizeTheme(theme.id) === active;
+        const source =
+          theme.system || BUILTIN_THEMES.some((item) => item.id === theme.id)
+            ? "Built-in"
+            : "Extension";
+        return `
         <button
           type="button"
           class="vn-ThemeMenu__item${selected ? " is-active" : ""}"
@@ -609,7 +618,8 @@
           </span>
         </button>
       `;
-    }).join("");
+      })
+      .join("");
   }
 
   function closeThemeMenu() {
@@ -628,7 +638,8 @@
     menu.hidden = !open;
     button.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
-      const active = $(".vn-ThemeMenu__item.is-active", menu) ||
+      const active =
+        $(".vn-ThemeMenu__item.is-active", menu) ||
         $(".vn-ThemeMenu__item", menu);
       active?.focus({ preventScroll: true });
     }
@@ -694,7 +705,8 @@
 
   function isExtensionActionPending(id, action = "") {
     const prefix = `${id}:`;
-    if (action) return state.extensionWorkbench.pendingActions.has(`${id}:${action}`);
+    if (action)
+      return state.extensionWorkbench.pendingActions.has(`${id}:${action}`);
     for (const key of state.extensionWorkbench.pendingActions) {
       if (key.startsWith(prefix)) return true;
     }
@@ -769,10 +781,16 @@
 
   function normalizeExtensionIcon(icon) {
     const value = String(icon || "").trim();
-    if (!value || /[\u0000-\u001f\u007f]/.test(value) || /javascript:/i.test(value)) {
+    if (
+      !value ||
+      /[\u0000-\u001f\u007f]/.test(value) ||
+      /javascript:/i.test(value)
+    ) {
       return "";
     }
-    if (/^data:image\/(svg\+xml|png|jpeg|webp)(;charset=[^,]+)?[,;]/i.test(value)) {
+    if (
+      /^data:image\/(svg\+xml|png|jpeg|webp)(;charset=[^,]+)?[,;]/i.test(value)
+    ) {
       if (/^data:image\/svg\+xml/i.test(value) && value.includes("#")) {
         return "";
       }
@@ -816,7 +834,6 @@
       <span class="vn-ExtensionIcon__fallback" ${src ? "hidden" : ""}>${escapeHtml(safeFallback)}</span>
     `;
   }
-
 
   function recommendedExtensions() {
     return uniqueExtensions(
@@ -895,7 +912,7 @@
         class="vn-ExtensionItem__button vn-ExtensionItem__button--primary"
         data-extension-action="install"
         data-extension-id="${escapeHtml(id)}"
-        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
+        ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
         ${pending ? "Working…" : "Install"}
       </button>
@@ -907,7 +924,7 @@
         class="vn-ExtensionItem__button"
         data-extension-action="${ext.enabled === false ? "enable" : "disable"}"
         data-extension-id="${escapeHtml(id)}"
-        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
+        ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
         ${pending ? "Working…" : ext.enabled === false ? "Enable" : "Disable"}
       </button>
@@ -917,7 +934,7 @@
         class="vn-ExtensionItem__button"
         data-extension-action="uninstall"
         data-extension-id="${escapeHtml(id)}"
-        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
+        ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
         ${pending ? "Working…" : "Uninstall"}
       </button>
@@ -1245,7 +1262,7 @@
         class="vn-ExtensionShow__button vn-ExtensionShow__button--primary"
         data-extension-action="install"
         data-extension-id="${escapeHtml(id)}"
-        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
+        ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
         ${pending ? "Working…" : "Install"}
       </button>
@@ -1257,7 +1274,7 @@
         class="vn-ExtensionShow__button vn-ExtensionShow__button--primary"
         data-extension-action="update"
         data-extension-id="${escapeHtml(id)}"
-        ${pending ? 'disabled aria-disabled=\"true\"' : ''}
+        ${pending ? 'disabled aria-disabled=\"true\"' : ""}
       >
         ${pending ? "Working…" : "Update"}
       </button>
@@ -1272,7 +1289,7 @@
           class="vn-ExtensionShow__button"
           data-extension-action="${ext.enabled === false ? "enable" : "disable"}"
           data-extension-id="${escapeHtml(id)}"
-          ${pending ? 'disabled aria-disabled=\"true\"' : ''}
+          ${pending ? 'disabled aria-disabled=\"true\"' : ""}
         >
           ${pending ? "Working…" : ext.enabled === false ? "Enable" : "Disable"}
         </button>
@@ -1282,7 +1299,7 @@
           class="vn-ExtensionShow__button vn-ExtensionShow__button--danger"
           data-extension-action="uninstall"
           data-extension-id="${escapeHtml(id)}"
-          ${pending ? 'disabled aria-disabled=\"true\"' : ''}
+          ${pending ? 'disabled aria-disabled=\"true\"' : ""}
         >
           ${pending ? "Working…" : "Uninstall"}
         </button>
@@ -1677,12 +1694,14 @@
       },
     };
 
-    return labels[action] || {
-      title: "Extension action",
-      confirm: "Continue",
-      pending: "Working…",
-      body: "Vix Note will update this extension.",
-    };
+    return (
+      labels[action] || {
+        title: "Extension action",
+        confirm: "Continue",
+        pending: "Working…",
+        body: "Vix Note will update this extension.",
+      }
+    );
   }
 
   function showExtensionActionModal(action, ext, id) {
@@ -1814,7 +1833,6 @@
       }
     }
   }
-
 
   function safeClass(value) {
     return String(value || "unknown")
@@ -4905,7 +4923,9 @@
     try {
       const payload = await api("/api/extensions");
       applyExtensionsPayload(payload);
-      applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "system", { persist: false });
+      applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "system", {
+        persist: false,
+      });
     } catch (error) {
       console.error("Failed to load Vix Note extensions", error);
       state.extensions = { ok: false, extensions: [], cellTypes: [] };
@@ -5398,7 +5418,10 @@
       )
         ? parsed.activePanel
         : "explorer";
-      if (parsed.extensionSections && typeof parsed.extensionSections === "object") {
+      if (
+        parsed.extensionSections &&
+        typeof parsed.extensionSections === "object"
+      ) {
         state.extensionWorkbench.sections = {
           ...state.extensionWorkbench.sections,
           ...parsed.extensionSections,
@@ -6089,7 +6112,6 @@
     }
     setPanel(normalized);
   }
-
 
   function revealActiveFile() {
     const path = normalizeExplorerPath(
@@ -8779,7 +8801,9 @@
 
     const statusProblems = $(sel.statusProblems);
     if (statusProblems) {
-      statusProblems.addEventListener("click", () => toggleActivityPanel("problems"));
+      statusProblems.addEventListener("click", () =>
+        toggleActivityPanel("problems"),
+      );
     }
 
     for (const c of $all("[data-modal-close]"))

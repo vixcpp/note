@@ -374,7 +374,6 @@ input {
   padding-right: 8px;
 }
 
-
 .vn-ThemeMenu {
   position: relative;
   display: inline-flex;
@@ -457,7 +456,6 @@ input {
   font-weight: 800;
   text-align: center;
 }
-
 
 .vn-ThemeMenu__label {
   display: grid;
@@ -4267,7 +4265,6 @@ input {
   }
 }
 
-
 .vn-ExtensionIcon {
   position: relative;
   overflow: hidden;
@@ -4349,4 +4346,84 @@ input {
   background: color-mix(in srgb, var(--vn-danger, #d92d20) 12%, transparent);
   color: var(--vn-danger, #d92d20);
 }
+/* ============================================================
+   DARK EDITOR SYNTAX — readable code colors
+   ============================================================ */
 
+/* Standard dark theme */
+html[data-theme="dark"] {
+  --vn-kw: #c586c0;
+  --vn-type: #4ec9b0;
+  --vn-str: #ce9178;
+  --vn-com: #7ca668;
+  --vn-num: #b5cea8;
+  --vn-pre: #d16d9e;
+  --vn-fn: #dcdcaa;
+  --vn-punct: #d4d4d4;
+}
+
+/* Softadastra dark theme */
+html[data-theme="softadastra"] {
+  --vn-kw: #ff8a3d;
+  --vn-type: #67e8f9;
+  --vn-str: #fca5a5;
+  --vn-com: #86a789;
+  --vn-num: #a7f3d0;
+  --vn-pre: #e879f9;
+  --vn-fn: #fde68a;
+  --vn-punct: #e5e7eb;
+}
+
+/* The textarea is transparent because syntax is rendered below it.
+   Keep the caret visible in every dark theme. */
+html[data-theme="dark"] .vn-Editor textarea,
+html[data-theme="softadastra"] .vn-Editor textarea {
+  caret-color: var(--vn-text0);
+}
+
+/* Plain editors do not use the syntax-highlight layer. */
+html[data-theme="dark"] .vn-Editor--plain textarea,
+html[data-theme="softadastra"] .vn-Editor--plain textarea {
+  color: var(--vn-content1);
+  caret-color: var(--vn-text0);
+}
+
+/* Ensure unclassified source text stays readable. */
+html[data-theme="dark"] .vn-Editor__highlight,
+html[data-theme="softadastra"] .vn-Editor__highlight {
+  color: var(--vn-punct);
+}
+
+/* More visible active line without hiding code. */
+html[data-theme="dark"] .vn-Editor__lineFocus,
+html[data-theme="softadastra"] .vn-Editor__lineFocus {
+  background: rgba(255, 255, 255, 0.025);
+  border-left-color: var(--vn-brand1);
+}
+
+/* Output streams must also remain readable. */
+html[data-theme="dark"] .vn-Output--stdout,
+html[data-theme="softadastra"] .vn-Output--stdout {
+  color: var(--vn-content1);
+}
+
+html[data-theme="dark"] .vn-Output--stderr,
+html[data-theme="softadastra"] .vn-Output--stderr {
+  color: #fca5a5;
+}
+
+/* Keep selected source readable while editing. */
+html[data-theme="dark"] .vn-Cell.is-editing .vn-Editor,
+html[data-theme="softadastra"] .vn-Cell.is-editing .vn-Editor {
+  color: var(--vn-content1);
+}
+
+/* Selection must remain visible through the transparent textarea. */
+html[data-theme="dark"] .vn-Editor textarea::selection,
+html[data-theme="softadastra"] .vn-Editor textarea::selection {
+  background: rgba(96, 165, 250, 0.35);
+}
+
+html[data-theme="softadastra"] .vn-Editor textarea::selection {
+  background: rgba(249, 115, 22, 0.38);
+}
