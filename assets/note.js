@@ -95,8 +95,9 @@
       expandedDirs: new Set(["."]),
       draft: null,
     },
-    tabs: [], // [{ path, title, dirty, preview, lastSavedSnapshot, lastModifiedAt }]
+    tabs: [], // [{ kind, path, extensionId, title, dirty, preview, icon }]
     activeTabPath: null,
+    activeEditorTabId: null,
     closedTabs: [],
 
     diagnostics: {
@@ -1334,6 +1335,11 @@
     if (!root || !ext) return;
 
     const id = extensionIdentifier(ext);
+    const tabId = extensionTabId(id);
+    if (state.activeEditorTabId !== tabId) {
+      state.activeEditorTabId = tabId;
+    }
+    setExtensionEditorActive(true);
     const name = ext.name || id.split("/").pop() || id;
     const status = extensionStatus(ext);
     const runtime = ext.runtime || {};
@@ -1509,7 +1515,7 @@
 
     root.innerHTML = `
     <section
-      class="vn-ExtensionShow"
+      class="vn-ExtensionShow vn-ExtensionEditorView"
       aria-label="${escapeHtml(name)} extension details"
     >
       <header class="vn-ExtensionShow__hero">
@@ -3216,6 +3222,8 @@
     state.editing = false;
     state.kernel = "idle";
     state.activeTabPath = null;
+    state.activeEditorTabId = null;
+    setExtensionEditorActive(false);
 
     setText(sel.cellCount, "0");
     setText(sel.execCount, "0");
@@ -3364,6 +3372,10 @@
       return;
     }
     state.document = doc;
+    setExtensionEditorActive(false);
+    if (doc.path && !isVirtualUnsavedDocument(doc)) {
+      state.activeEditorTabId = documentTabId(doc.path);
+    }
 
     const title = documentDisplayTitle(doc);
     const count = Number(doc.cellCount || (doc.cells ? doc.cells.length : 0));
@@ -5715,13 +5727,16 @@
       SESSION_STATE_KEY,
       JSON.stringify({
         version: 2,
-        tabs: state.tabs.map((tab) => ({
-          path: normalizeExplorerPath(tab.path),
-          title: tab.title || baseName(tab.path),
-          dirty: !!tab.dirty,
-          preview: !!tab.preview,
-          lastModifiedAt: tab.lastModifiedAt || 0,
-        })),
+        tabs: state.tabs
+          .filter((tab) => isDocumentTab(tab))
+          .map((tab) => ({
+            kind: "document",
+            path: normalizeExplorerPath(tab.path),
+            title: tab.title || baseName(tab.path),
+            dirty: !!tab.dirty,
+            preview: !!tab.preview,
+            lastModifiedAt: tab.lastModifiedAt || 0,
+          })),
         activeTabPath: state.activeTabPath
           ? normalizeExplorerPath(state.activeTabPath)
           : null,
@@ -5741,6 +5756,7 @@
         state.tabs = parsed.tabs
           .filter((t) => t && t.path)
           .map((t) => ({
+            kind: "document",
             path: normalizeExplorerPath(t.path),
             title: t.title || baseName(t.path),
             dirty: !!t.dirty,
@@ -5750,6 +5766,7 @@
         state.activeTabPath = parsed.activeTabPath
           ? normalizeExplorerPath(parsed.activeTabPath)
           : state.tabs[0]?.path || null;
+        state.activeEditorTabId = state.activeTabPath ? documentTabId(state.activeTabPath) : null;
       }
       state.closedTabs = Array.isArray(parsed.closedTabs)
         ? parsed.closedTabs.slice(0, MAX_CLOSED_TABS)
@@ -5765,11 +5782,14 @@
     try {
       const payload = {
         activeTabPath: state.activeTabPath,
-        tabs: state.tabs.map((tab) => ({
-          path: tab.path,
-          title: tab.title || baseName(tab.path),
-          dirty: false,
-        })),
+        tabs: state.tabs
+          .filter((tab) => isDocumentTab(tab))
+          .map((tab) => ({
+            kind: "document",
+            path: tab.path,
+            title: tab.title || baseName(tab.path),
+            dirty: false,
+          })),
       };
       localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(payload));
       persistSession();
@@ -5786,6 +5806,7 @@
       state.tabs = tabs
         .filter((tab) => tab && tab.path)
         .map((tab) => ({
+          kind: "document",
           path: normalizeExplorerPath(tab.path),
           title: tab.title || baseName(tab.path),
           dirty: false,
@@ -5801,10 +5822,12 @@
             ? state.tabs[0].path
             : null;
 
+      state.activeEditorTabId = state.activeTabPath ? documentTabId(state.activeTabPath) : null;
       return true;
     } catch (_) {
       state.tabs = [];
       state.activeTabPath = null;
+      state.activeEditorTabId = null;
       return false;
     }
   }
@@ -5818,11 +5841,42 @@
     } catch (_) {}
   }
 
+
+  function documentTabId(path) {
+    return `document:${normalizeExplorerPath(path || "")}`;
+  }
+
+  function extensionTabId(extensionId) {
+    return `extension:${String(extensionId || "")}`;
+  }
+
+  function isExtensionTab(tab) {
+    return !!tab && tab.kind === "extension";
+  }
+
+  function isDocumentTab(tab) {
+    return !!tab && (!tab.kind || tab.kind === "document");
+  }
+
+  function editorTabId(tab) {
+    if (!tab) return "";
+    return isExtensionTab(tab) ? extensionTabId(tab.extensionId) : documentTabId(tab.path);
+  }
+
+  function setExtensionEditorActive(active) {
+    if (app) app.classList.toggle("is-extension-tab-active", !!active);
+  }
+
   /* ==========================================================
    * Tabs
    * ======================================================== */
   function activeTab() {
-    return state.tabs.find((t) => t.path === state.activeTabPath) || null;
+    const wanted = state.activeEditorTabId || (state.activeTabPath ? documentTabId(state.activeTabPath) : "");
+    return state.tabs.find((t) => editorTabId(t) === wanted) || null;
+  }
+
+  function activeDocumentTab() {
+    return state.tabs.find((t) => isDocumentTab(t) && t.path === state.activeTabPath) || null;
   }
 
   function openTab(path, title, options = {}) {
@@ -5834,7 +5888,7 @@
     );
 
     if (!tab && preview) {
-      const existingPreview = state.tabs.find((t) => t.preview && !t.dirty);
+      const existingPreview = state.tabs.find((t) => isDocumentTab(t) && t.preview && !t.dirty);
       if (existingPreview) {
         existingPreview.path = normalized;
         existingPreview.title = title || baseName(normalized);
@@ -5846,6 +5900,7 @@
 
     if (!tab) {
       tab = {
+        kind: "document",
         path: normalized,
         title: title || baseName(normalized),
         dirty: false,
@@ -5860,6 +5915,8 @@
       else if (preview) tab.preview = true;
     }
     state.activeTabPath = normalized;
+    state.activeEditorTabId = documentTabId(normalized);
+    setExtensionEditorActive(false);
     persistTabs();
     renderOpenTabs();
     renderTabsBar();
@@ -5871,34 +5928,95 @@
     if (state.activeTabPath !== doc.path) {
       openTab(doc.path, title);
     } else {
-      const tab = activeTab();
+      const tab = activeDocumentTab();
       if (tab) tab.title = title;
     }
   }
 
-  async function switchTab(path) {
-    if (!path || path === state.activeTabPath) return;
-    if (isDirty()) {
+  async function openExtensionTab(extensionIdOrExtension) {
+    const input = typeof extensionIdOrExtension === "string"
+      ? extensionIdOrExtension
+      : extensionIdentifier(extensionIdOrExtension);
+    const id = input || "";
+    if (!id) return;
+    const ext = findExtensionById(id);
+    if (!ext) {
+      showNotification({ type: "warning", message: "Extension details are unavailable" });
+      return;
+    }
+    const tabId = extensionTabId(id);
+    let tab = state.tabs.find((t) => editorTabId(t) === tabId);
+    const title = ext.name || id.split("/").pop() || id;
+    if (!tab) {
+      tab = {
+        kind: "extension",
+        extensionId: id,
+        title,
+        icon: extensionIconSource(ext),
+        dirty: false,
+      };
+      state.tabs.push(tab);
+    } else {
+      tab.title = title;
+      tab.icon = extensionIconSource(ext);
+    }
+    state.activeEditorTabId = tabId;
+    state.extensionWorkbench.selectedId = id;
+    setExtensionEditorActive(true);
+    persistTabs();
+    renderTabsBar();
+    renderExtensionsPanel();
+    renderExtensionDetailMain(ext);
+  }
+
+  async function switchTab(tabRef) {
+    if (!tabRef) return;
+    const found = state.tabs.find((t) => editorTabId(t) === tabRef) ||
+      state.tabs.find((t) => isDocumentTab(t) && normalizeExplorerPath(t.path) === normalizeExplorerPath(tabRef));
+    if (!found) return;
+    const nextId = editorTabId(found);
+    if (nextId === state.activeEditorTabId) return;
+
+    if (isExtensionTab(found)) {
+      state.activeEditorTabId = nextId;
+      state.extensionWorkbench.selectedId = found.extensionId;
+      setExtensionEditorActive(true);
+      persistTabs();
+      renderTabsBar();
+      renderExtensionsPanel();
+      renderExtensionDetailMain(findExtensionById(found.extensionId));
+      return;
+    }
+
+    const path = found.path;
+    if (path === state.activeTabPath && state.activeEditorTabId === nextId) return;
+    const current = activeTab();
+    if (current && isDocumentTab(current) && isDirty()) {
       const proceed = await showModalConfirm({
         title: "Unsaved changes",
-        body: `“${escapeHtml(activeTab().title)}” has unsaved changes. Switch anyway? Your unsaved edits in the editor may be replaced.`,
+        body: `“${escapeHtml(current.title)}” has unsaved changes. Switch anyway? Your unsaved edits in the editor may be replaced.`,
         confirm: "Switch tab",
         danger: true,
       });
       if (!proceed) return;
     }
     state.activeTabPath = path;
+    state.activeEditorTabId = nextId;
+    setExtensionEditorActive(false);
     persistTabs();
     await openNotePath(path);
   }
 
-  async function closeTab(path) {
-    const normalized = normalizeExplorerPath(path);
-    const idx = state.tabs.findIndex((t) => t.path === normalized);
+  async function closeTab(tabRef) {
+    const foundIndex = state.tabs.findIndex((t) => editorTabId(t) === tabRef) >= 0
+      ? state.tabs.findIndex((t) => editorTabId(t) === tabRef)
+      : state.tabs.findIndex((t) => isDocumentTab(t) && normalizeExplorerPath(t.path) === normalizeExplorerPath(tabRef));
+    const idx = foundIndex;
     if (idx < 0) return;
 
     const tab = state.tabs[idx];
-    if (tab.dirty) {
+    const id = editorTabId(tab);
+    if (isDocumentTab(tab) && tab.dirty) {
       const proceed = await showModalConfirm({
         title: "Close tab",
         body: `“${escapeHtml(tab.title)}” has unsaved changes. Close without saving?`,
@@ -5909,21 +6027,23 @@
     }
 
     state.tabs.splice(idx, 1);
-    state.closedTabs.unshift({
-      path: tab.path,
-      title: tab.title || baseName(tab.path),
-    });
-    state.closedTabs = state.closedTabs.slice(0, MAX_CLOSED_TABS);
+    if (isDocumentTab(tab)) {
+      state.closedTabs.unshift({
+        path: tab.path,
+        title: tab.title || baseName(tab.path),
+      });
+      state.closedTabs = state.closedTabs.slice(0, MAX_CLOSED_TABS);
+    }
 
-    if (state.activeTabPath === normalized) {
+    if (state.activeEditorTabId === id || (!state.activeEditorTabId && isDocumentTab(tab) && state.activeTabPath === tab.path)) {
       const next = state.tabs[idx] || state.tabs[idx - 1] || null;
       if (next) {
-        state.activeTabPath = next.path;
-        persistTabs();
-        await openNotePath(next.path);
+        await switchTab(editorTabId(next));
       } else {
+        state.activeEditorTabId = null;
         state.activeTabPath = null;
         clearPersistedTabs();
+        setExtensionEditorActive(false);
         clearEditorNoOpenNote();
         return;
       }
@@ -5938,28 +6058,30 @@
   // Reorder tabs without touching disk. position is "before" | "after".
   async function closeActiveTab() {
     const tab = activeTab();
-    if (tab) await closeTab(tab.path);
+    if (tab) await closeTab(editorTabId(tab));
   }
 
-  async function closeOtherTabs(path) {
-    const keep = normalizeExplorerPath(path);
+  async function closeOtherTabs(tabRef) {
+    const keepTab = state.tabs.find((tab) => editorTabId(tab) === tabRef) ||
+      state.tabs.find((tab) => isDocumentTab(tab) && normalizeExplorerPath(tab.path) === normalizeExplorerPath(tabRef));
+    if (!keepTab) return;
+    const keep = editorTabId(keepTab);
     for (const tab of [...state.tabs]) {
-      if (normalizeExplorerPath(tab.path) !== keep) await closeTab(tab.path);
+      if (editorTabId(tab) !== keep) await closeTab(editorTabId(tab));
     }
   }
 
-  async function closeTabsToRight(path) {
-    const normalized = normalizeExplorerPath(path);
-    const index = state.tabs.findIndex(
-      (tab) => normalizeExplorerPath(tab.path) === normalized,
-    );
+  async function closeTabsToRight(tabRef) {
+    const index = state.tabs.findIndex((tab) => editorTabId(tab) === tabRef) >= 0
+      ? state.tabs.findIndex((tab) => editorTabId(tab) === tabRef)
+      : state.tabs.findIndex((tab) => isDocumentTab(tab) && normalizeExplorerPath(tab.path) === normalizeExplorerPath(tabRef));
     if (index < 0) return;
     for (const tab of [...state.tabs.slice(index + 1)])
-      await closeTab(tab.path);
+      await closeTab(editorTabId(tab));
   }
 
   async function closeAllTabs() {
-    for (const tab of [...state.tabs]) await closeTab(tab.path);
+    for (const tab of [...state.tabs]) await closeTab(editorTabId(tab));
   }
 
   async function reopenClosedTab() {
@@ -5974,38 +6096,27 @@
 
   async function activateRelativeTab(delta) {
     if (!state.tabs.length) return;
-    const current = state.tabs.findIndex(
-      (tab) =>
-        normalizeExplorerPath(tab.path) ===
-        normalizeExplorerPath(state.activeTabPath),
-    );
+    const activeId = state.activeEditorTabId || (state.activeTabPath ? documentTabId(state.activeTabPath) : "");
+    const current = state.tabs.findIndex((tab) => editorTabId(tab) === activeId);
     const next = (current + delta + state.tabs.length) % state.tabs.length;
-    await switchTab(state.tabs[next].path);
+    await switchTab(editorTabId(state.tabs[next]));
   }
 
   async function activateTabByIndex(index) {
     const tab = state.tabs[index];
-    if (tab) await switchTab(tab.path);
+    if (tab) await switchTab(editorTabId(tab));
   }
 
-  function reorderTabs(sourcePath, targetPath, position) {
-    const src = normalizeExplorerPath(sourcePath);
-    const tgt = normalizeExplorerPath(targetPath);
-    if (src === tgt) return;
+  function reorderTabs(sourceRef, targetRef, position) {
+    if (sourceRef === targetRef) return;
 
-    const fromIndex = state.tabs.findIndex(
-      (t) => normalizeExplorerPath(t.path) === src,
-    );
+    const fromIndex = state.tabs.findIndex((t) => editorTabId(t) === sourceRef);
     if (fromIndex < 0) return;
 
-    // Pull the source tab out (keeps its dirty state, since it's the object).
     const [moved] = state.tabs.splice(fromIndex, 1);
 
-    let targetIndex = state.tabs.findIndex(
-      (t) => normalizeExplorerPath(t.path) === tgt,
-    );
+    let targetIndex = state.tabs.findIndex((t) => editorTabId(t) === targetRef);
     if (targetIndex < 0) {
-      // Target vanished; put it back where it was.
       state.tabs.splice(fromIndex, 0, moved);
       return;
     }
@@ -6028,18 +6139,29 @@
     if (!bar) return;
     if (!state.tabs.length) {
       bar.setAttribute("role", "tablist");
-      bar.innerHTML = `<div class="vn-TabsBar__empty">No open notes</div>`;
+      bar.innerHTML = `<div class="vn-TabsBar__empty">No open editors</div>`;
       return;
     }
     bar.setAttribute("role", "tablist");
+    const activeId = state.activeEditorTabId || (state.activeTabPath ? documentTabId(state.activeTabPath) : "");
     bar.innerHTML = state.tabs
       .map((t) => {
-        const active = t.path === state.activeTabPath ? " is-active" : "";
+        const id = editorTabId(t);
+        const active = id === activeId ? " is-active" : "";
         const preview = t.preview ? " is-preview" : "";
-        return `<div class="vn-Tab${active}${preview}" role="tab" aria-selected="${t.path === state.activeTabPath ? "true" : "false"}" aria-label="${escapeHtml(t.title)}${t.dirty ? " unsaved" : ""}" data-tab-path="${escapeHtml(t.path)}" title="${escapeHtml(t.path)}" draggable="true" tabindex="0">
+        if (isExtensionTab(t)) {
+          const ext = findExtensionById(t.extensionId) || t;
+          const label = t.title || t.extensionId.split("/").pop() || t.extensionId;
+          return `<div class="vn-Tab vn-Tab--extension${active}" role="tab" aria-selected="${id === activeId ? "true" : "false"}" aria-label="Extension ${escapeHtml(label)}" data-tab-id="${escapeHtml(id)}" data-tab-kind="extension" title="${escapeHtml(t.extensionId)}" draggable="true" tabindex="0">
+              <span class="vn-Tab__extensionIcon vn-ExtensionIcon" aria-hidden="true">${extensionIconHtml(ext, label)}</span>
+              <span class="vn-Tab__label">${escapeHtml(label)}</span>
+              <button class="vn-Tab__close" type="button" data-tab-close="${escapeHtml(id)}" aria-label="Close tab">×</button>
+            </div>`;
+        }
+        return `<div class="vn-Tab${active}${preview}" role="tab" aria-selected="${id === activeId ? "true" : "false"}" aria-label="${escapeHtml(t.title)}${t.dirty ? " unsaved" : ""}" data-tab-id="${escapeHtml(id)}" data-tab-kind="document" data-tab-path="${escapeHtml(t.path)}" title="${escapeHtml(t.path)}" draggable="true" tabindex="0">
             ${tabDot(t)}
             <span class="vn-Tab__label">${escapeHtml(t.title)}${t.preview ? " ◦" : ""}</span>
-            <button class="vn-Tab__close" type="button" data-tab-close="${escapeHtml(t.path)}" aria-label="Close tab">×</button>
+            <button class="vn-Tab__close" type="button" data-tab-close="${escapeHtml(id)}" aria-label="Close tab">×</button>
           </div>`;
       })
       .join("");
@@ -7975,10 +8097,7 @@
         event.preventDefault();
         state.extensionWorkbench.selectedId =
           extensionDetails.dataset.extensionDetails || "";
-        renderExtensionsPanel();
-        renderExtensionDetailMain(
-          findExtensionById(state.extensionWorkbench.selectedId),
-        );
+        openExtensionTab(state.extensionWorkbench.selectedId);
         return;
       }
 
@@ -8481,20 +8600,18 @@
 
     tabsBar.addEventListener("auxclick", (e) => {
       if (e.button !== 1) return;
-      const tab = e.target.closest("[data-tab-path]");
+      const tab = e.target.closest("[data-tab-id]");
       if (tab) {
         e.preventDefault();
-        closeTab(tab.getAttribute("data-tab-path"));
+        closeTab(tab.getAttribute("data-tab-id"));
       }
     });
 
     tabsBar.addEventListener("dblclick", (e) => {
-      const tab = e.target.closest("[data-tab-path]");
+      const tab = e.target.closest("[data-tab-id]");
       if (!tab) return;
-      const path = normalizeExplorerPath(tab.getAttribute("data-tab-path"));
-      const found = state.tabs.find(
-        (t) => normalizeExplorerPath(t.path) === path,
-      );
+      const id = tab.getAttribute("data-tab-id");
+      const found = state.tabs.find((t) => editorTabId(t) === id);
       if (found) {
         found.preview = false;
         persistTabs();
@@ -8503,20 +8620,25 @@
     });
 
     tabsBar.addEventListener("contextmenu", (e) => {
-      const tab = e.target.closest("[data-tab-path]");
+      const tab = e.target.closest("[data-tab-id]");
       if (!tab) return;
       e.preventDefault();
-      const path = normalizeExplorerPath(tab.getAttribute("data-tab-path"));
-      switchTab(path);
-      openContextMenu(tabContextItems(path), { x: e.clientX, y: e.clientY });
+      const id = tab.getAttribute("data-tab-id");
+      const found = state.tabs.find((t) => editorTabId(t) === id);
+      switchTab(id);
+      if (found && isExtensionTab(found)) {
+        openContextMenu([{ label: "Close", run: () => closeTab(id) }], { x: e.clientX, y: e.clientY });
+      } else if (found) {
+        openContextMenu(tabContextItems(found.path), { x: e.clientX, y: e.clientY });
+      }
     });
 
     tabsBar.addEventListener("keydown", (e) => {
-      const tab = e.target.closest("[data-tab-path]");
+      const tab = e.target.closest("[data-tab-id]");
       if (!tab) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        switchTab(tab.getAttribute("data-tab-path"));
+        switchTab(tab.getAttribute("data-tab-id"));
       }
     });
 
@@ -8527,17 +8649,15 @@
         closeTab(close.getAttribute("data-tab-close"));
         return;
       }
-      const tab = e.target.closest("[data-tab-path]");
-      if (tab) switchTab(tab.getAttribute("data-tab-path"));
+      const tab = e.target.closest("[data-tab-id]");
+      if (tab) switchTab(tab.getAttribute("data-tab-id"));
     });
 
     tabsBar.addEventListener("dragstart", (e) => {
-      const tab = e.target.closest("[data-tab-path]");
+      const tab = e.target.closest("[data-tab-id]");
       if (!tab) return;
-      const path = normalizeExplorerPath(tab.getAttribute("data-tab-path"));
-      const fromIndex = state.tabs.findIndex(
-        (t) => normalizeExplorerPath(t.path) === path,
-      );
+      const path = tab.getAttribute("data-tab-id");
+      const fromIndex = state.tabs.findIndex((t) => editorTabId(t) === path);
       state.drag.explorer = null;
       state.drag.tab = { path, fromIndex };
       tab.classList.add("is-dragging");
@@ -8552,9 +8672,9 @@
     tabsBar.addEventListener("dragover", (e) => {
       const drag = state.drag.tab;
       if (!drag) return;
-      const tab = e.target.closest("[data-tab-path]");
+      const tab = e.target.closest("[data-tab-id]");
       if (!tab) return;
-      const path = normalizeExplorerPath(tab.getAttribute("data-tab-path"));
+      const path = tab.getAttribute("data-tab-id");
       if (path === drag.path) {
         clearTabDropMarkers();
         return;
@@ -8570,21 +8690,19 @@
     });
 
     tabsBar.addEventListener("dragleave", (e) => {
-      const tab = e.target.closest("[data-tab-path]");
+      const tab = e.target.closest("[data-tab-id]");
       if (tab) tab.classList.remove("is-drop-before", "is-drop-after");
     });
 
     tabsBar.addEventListener("drop", (e) => {
       const drag = state.drag.tab;
       if (!drag) return;
-      const tab = e.target.closest("[data-tab-path]");
+      const tab = e.target.closest("[data-tab-id]");
       if (!tab) {
         clearTabDropMarkers();
         return;
       }
-      const targetPath = normalizeExplorerPath(
-        tab.getAttribute("data-tab-path"),
-      );
+      const targetPath = tab.getAttribute("data-tab-id");
       if (targetPath === drag.path) {
         clearTabDropMarkers();
         return;

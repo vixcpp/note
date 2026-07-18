@@ -137,6 +137,17 @@ int main()
     assert(js.find("fill=%22#") == std::string::npos);
     assert(js.find("stroke=%22#") == std::string::npos);
     assert(js.find("VIX_LOGO_SVG") != std::string::npos);
+    assert(js.find("function extensionTabId") != std::string::npos);
+    assert(js.find("async function openExtensionTab") != std::string::npos);
+    assert(js.find("data-tab-id") != std::string::npos);
+    assert(js.find("data-tab-kind=\"extension\"") != std::string::npos);
+    assert(js.find("vn-Tab--extension") != std::string::npos);
+    assert(js.find("is-extension-tab-active") != std::string::npos);
+    const auto openExtensionTabPos = js.find("async function openExtensionTab");
+    const auto switchTabPos = js.find("async function switchTab");
+    assert(openExtensionTabPos != std::string::npos);
+    assert(switchTabPos != std::string::npos);
+    assert(js.substr(openExtensionTabPos, switchTabPos - openExtensionTabPos).find("openNotePath") == std::string::npos);
   }
 
   const auto validRoot = make_test_root("valid");

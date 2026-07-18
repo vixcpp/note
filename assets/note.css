@@ -4515,3 +4515,30 @@ html[data-theme="softadastra"] .vn-Editor textarea::selection {
   color: var(--vn-text0);
   font-size: 11px;
 }
+
+
+.vn-Tab--extension {
+  gap: 7px;
+}
+
+.vn-Tab__extensionIcon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 4px;
+  font-size: 9px;
+}
+
+.vn-Tab__extensionIcon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.vn.is-extension-tab-active .vn-Toolbar {
+  display: none;
+}
+
+.vn-ExtensionEditorView {
+  min-height: 100%;
+}

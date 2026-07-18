@@ -1105,6 +1105,7 @@ int main()
         "  \"name\": \"pyrelune\",\n"
         "  \"version\": \"0.1.1\",\n"
         "  \"type\": \"executable\",\n"
+        "  \"repo\": {\"url\": \"https://github.com/softadastra/pyrelune\"},\n"
         "  \"description\": \"Python cells for Vix Note.\",\n"
         "  \"featured\": true,\n"
         "  \"verified\": true,\n"
@@ -1112,11 +1113,12 @@ int main()
         "    \"note\": {\n"
         "      \"api\": \"1\",\n"
         "      \"capabilities\": [\"execute\", \"stdout\"],\n"
+        "      \"icon\": \"assets/icon.svg\",\n"
         "      \"cellTypes\": [{\"id\": \"python\", \"label\": \"Python\"}],\n"
         "      \"runtime\": {\"mode\": \"oneshot\", \"protocol\": \"vix-note-extension-1\"}\n"
         "    }\n"
         "  },\n"
-        "  \"versions\": {\"0.1.1\": {}}\n"
+        "  \"versions\": {\"0.1.1\": {\"tag\": \"v0.1.1\"}}\n"
         "}\n");
     write_file(
         registryIndex / "example.note-rust.json",
@@ -1194,6 +1196,8 @@ int main()
         routes.get("/api/extensions/marketplace?q=python");
     assert(marketplace.ok());
     assert(contains(marketplace.body, "softadastra/pyrelune"));
+    assert(contains(marketplace.body, "https://raw.githubusercontent.com/softadastra/pyrelune/v0.1.1/assets/icon.svg"));
+    assert(contains(marketplace.body, "\"iconPath\":\"assets/icon.svg\""));
     assert(contains(marketplace.body, "\"installed\":true"));
     assert(contains(marketplace.body, "\"updateAvailable\":true"));
     assert(!contains(marketplace.body, "example/json"));

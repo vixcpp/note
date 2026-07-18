@@ -961,11 +961,27 @@ namespace vix::note
       return out;
     }
 
+    std::string marketplace_icon_for(const vix::cli::registry::PackageSummary &package)
+    {
+      if (!package.iconData.empty())
+        return package.iconData;
+      if (!package.iconUrl.empty())
+        return package.iconUrl;
+      const std::string lower = lower_copy(package.icon);
+      if (starts_with(lower, "data:image/") || starts_with(lower, "https://"))
+        return package.icon;
+      return {};
+    }
+
     nlohmann::json registry_package_json(
         const vix::cli::registry::PackageSummary &package,
         const std::unordered_map<std::string, LocalExtensionState> &locals)
     {
       nlohmann::json item = vix::cli::registry::package_summary_json(package);
+      item["iconPath"] = package.icon;
+      item["iconUrl"] = package.iconUrl;
+      item["iconData"] = package.iconData;
+      item["icon"] = marketplace_icon_for(package);
       const auto found = locals.find(package.id);
       const bool installed = found != locals.end() && found->second.installed;
       const bool enabled = found != locals.end() ? found->second.enabled : false;
