@@ -3750,9 +3750,7 @@
   }
 
   function syncToolbarKind() {
-    const cell = findCell(state.selectedId);
-    const kind = cell ? cellTypeOf(cell) : currentToolbarKind();
-    setToolbarKind(kind, { applyToCell: false });
+    setToolbarKind(currentToolbarKind(), { applyToCell: false });
   }
 
   /* ==========================================================
@@ -7777,7 +7775,7 @@
         event.stopPropagation();
 
         setToolbarKind(kindOption.dataset.kindOption || "cpp", {
-          applyToCell: true,
+          applyToCell: false,
         });
 
         closeToolbarKindMenu();

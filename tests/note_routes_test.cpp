@@ -29,6 +29,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -113,6 +114,56 @@ namespace
   bool contains(const std::string &text, std::string_view needle)
   {
     return text.find(std::string(needle)) != std::string::npos;
+  }
+
+  std::vector<std::string> routePythonRunnerSources;
+  std::vector<std::string> routePythonRunnerTypes;
+
+  class RoutePythonTestRunner final : public vix::note::NoteCellRunner
+  {
+  public:
+    vix::note::NoteResult run(
+        const vix::note::NoteCell &cell,
+        vix::note::NoteExecutionContext &context) override
+    {
+      routePythonRunnerSources.push_back(cell.source());
+      routePythonRunnerTypes.push_back(context.cellType);
+      vix::note::NoteResult result =
+          vix::note::NoteResult::success("Python route cell executed");
+      result.add_stdout("route python runner: " + cell.type_id() + "\n");
+      return result;
+    }
+  };
+
+  void register_route_python_test_extension(vix::note::NoteExtensionRegistry &registry)
+  {
+    vix::note::NoteExtensionDescriptor extension;
+    extension.id = "softadastra/pyrelune";
+    extension.packageId = "softadastra/pyrelune";
+    extension.version = "test";
+    extension.apiVersion = "1";
+    extension.source = vix::note::NoteExtensionSource::Global;
+    extension.available = true;
+    extension.enabled = true;
+    extension.runtimeCommand = "pyrelune";
+    extension.runtimeProtocol = "vix-note-extension-1";
+    extension.runtimeMode = "oneshot";
+
+    vix::note::NoteCellTypeDescriptor python;
+    python.id = "python";
+    python.label = "Python";
+    python.language = "python";
+    python.executable = true;
+    python.extensionId = extension.id;
+    extension.cellTypes.push_back(python);
+
+    assert(registry.register_extension(extension));
+    assert(registry.register_cell_type(
+        python,
+        []()
+        {
+          return std::make_unique<RoutePythonTestRunner>();
+        }));
   }
 }
 
@@ -1106,6 +1157,58 @@ int main()
         routes.post("/api/extensions/reload");
     assert(reloaded.ok());
     assert(contains(reloaded.body, "\"action\":\"reload\""));
+  }
+
+  {
+    vix::note::NoteDocument doc;
+    doc.add_cell(
+        vix::note::NoteCell(
+            "mixed-py",
+            vix::note::NoteCellKind::Cpp,
+            "int main() { return 0; }\n"));
+
+    vix::note::NoteKernelOptions kernelOptions =
+        make_kernel_options(fakeVix, root / "tmp-route-mixed-dispatch");
+
+    vix::note::NoteExtensionManager manager;
+    manager.register_builtins(kernelOptions.cppOptions, kernelOptions.replyOptions);
+    register_route_python_test_extension(manager.registry());
+    kernelOptions.extensionRegistry = &manager.registry();
+
+    vix::note::NoteRoutesOptions options;
+    options.kernelOptions = kernelOptions;
+
+    routePythonRunnerSources.clear();
+    routePythonRunnerTypes.clear();
+
+    vix::note::NoteRoutes routes(doc, options);
+
+    const std::string source =
+        "# Calculate basic statistics from a list of numbers.\n"
+        "numbers = [3, 7, 2, 9, 5]\n"
+        "print(max(numbers))\n";
+
+    vix::note::NoteRouteResponse updated =
+        routes.put(
+            "/api/cells/mixed-py",
+            "{\"type\":\"python\",\"kind\":\"cpp\",\"source\":\"# Calculate basic statistics from a list of numbers.\\nnumbers = [3, 7, 2, 9, 5]\\nprint(max(numbers))\\n\"}");
+    assert(updated.ok());
+    assert(contains(updated.body, "\"type\":\"python\""));
+    assert(!contains(updated.body, "\"type\":\"cpp\""));
+    assert(routes.document().cells()[0].type_id() == "python");
+    assert(routes.document().cells()[0].kind() == vix::note::NoteCellKind::Unknown);
+
+    vix::note::NoteRouteResponse result =
+        routes.post("/api/cells/mixed-py/run");
+    assert(result.ok());
+    assert(contains(result.body, "route python runner: python"));
+    assert(!contains(result.body, ".cpp"));
+    assert(!contains(result.body, "CompilerError"));
+    assert(routePythonRunnerSources.size() == 1);
+    assert(routePythonRunnerSources[0] == source);
+    assert(routePythonRunnerTypes.size() == 1);
+    assert(routePythonRunnerTypes[0] == "python");
+    assert(routes.document().cells()[0].type_id() == "python");
   }
 
   std::filesystem::remove_all(root);

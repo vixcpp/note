@@ -17,10 +17,26 @@
 #include <vix/note/runtime/NoteKernel.hpp>
 
 #include <cstddef>
+#include <cstdlib>
+#include <iostream>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
+
+namespace
+{
+  bool note_dispatch_debug_enabled()
+  {
+    const char *value = std::getenv("VIX_NOTE_DEBUG_DISPATCH");
+    return value != nullptr && *value != '\0' && std::string(value) != "0";
+  }
+
+  std::string dispatch_kind_name(vix::note::NoteCellKind kind)
+  {
+    return std::string(vix::note::to_string(kind));
+  }
+}
 
 namespace vix::note
 {
@@ -364,6 +380,29 @@ namespace vix::note
       return NoteResult::failure("missing runner for cell type: " + cell.type_id(), 1)
           .add_error("missing runner for cell type: " + cell.type_id());
     }
+
+    if (note_dispatch_debug_enabled())
+    {
+      std::string runnerName = cell.type_id();
+      std::string extensionId;
+      if (cell.type_id() == "cpp")
+        runnerName = "cpp";
+      else if (cell.type_id() == "reply")
+        runnerName = "reply";
+      else if (!cellType->extensionId.empty())
+      {
+        runnerName = "extension";
+        extensionId = cellType->extensionId;
+      }
+      std::cerr << "[note] run cell id=" << cell.id()
+                << " type_id=" << cell.type_id()
+                << " legacy_kind=" << dispatch_kind_name(cell.kind())
+                << " runner=" << runnerName;
+      if (!extensionId.empty())
+        std::cerr << " extension=" << extensionId;
+      std::cerr << '\n';
+    }
+
     NoteExecutionContext context;
     context.documentId = document().id();
     context.documentPath = document().path();
