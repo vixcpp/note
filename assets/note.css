@@ -2229,3 +2229,268 @@ input {
     display: none;
   }
 }
+
+/* ============================================================
+   IDE interaction layer: palettes, menus, notifications, focus
+   ============================================================ */
+.vn-Notifications {
+  position: fixed;
+  right: 18px;
+  bottom: calc(var(--vn-statusbar-h) + 14px);
+  display: grid;
+  gap: 8px;
+  width: min(380px, calc(100vw - 28px));
+  z-index: 2500;
+  pointer-events: none;
+}
+.vn-Notification {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  border: 1px solid var(--vn-border1);
+  border-left: 4px solid var(--vn-accent1);
+  border-radius: 9px;
+  background: var(--vn-color1);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+}
+.vn-Notification--success {
+  border-left-color: #2e7d32;
+}
+.vn-Notification--warning {
+  border-left-color: #ef6c00;
+}
+.vn-Notification--error {
+  border-left-color: #c62828;
+}
+.vn-Notification__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.vn-Notification__body strong {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--vn-text2);
+}
+.vn-Notification__body small {
+  color: var(--vn-text2);
+  overflow-wrap: anywhere;
+}
+.vn-Notification__close {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--vn-text2);
+  font-size: 18px;
+}
+
+.vn-PickerOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(24, 28, 34, 0.16);
+  z-index: 2200;
+}
+.vn-Picker {
+  position: fixed;
+  left: 50%;
+  top: 9vh;
+  transform: translateX(-50%);
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 80px));
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  border: 1px solid var(--vn-border1);
+  border-radius: 12px;
+  background: var(--vn-color1);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.24);
+  z-index: 2201;
+}
+.vn-Picker__input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--vn-border2);
+  padding: 13px 15px;
+  outline: none;
+  font-size: 15px;
+}
+.vn-Picker__list {
+  overflow: auto;
+  padding: 6px;
+}
+.vn-Picker__item {
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--vn-text1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.vn-Picker__item.is-selected,
+.vn-Picker__item:hover {
+  background: var(--vn-accent1);
+  color: #fff;
+}
+.vn-Picker__item code {
+  color: inherit;
+  opacity: 0.72;
+  font-family: var(--vn-code-font);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.vn-Picker__label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vn-Picker__label small {
+  color: inherit;
+  opacity: 0.68;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vn-Picker__empty {
+  margin: 18px;
+  color: var(--vn-text2);
+}
+
+.vn-FindBox {
+  position: fixed;
+  top: calc(var(--vn-appbar-h) + 8px);
+  right: 20px;
+  z-index: 2100;
+}
+.vn-FindBox__panel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid var(--vn-border1);
+  border-radius: 9px;
+  background: var(--vn-color1);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+.vn-FindBox__input {
+  width: 220px;
+  border: 1px solid var(--vn-border2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  outline: none;
+}
+.vn-FindBox__count {
+  color: var(--vn-text2);
+  min-width: 48px;
+  text-align: center;
+  font-family: var(--vn-code-font);
+  font-size: 11px;
+}
+.vn-FindBox button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  padding: 5px 7px;
+}
+.vn-FindBox button:hover,
+.vn-FindBox button.is-active {
+  background: var(--vn-color3);
+}
+
+.vn-Context {
+  min-width: 210px;
+}
+.vn-Context__item {
+  justify-content: space-between;
+}
+.vn-Context__item code {
+  margin-left: auto;
+  color: inherit;
+  opacity: 0.62;
+  font-size: 11px;
+  font-family: var(--vn-code-font);
+}
+.vn-Context__item.is-selected {
+  background: var(--vn-accent1);
+  color: #fff;
+}
+
+.vn-Tab.is-preview .vn-Tab__label {
+  font-style: italic;
+}
+.vn-Tab__close {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.vn-Tab:hover .vn-Tab__close,
+.vn-Tab:focus-within .vn-Tab__close,
+.vn-Tab.is-active .vn-Tab__close {
+  opacity: 1;
+}
+.vn-Tree__row[aria-selected="true"] {
+  outline: 1px solid rgba(25, 118, 210, 0.45);
+  outline-offset: -1px;
+}
+.vn-Cell.is-selected:not(.is-editing) {
+  box-shadow: inset 3px 0 0 var(--vn-collapser-selected);
+}
+.vn-Cell.is-editing {
+  box-shadow: inset 3px 0 0 var(--vn-collapser-edit);
+}
+
+@media (max-width: 760px) {
+  .vn-Picker {
+    top: 6vh;
+    width: calc(100vw - 18px);
+  }
+  .vn-FindBox {
+    left: 9px;
+    right: 9px;
+  }
+  .vn-FindBox__panel {
+    width: 100%;
+  }
+  .vn-FindBox__input {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  .vn-Notifications {
+    right: 9px;
+    bottom: calc(var(--vn-statusbar-h) + 9px);
+  }
+}
+
+.vn-Problems__filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--vn-border2);
+}
+
+.vn-Problems__filters input,
+.vn-Problems__filters select {
+  min-width: 0;
+  border: 1px solid var(--vn-border2);
+  border-radius: 9px;
+  background: var(--vn-panel2);
+  color: var(--vn-text);
+  padding: 7px 9px;
+  font: inherit;
+}
+
+.vn-Problems__filters input:focus-visible,
+.vn-Problems__filters select:focus-visible {
+  outline: 2px solid var(--vn-accent);
+  outline-offset: 1px;
+}

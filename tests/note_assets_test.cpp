@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 
 namespace
@@ -38,6 +39,14 @@ namespace
     std::filesystem::create_directories(path.parent_path());
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     out << content;
+  }
+
+  std::string read_file(const std::filesystem::path &path)
+  {
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream out;
+    out << in.rdbuf();
+    return out.str();
   }
 
   void write_asset_tree(const std::filesystem::path &root)
@@ -73,6 +82,33 @@ int main()
     assert(!asset.empty());
     asset.content.clear();
     assert(asset.empty());
+  }
+
+  {
+    const auto sourceAssets = std::filesystem::path(__FILE__).parent_path().parent_path() / "assets";
+    const auto html = read_file(sourceAssets / "index.html");
+    const auto css = read_file(sourceAssets / "note.css");
+    const auto js = read_file(sourceAssets / "note.js");
+
+    assert(html.find("/assets/note.css") != std::string::npos);
+    assert(html.find("/assets/note.js") != std::string::npos);
+    assert(html.find("data-command=\"note.save\"") != std::string::npos);
+    assert(html.find("data-command=\"cell.run\"") != std::string::npos);
+    assert(html.find("data-command=\"view.showProblems\"") != std::string::npos);
+
+    assert(css.find("vn-PickerOverlay") != std::string::npos);
+    assert(css.find("vn-Picker__item") != std::string::npos);
+    assert(css.find("vn-Notification") != std::string::npos);
+
+    assert(js.find("const commands = new Map") != std::string::npos);
+    assert(js.find("function registerCommand") != std::string::npos);
+    assert(js.find("async function executeCommand") != std::string::npos);
+    assert(js.find("openCommandPalette") != std::string::npos);
+    assert(js.find("openQuickOpen") != std::string::npos);
+    assert(js.find("/api/extensions") != std::string::npos);
+    assert(js.find("normalizedCellTypes") != std::string::npos);
+    assert(js.find("data-change-cell-type") != std::string::npos);
+    assert(js.find("UI_STATE_KEY") != std::string::npos);
   }
 
   const auto validRoot = make_test_root("valid");

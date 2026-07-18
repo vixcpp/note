@@ -37,8 +37,24 @@
     busy: false,
     sidebarCollapsed: false,
     sidebarWidth: 260,
+    bottomPanelHeight: 220,
+    bottomPanelVisible: false,
     focusMode: false,
     activePanel: "explorer", // explorer | problems
+    focus: {
+      area: "editor",
+      previousElement: null,
+      activeCellId: null,
+    },
+    pending: {
+      saving: false,
+      runningCells: new Set(),
+      loadingDocument: false,
+      explorerPaths: new Set(),
+    },
+    notifications: [],
+    cellClipboard: { mode: "copy", cell: null },
+    autoSave: { mode: "off", delay: 1000, timer: null },
     explorer: {
       rootPath: ".",
       currentPath: ".",
@@ -49,13 +65,25 @@
       expandedDirs: new Set(["."]),
       draft: null,
     },
-    tabs: [], // [{ path, title, dirty, doc? }]
+    tabs: [], // [{ path, title, dirty, preview, lastSavedSnapshot, lastModifiedAt }]
     activeTabPath: null,
+    closedTabs: [],
 
     diagnostics: {
       status: "idle",
       items: [],
       byCell: new Map(),
+      filter: "",
+      severity: "all",
+    },
+    commandPalette: { open: false, query: "", selected: 0, mode: "commands" },
+    quickOpen: { open: false, query: "", selected: 0 },
+    find: {
+      open: false,
+      query: "",
+      caseSensitive: false,
+      matches: [],
+      index: 0,
     },
 
     // Drag and drop. Explorer and tab drags never mix.
@@ -69,6 +97,9 @@
   const MIN_SIDEBAR_WIDTH = 190;
   const MAX_SIDEBAR_WIDTH = 520;
   const TABS_STORAGE_KEY = "vix-note:tabs:v1";
+  const UI_STATE_KEY = "vix-note:ui-state:v2";
+  const SESSION_STATE_KEY = "vix-note:session:v2";
+  const MAX_CLOSED_TABS = 20;
 
   const app = document.querySelector("[data-note-app]");
 
@@ -94,6 +125,8 @@
     problemsCount: "[data-problems-count]",
     problemsSummary: "[data-problems-summary]",
     problemsSummaryText: "[data-problems-summary-text]",
+    problemsFilter: "[data-problems-filter]",
+    problemsSeverity: "[data-problems-severity]",
     problemsBadge: "[data-activity-problems-badge]",
     statusProblems: "[data-status-problems]",
     statusProblemsCount: "[data-status-problems-count]",
@@ -101,6 +134,39 @@
 
   const $ = (s, root = document) => root.querySelector(s);
   const $all = (s, root = document) => Array.from(root.querySelectorAll(s));
+
+  function isTypingTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLSelectElement
+    )
+      return true;
+    return !!target.closest(
+      '[contenteditable="true"], [data-modal], .vn-CommandPalette, .vn-QuickOpen, .vn-FindBox',
+    );
+  }
+
+  function rememberFocus(area = state.focus.area) {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body) {
+      state.focus.previousElement = active;
+    }
+    state.focus.area = area;
+  }
+
+  function restoreFocus() {
+    const el = state.focus.previousElement;
+    if (el instanceof HTMLElement && document.contains(el) && !el.disabled) {
+      el.focus({ preventScroll: true });
+      return;
+    }
+    if (state.selectedId) {
+      const cell = cellElById(state.selectedId);
+      if (cell) cell.focus({ preventScroll: true });
+    }
+  }
 
   /* ==========================================================
    * Helpers
@@ -122,10 +188,59 @@
     return normalizeKind(cell && (cell.type || cell.kind));
   }
 
+  function normalizedCellTypes() {
+    const builtins = [
+      {
+        id: "markdown",
+        label: "Markdown",
+        language: "markdown",
+        executable: false,
+        builtin: true,
+      },
+      {
+        id: "cpp",
+        label: "C++",
+        language: "cpp",
+        executable: true,
+        builtin: true,
+      },
+      {
+        id: "reply",
+        label: "Reply",
+        language: "reply",
+        executable: true,
+        builtin: true,
+      },
+      {
+        id: "html",
+        label: "HTML",
+        language: "html",
+        executable: false,
+        builtin: true,
+      },
+    ];
+    const byId = new Map(builtins.map((type) => [type.id, type]));
+    const list = Array.isArray(state.extensions.cellTypes)
+      ? state.extensions.cellTypes
+      : [];
+    for (const raw of list) {
+      const id = normalizeKind(raw && raw.id);
+      if (!id) continue;
+      byId.set(id, {
+        id,
+        label: raw.label || id,
+        language: raw.language || id,
+        executable: !!raw.executable,
+        builtin: !!raw.builtin,
+        extension: raw.extension || raw.packageId || "",
+      });
+    }
+    return Array.from(byId.values());
+  }
+
   function cellTypeDescriptor(kind) {
     const k = normalizeKind(kind);
-    const list = Array.isArray(state.extensions.cellTypes) ? state.extensions.cellTypes : [];
-    return list.find((c) => normalizeKind(c.id) === k) || null;
+    return normalizedCellTypes().find((c) => normalizeKind(c.id) === k) || null;
   }
 
   function safeClass(value) {
@@ -338,6 +453,60 @@
 
   function clearMessageQuietly() {
     setMessage("");
+  }
+
+  function ensureNotificationHost() {
+    let host = document.querySelector("[data-notifications]");
+    if (!host) {
+      host = document.createElement("div");
+      host.className = "vn-Notifications";
+      host.setAttribute("data-notifications", "");
+      host.setAttribute("aria-live", "polite");
+      document.body.appendChild(host);
+    }
+    return host;
+  }
+
+  function showNotification({
+    type = "info",
+    message = "",
+    details = "",
+    timeout = null,
+  } = {}) {
+    if (!message) return;
+    const host = ensureNotificationHost();
+    const id = `n-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const item = document.createElement("div");
+    item.className = `vn-Notification vn-Notification--${safeClass(type)}`;
+    item.dataset.notificationId = id;
+    item.innerHTML = `
+      <div class="vn-Notification__body">
+        <strong>${escapeHtml(type)}</strong>
+        <span>${escapeHtml(message)}</span>
+        ${details ? `<small>${escapeHtml(typeof details === "string" ? details : JSON.stringify(details))}</small>` : ""}
+      </div>
+      <button type="button" class="vn-Notification__close" aria-label="Dismiss notification">×</button>`;
+    host.appendChild(item);
+    item
+      .querySelector("button")
+      ?.addEventListener("click", () => item.remove());
+    const delay =
+      timeout ?? (type === "error" || type === "warning" ? 0 : 2800);
+    if (delay > 0) setTimeout(() => item.remove(), delay);
+  }
+
+  function reportError(error, context = {}) {
+    console.error(error, context);
+    const message =
+      error && error.message
+        ? error.message
+        : String(error || "Unexpected error");
+    setMessage(message, "error");
+    showNotification({
+      type: "error",
+      message,
+      details: context.label || context.path || "",
+    });
   }
 
   function setBusy(busy) {
@@ -1586,6 +1755,44 @@
     markTextareaChanged(textarea);
   }
 
+  function insertAutoIndent(textarea) {
+    const value = textarea.value;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const line = value.slice(lineStart, start);
+    const indent = (line.match(/^\s*/) || [""])[0];
+    const extra = /[\{\[\(]\s*$/.test(line) ? EDITOR_INDENT : "";
+    const text = "\n" + indent + extra;
+    textarea.value = value.slice(0, start) + text + value.slice(end);
+    textarea.selectionStart = textarea.selectionEnd = start + text.length;
+    markTextareaChanged(textarea);
+  }
+
+  const PAIRS = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'" };
+  function handlePairInsertion(textarea, key) {
+    const close = PAIRS[key];
+    if (!close) return false;
+    const value = textarea.value;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = value.slice(start, end);
+    textarea.value =
+      value.slice(0, start) + key + selected + close + value.slice(end);
+    textarea.selectionStart = start + 1;
+    textarea.selectionEnd = start + 1 + selected.length;
+    markTextareaChanged(textarea);
+    return true;
+  }
+
+  function handleClosingPair(textarea, key) {
+    const start = textarea.selectionStart;
+    if (textarea.selectionStart !== textarea.selectionEnd) return false;
+    if (textarea.value[start] !== key) return false;
+    textarea.selectionStart = textarea.selectionEnd = start + 1;
+    return true;
+  }
+
   function toggleCommentTextarea(textarea) {
     const cellEl = textarea.closest(".vn-Cell");
     const kind = normalizeKind(cellEl ? cellEl.dataset.kind : "cpp");
@@ -1751,18 +1958,10 @@
   }
 
   function toolbarKindLabel(kind) {
-    switch (normalizeKind(kind)) {
-      case "cpp":
-        return "C++";
-      case "reply":
-        return "Reply";
-      case "markdown":
-        return "Markdown";
-      case "html":
-        return "HTML";
-      default:
-        return "C++";
-    }
+    const desc = cellTypeDescriptor(kind);
+    if (desc) return desc.label || desc.id;
+    const id = normalizeKind(kind);
+    return id ? id : "C++";
   }
 
   function closeToolbarKindMenu() {
@@ -1807,11 +2006,8 @@
   }
 
   function setToolbarKind(kind, options = {}) {
-    const nextKind = ["cpp", "reply", "markdown", "html"].includes(
-      normalizeKind(kind),
-    )
-      ? normalizeKind(kind)
-      : "cpp";
+    const candidate = normalizeKind(kind);
+    const nextKind = cellTypeDescriptor(candidate) ? candidate : "cpp";
 
     const button = $(sel.toolbarKind);
     const label = $("[data-toolbar-kind-label]");
@@ -1837,12 +2033,8 @@
 
   function syncToolbarKind() {
     const cell = findCell(state.selectedId);
-    const kind = cell ? normalizeKind(cell.kind) : currentToolbarKind();
-
-    setToolbarKind(
-      ["cpp", "reply", "markdown", "html"].includes(kind) ? kind : "cpp",
-      { applyToCell: false },
-    );
+    const kind = cell ? cellTypeOf(cell) : currentToolbarKind();
+    setToolbarKind(kind, { applyToCell: false });
   }
 
   /* ==========================================================
@@ -1869,12 +2061,57 @@
   /* ==========================================================
    * Dirty tracking (per active tab)
    * ======================================================== */
+  function documentSnapshot(doc = state.document) {
+    if (!doc) return "";
+    try {
+      return JSON.stringify({
+        title: doc.title || "",
+        path: doc.path || "",
+        cells: cells().map((c) => ({
+          type: cellTypeOf(c),
+          source: c.source || "",
+        })),
+      });
+    } catch (_) {
+      return String(Date.now());
+    }
+  }
+
   function setDirty(dirty) {
     const tab = activeTab();
-    if (tab) tab.dirty = !!dirty;
+    if (tab) {
+      tab.dirty = !!dirty;
+      tab.lastModifiedAt = dirty
+        ? Date.now()
+        : tab.lastModifiedAt || Date.now();
+      if (!dirty) tab.lastSavedSnapshot = documentSnapshot();
+      if (dirty && tab.preview) tab.preview = false;
+    }
     persistTabs();
+    persistSession();
     renderOpenTabs();
     renderTabsBar();
+    updateStatusBar();
+    scheduleAutoSave();
+  }
+
+  function scheduleAutoSave() {
+    clearTimeout(state.autoSave.timer);
+    if (state.autoSave.mode !== "afterDelay" || !isDirty()) return;
+    state.autoSave.timer = setTimeout(() => {
+      if (!state.pending.saving && !state.busy)
+        saveNote().catch((error) => reportError(error, { label: "Auto Save" }));
+    }, state.autoSave.delay);
+  }
+
+  function toggleAutoSave() {
+    state.autoSave.mode = state.autoSave.mode === "off" ? "afterDelay" : "off";
+    showNotification({
+      type: "info",
+      message: `Auto Save: ${state.autoSave.mode}`,
+    });
+    persistUiState();
+    scheduleAutoSave();
   }
   function isDirty() {
     const tab = activeTab();
@@ -2244,7 +2481,7 @@
     state.explorer.draft = { kind, parentPath: parent, error: null };
 
     if (state.activePanel !== "explorer" || state.sidebarCollapsed) {
-      setPanel("explorer");
+      setPanel(state.activePanel || "explorer");
     }
 
     if (parent !== "." && !state.explorer.loadedDirs.has(parent)) {
@@ -2441,7 +2678,10 @@
 
       clearDiagnostics();
 
-      openTab(d.path, documentDisplayTitle(d));
+      openTab(d.path, documentDisplayTitle(d), {
+        preview: !!options.preview,
+        permanent: !!options.permanent,
+      });
       state.selectedId = null;
       renderDocument(doc, { fullRepaint: true });
       setDirty(false);
@@ -2893,6 +3133,41 @@
   /* ==========================================================
    * Outputs (client-side display only)
    * ======================================================== */
+  function copyCell(mode = "copy") {
+    const cell = targetId() ? findCell(targetId()) : null;
+    if (!cell) return;
+    state.cellClipboard = {
+      mode,
+      cell: {
+        type: cellTypeOf(cell),
+        kind: cell.kind || cellTypeOf(cell),
+        source: cell.source || "",
+        metadata: cell.metadata || {},
+      },
+    };
+    showNotification({
+      type: "info",
+      message: mode === "cut" ? "Cell cut" : "Cell copied",
+    });
+  }
+
+  async function pasteCell(position = "below") {
+    const clip = state.cellClipboard.cell;
+    if (!clip) return;
+    const id = targetId();
+    const idx = id ? cellIndex(id) : cells().length - 1;
+    const atIndex = position === "above" ? Math.max(0, idx) : idx + 1;
+    const created = await addCell(
+      clip.type || clip.kind || currentToolbarKind(),
+      { atIndex, source: clip.source || "" },
+    );
+    if (state.cellClipboard.mode === "cut" && id) {
+      await deleteCellById(id);
+      state.cellClipboard = { mode: "copy", cell: null };
+    }
+    return created;
+  }
+
   function clearCellOutput(id) {
     const cellEl = cellElById(id);
     if (!cellEl) return;
@@ -3314,6 +3589,7 @@
     setText(sel.explorerCount, String(realCount));
 
     if (loadingPath && !entries.length && !state.explorer.draft) {
+      listEl.setAttribute("role", "tree");
       listEl.innerHTML = `
       <p class="vn-Tree__empty">
         Loading ${escapeHtml(loadingPath)}…
@@ -3322,12 +3598,15 @@
     }
 
     if (!entries.length) {
+      listEl.setAttribute("role", "tree");
       listEl.innerHTML = `
       <p class="vn-Tree__empty">
         No notes found. Create one with <strong>New note</strong> or refresh the explorer.
       </p>`;
       return;
     }
+
+    listEl.setAttribute("role", "tree");
 
     listEl.innerHTML = entries
       .map((e) => {
@@ -3363,6 +3642,10 @@
           data-tree-path="${escapeHtml(path)}"
           data-tree-type="${escapeHtml(e.type)}"
           data-tree-openable="${e.openable ? "true" : "false"}"
+          role="treeitem"
+          aria-level="${depth + 1}"
+          aria-selected="${path === state.explorer.currentPath ? "true" : "false"}"
+          ${e.type === "dir" ? `aria-expanded="${expanded ? "true" : "false"}"` : ""}
           style="--depth:${depth}"
           tabindex="0"${draggable}
         >
@@ -3388,6 +3671,122 @@
       .join("");
   }
 
+  function safeStorageGet(key) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function safeStorageSet(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (_) {}
+  }
+
+  function clampNumber(value, fallback, min, max) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function persistUiState() {
+    safeStorageSet(
+      UI_STATE_KEY,
+      JSON.stringify({
+        version: 2,
+        sidebarWidth: state.sidebarWidth,
+        sidebarCollapsed: state.sidebarCollapsed,
+        bottomPanelHeight: state.bottomPanelHeight,
+        bottomPanelVisible: state.bottomPanelVisible,
+        activePanel: state.activePanel,
+        focusMode: state.focusMode,
+        autoSave: state.autoSave.mode,
+      }),
+    );
+  }
+
+  function restoreUiState() {
+    const raw = safeStorageGet(UI_STATE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.version !== 2) return;
+      state.sidebarWidth = clampNumber(
+        parsed.sidebarWidth,
+        DEFAULT_SIDEBAR_WIDTH,
+        MIN_SIDEBAR_WIDTH,
+        MAX_SIDEBAR_WIDTH,
+      );
+      state.sidebarCollapsed = !!parsed.sidebarCollapsed;
+      state.bottomPanelHeight = clampNumber(
+        parsed.bottomPanelHeight,
+        220,
+        120,
+        520,
+      );
+      state.bottomPanelVisible = !!parsed.bottomPanelVisible;
+      state.activePanel = ["explorer", "problems"].includes(parsed.activePanel)
+        ? parsed.activePanel
+        : "explorer";
+      state.focusMode = !!parsed.focusMode;
+      state.autoSave.mode =
+        parsed.autoSave === "afterDelay" ? "afterDelay" : "off";
+    } catch (_) {}
+  }
+
+  function persistSession() {
+    safeStorageSet(
+      SESSION_STATE_KEY,
+      JSON.stringify({
+        version: 2,
+        tabs: state.tabs.map((tab) => ({
+          path: normalizeExplorerPath(tab.path),
+          title: tab.title || baseName(tab.path),
+          dirty: !!tab.dirty,
+          preview: !!tab.preview,
+          lastModifiedAt: tab.lastModifiedAt || 0,
+        })),
+        activeTabPath: state.activeTabPath
+          ? normalizeExplorerPath(state.activeTabPath)
+          : null,
+        selectedId: state.selectedId,
+        closedTabs: state.closedTabs.slice(0, MAX_CLOSED_TABS),
+      }),
+    );
+  }
+
+  function restoreSession() {
+    const raw = safeStorageGet(SESSION_STATE_KEY);
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.version !== 2) return false;
+      if (Array.isArray(parsed.tabs) && parsed.tabs.length) {
+        state.tabs = parsed.tabs
+          .filter((t) => t && t.path)
+          .map((t) => ({
+            path: normalizeExplorerPath(t.path),
+            title: t.title || baseName(t.path),
+            dirty: !!t.dirty,
+            preview: !!t.preview,
+            lastModifiedAt: Number(t.lastModifiedAt || 0),
+          }));
+        state.activeTabPath = parsed.activeTabPath
+          ? normalizeExplorerPath(parsed.activeTabPath)
+          : state.tabs[0]?.path || null;
+      }
+      state.closedTabs = Array.isArray(parsed.closedTabs)
+        ? parsed.closedTabs.slice(0, MAX_CLOSED_TABS)
+        : [];
+      if (parsed.selectedId) state.selectedId = parsed.selectedId;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function persistTabs() {
     try {
       const payload = {
@@ -3399,6 +3798,7 @@
         })),
       };
       localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(payload));
+      persistSession();
     } catch (_) {}
   }
 
@@ -3451,19 +3851,39 @@
     return state.tabs.find((t) => t.path === state.activeTabPath) || null;
   }
 
-  function openTab(path, title) {
+  function openTab(path, title, options = {}) {
     if (!path) return;
     const normalized = normalizeExplorerPath(path);
-    let tab = state.tabs.find((t) => t.path === normalized);
+    const preview = !!options.preview && !options.permanent;
+    let tab = state.tabs.find(
+      (t) => normalizeExplorerPath(t.path) === normalized,
+    );
+
+    if (!tab && preview) {
+      const existingPreview = state.tabs.find((t) => t.preview && !t.dirty);
+      if (existingPreview) {
+        existingPreview.path = normalized;
+        existingPreview.title = title || baseName(normalized);
+        existingPreview.preview = true;
+        existingPreview.dirty = false;
+        tab = existingPreview;
+      }
+    }
+
     if (!tab) {
       tab = {
         path: normalized,
         title: title || baseName(normalized),
         dirty: false,
+        preview,
+        lastSavedSnapshot: "",
+        lastModifiedAt: Date.now(),
       };
       state.tabs.push(tab);
-    } else if (title) {
-      tab.title = title;
+    } else {
+      if (title) tab.title = title;
+      if (options.permanent) tab.preview = false;
+      else if (preview) tab.preview = true;
     }
     state.activeTabPath = normalized;
     persistTabs();
@@ -3515,6 +3935,11 @@
     }
 
     state.tabs.splice(idx, 1);
+    state.closedTabs.unshift({
+      path: tab.path,
+      title: tab.title || baseName(tab.path),
+    });
+    state.closedTabs = state.closedTabs.slice(0, MAX_CLOSED_TABS);
 
     if (state.activeTabPath === normalized) {
       const next = state.tabs[idx] || state.tabs[idx - 1] || null;
@@ -3537,6 +3962,58 @@
   }
 
   // Reorder tabs without touching disk. position is "before" | "after".
+  async function closeActiveTab() {
+    const tab = activeTab();
+    if (tab) await closeTab(tab.path);
+  }
+
+  async function closeOtherTabs(path) {
+    const keep = normalizeExplorerPath(path);
+    for (const tab of [...state.tabs]) {
+      if (normalizeExplorerPath(tab.path) !== keep) await closeTab(tab.path);
+    }
+  }
+
+  async function closeTabsToRight(path) {
+    const normalized = normalizeExplorerPath(path);
+    const index = state.tabs.findIndex(
+      (tab) => normalizeExplorerPath(tab.path) === normalized,
+    );
+    if (index < 0) return;
+    for (const tab of [...state.tabs.slice(index + 1)])
+      await closeTab(tab.path);
+  }
+
+  async function closeAllTabs() {
+    for (const tab of [...state.tabs]) await closeTab(tab.path);
+  }
+
+  async function reopenClosedTab() {
+    const tab = state.closedTabs.shift();
+    if (!tab)
+      return showNotification({
+        type: "info",
+        message: "No closed editor to reopen.",
+      });
+    await openNotePath(tab.path, { silent: true });
+  }
+
+  async function activateRelativeTab(delta) {
+    if (!state.tabs.length) return;
+    const current = state.tabs.findIndex(
+      (tab) =>
+        normalizeExplorerPath(tab.path) ===
+        normalizeExplorerPath(state.activeTabPath),
+    );
+    const next = (current + delta + state.tabs.length) % state.tabs.length;
+    await switchTab(state.tabs[next].path);
+  }
+
+  async function activateTabByIndex(index) {
+    const tab = state.tabs[index];
+    if (tab) await switchTab(tab.path);
+  }
+
   function reorderTabs(sourcePath, targetPath, position) {
     const src = normalizeExplorerPath(sourcePath);
     const tgt = normalizeExplorerPath(targetPath);
@@ -3576,15 +4053,18 @@
     const bar = $(sel.tabsBar);
     if (!bar) return;
     if (!state.tabs.length) {
+      bar.setAttribute("role", "tablist");
       bar.innerHTML = `<div class="vn-TabsBar__empty">No open notes</div>`;
       return;
     }
+    bar.setAttribute("role", "tablist");
     bar.innerHTML = state.tabs
       .map((t) => {
         const active = t.path === state.activeTabPath ? " is-active" : "";
-        return `<div class="vn-Tab${active}" data-tab-path="${escapeHtml(t.path)}" title="${escapeHtml(t.path)}" draggable="true">
+        const preview = t.preview ? " is-preview" : "";
+        return `<div class="vn-Tab${active}${preview}" role="tab" aria-selected="${t.path === state.activeTabPath ? "true" : "false"}" aria-label="${escapeHtml(t.title)}${t.dirty ? " unsaved" : ""}" data-tab-path="${escapeHtml(t.path)}" title="${escapeHtml(t.path)}" draggable="true" tabindex="0">
             ${tabDot(t)}
-            <span class="vn-Tab__label">${escapeHtml(t.title)}</span>
+            <span class="vn-Tab__label">${escapeHtml(t.title)}${t.preview ? " ◦" : ""}</span>
             <button class="vn-Tab__close" type="button" data-tab-close="${escapeHtml(t.path)}" aria-label="Close tab">×</button>
           </div>`;
       })
@@ -3599,6 +4079,7 @@
     runtime_error: "error",
     error: "error",
     stderr: "error",
+    warning: "warning",
     hint: "hint",
   };
 
@@ -3748,6 +4229,19 @@
       }
     }
 
+    const filterText = String(state.diagnostics.filter || "")
+      .trim()
+      .toLowerCase();
+    const severityFilter = state.diagnostics.severity || "all";
+    const visibleItems = state.diagnostics.items.filter((d) => {
+      if (severityFilter !== "all" && d.severity !== severityFilter)
+        return false;
+      if (!filterText) return true;
+      return `${d.cellLabel || ""} ${d.kind || ""} ${d.message || ""}`
+        .toLowerCase()
+        .includes(filterText);
+    });
+
     const listEl = $(sel.problemsList);
     if (!listEl) return;
 
@@ -3769,8 +4263,16 @@
       return;
     }
 
+    if (!visibleItems.length) {
+      listEl.innerHTML = `
+        <p class="vn-Tree__empty">
+          No problems match the current filter.
+        </p>`;
+      return;
+    }
+
     const groups = new Map();
-    for (const d of state.diagnostics.items) {
+    for (const d of visibleItems) {
       if (!groups.has(d.cellId)) groups.set(d.cellId, []);
       groups.get(d.cellId).push(d);
     }
@@ -3859,12 +4361,65 @@
 
   function setPanel(panel) {
     state.activePanel = panel;
+    state.bottomPanelVisible = panel === "problems";
     state.sidebarCollapsed = false;
     for (const p of $all("[data-panel]")) {
       p.hidden = p.dataset.panel !== panel;
     }
     app.classList.remove("is-sidebar-collapsed");
     renderActivityBar();
+    persistUiState();
+  }
+
+  function revealActiveFile() {
+    const path = normalizeExplorerPath(
+      currentDocPath() || state.activeTabPath || "",
+    );
+    if (!path) return;
+    state.explorer.selectedDirPath = parentPath(path);
+    state.explorer.currentPath = path;
+    loadExplorerForDocumentPath(path).then(() => {
+      const row = document.querySelector(
+        `[data-tree-path="${cssEscape(path)}"]`,
+      );
+      if (row instanceof HTMLElement) {
+        row.focus({ preventScroll: false });
+        row.scrollIntoView({ block: "nearest" });
+      }
+      setPanel("explorer");
+    });
+  }
+
+  async function deleteExplorerSelection(
+    path = state.explorer.currentPath,
+    type = "file",
+  ) {
+    const normalized = normalizeExplorerPath(path);
+    if (!normalized || normalized === ".") return;
+    if (type === "dir") {
+      const ok = await showModalConfirm({
+        title: "Delete folder",
+        body: `Delete folder “${escapeHtml(baseName(normalized))}” and everything inside it from disk? This cannot be undone from Vix Note.`,
+        confirm: "Delete",
+        danger: true,
+      });
+      if (ok) await deletePath(normalized, { recursive: true });
+      return;
+    }
+    if (await confirmDelete(baseName(normalized), "file"))
+      await deletePath(normalized);
+  }
+
+  function resetLayout() {
+    state.sidebarCollapsed = false;
+    state.sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+    state.bottomPanelHeight = 220;
+    state.bottomPanelVisible = false;
+    state.focusMode = false;
+    applySidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+    app.classList.remove("is-sidebar-collapsed", "is-focus");
+    setPanel("explorer");
+    persistUiState();
   }
 
   /* ==========================================================
@@ -3879,6 +4434,7 @@
       "--vn-sidebar-w",
       `${state.sidebarWidth}px`,
     );
+    persistUiState();
   }
   function toggleExplorerSidebar() {
     if (state.sidebarCollapsed) {
@@ -3889,6 +4445,7 @@
       state.sidebarCollapsed = true;
       app.classList.add("is-sidebar-collapsed");
       renderActivityBar();
+      persistUiState();
       return;
     }
     setPanel("explorer");
@@ -3905,6 +4462,7 @@
   function toggleFocus() {
     state.focusMode = !state.focusMode;
     app.classList.toggle("is-focus", state.focusMode);
+    persistUiState();
     setMessage(state.focusMode ? "Focus mode on." : "Focus mode off.", "info");
   }
 
@@ -4016,123 +4574,384 @@
   /* ==========================================================
    * Command registry
    * ======================================================== */
+  const commands = new Map();
+  const legacyCommandAliases = new Map();
+
   function currentToolbarKind() {
     const button = $(sel.toolbarKind);
     const value = button ? button.dataset.kind : "cpp";
     const kind = normalizeKind(value);
-
-    return ["cpp", "reply", "markdown", "html"].includes(kind) ? kind : "cpp";
+    return cellTypeDescriptor(kind) ? kind : "cpp";
   }
+
   function targetId() {
     return state.selectedId;
   }
 
-  const COMMANDS = {
-    "new-note": { label: "New note", run: () => newNote() },
-    "open-note": { label: "Open note", run: () => openNote() },
-    "new-folder": { label: "New folder", run: () => newFolder() },
-    save: { label: "Save note", hint: "⌘S", run: () => saveNote() },
-    reload: { label: "Reload from disk", run: () => loadDocument() },
-    "add-cpp": { label: "Add C++ cell", run: () => addCell("cpp") },
-    "add-reply": { label: "Add Reply cell", run: () => addCell("reply") },
-    "add-markdown": {
-      label: "Add Markdown cell",
-      run: () => addCell("markdown"),
-    },
-    "add-html": { label: "Add HTML cell", run: () => addCell("html") },
-    "insert-below": {
-      label: "Insert cell below",
-      hint: "B",
-      run: () => addCell(currentToolbarKind(), { afterId: targetId() }),
-    },
-    "run-cell": {
-      label: "Run selected cell",
-      hint: "⌘↵",
-      run: () => targetId() && runCellById(targetId()),
-    },
-    "run-advance": {
-      label: "Run and advance",
-      hint: "⇧↵",
-      run: async () => {
+  function registerCommand(id, handler, options = {}) {
+    commands.set(id, {
+      id,
+      handler,
+      label: options.label || id,
+      category: options.category || "",
+      keybinding: options.keybinding || "",
+      when: options.when || null,
+      aliases: options.aliases || [],
+    });
+    for (const alias of options.aliases || [])
+      legacyCommandAliases.set(alias, id);
+  }
+
+  async function executeCommand(id, context = {}) {
+    const resolved = legacyCommandAliases.get(id) || id;
+    const command = commands.get(resolved);
+    if (!command) throw new Error(`Unknown command: ${id}`);
+    if (command.when && !command.when(state, context)) return undefined;
+    try {
+      return await command.handler(context);
+    } catch (error) {
+      reportError(error, { label: command.label, command: resolved });
+      return undefined;
+    }
+  }
+
+  function runCommand(name) {
+    executeCommand(name);
+  }
+
+  function registerCoreCommands() {
+    if (commands.size) return;
+    const hasCell = () => !!targetId();
+    registerCommand(
+      "note.new",
+      ({ path } = {}) => newNote(path || state.explorer.selectedDirPath || "."),
+      {
+        label: "New Note",
+        category: "File",
+        keybinding: "Ctrl+N",
+        aliases: ["new-note"],
+      },
+    );
+    registerCommand("note.open", () => openNote(), {
+      label: "Open Note",
+      category: "File",
+      keybinding: "Ctrl+O",
+      aliases: ["open-note"],
+    });
+    registerCommand("note.save", () => saveNote(), {
+      label: "Save Note",
+      category: "File",
+      keybinding: "Ctrl+S",
+      aliases: ["save"],
+    });
+    registerCommand("note.saveAll", () => saveNote(), {
+      label: "Save All",
+      category: "File",
+    });
+    registerCommand("note.reload", () => loadDocument(), {
+      label: "Reload from Disk",
+      category: "File",
+      aliases: ["reload"],
+    });
+    registerCommand(
+      "note.close",
+      ({ path } = {}) => (path ? closeTab(path) : closeActiveTab()),
+      { label: "Close Editor", category: "File", keybinding: "Ctrl+W" },
+    );
+    registerCommand("note.closeAll", () => closeAllTabs(), {
+      label: "Close All Editors",
+      category: "File",
+    });
+    registerCommand(
+      "note.closeOthers",
+      ({ path } = {}) => closeOtherTabs(path || activeTab()?.path),
+      { label: "Close Other Editors", category: "File" },
+    );
+    registerCommand("note.reopenClosed", () => reopenClosedTab(), {
+      label: "Reopen Closed Editor",
+      category: "File",
+      keybinding: "Ctrl+Shift+T",
+    });
+    registerCommand("note.toggleAutoSave", () => toggleAutoSave(), {
+      label: "Toggle Auto Save",
+      category: "File",
+    });
+
+    registerCommand(
+      "cell.insertAbove",
+      () => targetId() && insertAbove(targetId()),
+      {
+        label: "Insert Cell Above",
+        category: "Cell",
+        aliases: ["insert-above"],
+      },
+    );
+    registerCommand(
+      "cell.insertBelow",
+      () => addCell(currentToolbarKind(), { afterId: targetId() }),
+      {
+        label: "Insert Cell Below",
+        category: "Cell",
+        keybinding: "B",
+        aliases: ["insert-below"],
+      },
+    );
+    registerCommand(
+      "cell.delete",
+      () => targetId() && deleteCellById(targetId()),
+      {
+        label: "Delete Cell",
+        category: "Cell",
+        keybinding: "D D",
+        aliases: ["cut-cell"],
+      },
+    );
+    registerCommand(
+      "cell.duplicate",
+      () => targetId() && duplicateCell(targetId()),
+      { label: "Duplicate Cell", category: "Cell", aliases: ["duplicate"] },
+    );
+    registerCommand(
+      "cell.moveUp",
+      () => targetId() && moveCellById(targetId(), "up"),
+      { label: "Move Cell Up", category: "Cell", aliases: ["move-up"] },
+    );
+    registerCommand(
+      "cell.moveDown",
+      () => targetId() && moveCellById(targetId(), "down"),
+      { label: "Move Cell Down", category: "Cell", aliases: ["move-down"] },
+    );
+    registerCommand("cell.run", () => targetId() && runCellById(targetId()), {
+      label: "Run Selected Cell",
+      category: "Cell",
+      keybinding: "Ctrl+Enter",
+      when: hasCell,
+      aliases: ["run-cell"],
+    });
+    registerCommand(
+      "cell.runAndAdvance",
+      async () => {
         if (targetId()) {
           await runCellById(targetId());
           selectAdjacent(1);
         }
       },
-    },
-    "run-all": { label: "Run all cells", run: () => runAll() },
-    "cut-cell": {
-      label: "Delete selected cell",
-      hint: "D D",
-      run: () => targetId() && deleteCellById(targetId()),
-    },
-    duplicate: {
-      label: "Duplicate selected cell",
-      run: () => targetId() && duplicateCell(targetId()),
-    },
-    "move-up": {
-      label: "Move cell up",
-      run: () => targetId() && moveCellById(targetId(), "up"),
-    },
-    "move-down": {
-      label: "Move cell down",
-      run: () => targetId() && moveCellById(targetId(), "down"),
-    },
-    "to-cpp": {
-      label: "Change cell to C++",
-      hint: "Y",
-      run: () => targetId() && changeKind(targetId(), "cpp"),
-    },
-    "to-markdown": {
-      label: "Change cell to Markdown",
-      hint: "M",
-      run: () => targetId() && changeKind(targetId(), "markdown"),
-    },
-    "to-reply": {
-      label: "Change cell to Reply",
-      hint: "R",
-      run: () => targetId() && changeKind(targetId(), "reply"),
-    },
-    "to-html": {
-      label: "Change cell to HTML",
-      run: () => targetId() && changeKind(targetId(), "html"),
-    },
-    "clear-cell": {
-      label: "Clear selected output",
-      run: () => targetId() && clearCellOutput(targetId()),
-    },
-    "clear-all": { label: "Clear all outputs", run: () => clearAllOutputs() },
-    restart: { label: "Restart kernel", run: () => restartKernel(false) },
-    "restart-run": {
-      label: "Restart kernel and run all",
-      run: () => restartKernel(true),
-    },
-    "toggle-sidebar": {
-      label: "Toggle Explorer",
-      hint: "⌘B",
-      run: () => toggleExplorerSidebar(),
-    },
-    "toggle-focus": { label: "Toggle focus mode", run: () => toggleFocus() },
-    "show-explorer": {
-      label: "Show Explorer",
-      run: () => setPanel("explorer"),
-    },
-    "show-problems": {
-      label: "Show Problems",
-      run: () => setPanel("problems"),
-    },
-    refresh: { label: "Refresh explorer", run: () => refreshExplorer() },
-    shortcuts: {
-      label: "Keyboard shortcuts",
-      hint: "?",
-      run: () => showShortcuts(),
-    },
-    about: { label: "About Vix Note", run: () => showAbout() },
-  };
+      {
+        label: "Run Cell and Select Next",
+        category: "Cell",
+        keybinding: "Shift+Enter",
+        aliases: ["run-advance"],
+      },
+    );
+    registerCommand(
+      "cell.runAndInsertBelow",
+      async () => {
+        const id = targetId();
+        if (!id) return;
+        await runCellById(id);
+        await addCell(currentToolbarKind(), { afterId: id });
+      },
+      {
+        label: "Run Cell and Insert Below",
+        category: "Cell",
+        keybinding: "Alt+Enter",
+      },
+    );
+    registerCommand("cell.runAll", () => runAll(), {
+      label: "Run All Cells",
+      category: "Cell",
+      keybinding: "Ctrl+Shift+Enter",
+      aliases: ["run-all"],
+    });
+    registerCommand("cell.changeType", () => openCellTypePicker(), {
+      label: "Change Cell Type",
+      category: "Cell",
+    });
+    registerCommand("cell.focusEditor", () => enterEditMode(), {
+      label: "Focus Cell Editor",
+      category: "Cell",
+    });
+    registerCommand("cell.copy", () => copyCell("copy"), {
+      label: "Copy Cell",
+      category: "Edit",
+      aliases: ["copy-cell"],
+    });
+    registerCommand("cell.cut", () => copyCell("cut"), {
+      label: "Cut Cell",
+      category: "Edit",
+    });
+    registerCommand("cell.pasteBelow", () => pasteCell("below"), {
+      label: "Paste Cell Below",
+      category: "Edit",
+    });
+    registerCommand("cell.pasteAbove", () => pasteCell("above"), {
+      label: "Paste Cell Above",
+      category: "Edit",
+    });
+    registerCommand(
+      "cell.clearOutput",
+      () => targetId() && clearCellOutput(targetId()),
+      {
+        label: "Clear Selected Output",
+        category: "Cell",
+        aliases: ["clear-cell"],
+      },
+    );
+    registerCommand("cell.clearAllOutputs", () => clearAllOutputs(), {
+      label: "Clear All Outputs",
+      category: "Cell",
+      aliases: ["clear-all"],
+    });
+    registerCommand(
+      "cell.toCpp",
+      () => targetId() && changeKind(targetId(), "cpp"),
+      {
+        label: "Change Cell to C++",
+        category: "Cell",
+        keybinding: "Y",
+        aliases: ["to-cpp"],
+      },
+    );
+    registerCommand(
+      "cell.toMarkdown",
+      () => targetId() && changeKind(targetId(), "markdown"),
+      {
+        label: "Change Cell to Markdown",
+        category: "Cell",
+        keybinding: "M",
+        aliases: ["to-markdown"],
+      },
+    );
+    registerCommand(
+      "cell.toReply",
+      () => targetId() && changeKind(targetId(), "reply"),
+      {
+        label: "Change Cell to Reply",
+        category: "Cell",
+        keybinding: "R",
+        aliases: ["to-reply"],
+      },
+    );
+    registerCommand(
+      "cell.toHtml",
+      () => targetId() && changeKind(targetId(), "html"),
+      {
+        label: "Change Cell to HTML",
+        category: "Cell",
+        keybinding: "H",
+        aliases: ["to-html"],
+      },
+    );
 
-  function runCommand(name) {
-    const cmd = COMMANDS[name];
-    if (cmd && typeof cmd.run === "function") cmd.run();
+    registerCommand(
+      "explorer.refresh",
+      ({ path } = {}) =>
+        refreshExplorer(path || state.explorer.currentPath || "."),
+      { label: "Refresh Explorer", category: "Explorer", aliases: ["refresh"] },
+    );
+    registerCommand(
+      "explorer.newFile",
+      ({ path } = {}) => newNote(path || state.explorer.selectedDirPath || "."),
+      { label: "New Note", category: "Explorer" },
+    );
+    registerCommand(
+      "explorer.newFolder",
+      ({ path } = {}) =>
+        newFolder(path || state.explorer.selectedDirPath || "."),
+      { label: "New Folder", category: "Explorer", aliases: ["new-folder"] },
+    );
+    registerCommand(
+      "explorer.rename",
+      ({ path, type } = {}) =>
+        startInlineRename(
+          path || state.explorer.currentPath || ".",
+          type || "file",
+        ),
+      { label: "Rename", category: "Explorer" },
+    );
+    registerCommand(
+      "explorer.delete",
+      ({ path, type } = {}) => deleteExplorerSelection(path, type),
+      { label: "Delete", category: "Explorer" },
+    );
+    registerCommand(
+      "explorer.open",
+      ({ path } = {}) => path && openFileRowIfAllowed(path),
+      { label: "Open", category: "Explorer" },
+    );
+    registerCommand("explorer.revealActiveFile", () => revealActiveFile(), {
+      label: "Reveal Active File in Explorer",
+      category: "Explorer",
+    });
+
+    registerCommand("view.toggleSidebar", () => toggleExplorerSidebar(), {
+      label: "Toggle Sidebar",
+      category: "View",
+      keybinding: "Ctrl+B",
+      aliases: ["toggle-sidebar"],
+    });
+    registerCommand("view.showExplorer", () => setPanel("explorer"), {
+      label: "Explorer",
+      category: "View",
+      aliases: ["show-explorer"],
+    });
+    registerCommand("view.showProblems", () => setPanel("problems"), {
+      label: "Problems",
+      category: "View",
+      keybinding: "Ctrl+J",
+      aliases: ["show-problems"],
+    });
+    registerCommand("view.toggleFocusMode", () => toggleFocus(), {
+      label: "Toggle Focus Mode",
+      category: "View",
+      aliases: ["toggle-focus"],
+    });
+    registerCommand("view.commandPalette", () => openCommandPalette(), {
+      label: "Command Palette",
+      category: "View",
+      keybinding: "Ctrl+Shift+P",
+    });
+    registerCommand("view.quickOpen", () => openQuickOpen(), {
+      label: "Quick Open",
+      category: "View",
+      keybinding: "Ctrl+P",
+      aliases: ["workbench.action.quickOpen"],
+    });
+    registerCommand("view.find", () => openFindBox(), {
+      label: "Find in Document",
+      category: "Edit",
+      keybinding: "Ctrl+F",
+    });
+    registerCommand("view.resetLayout", () => resetLayout(), {
+      label: "Reset Layout",
+      category: "View",
+    });
+    registerCommand(
+      "developer.reloadInterface",
+      () => window.location.reload(),
+      { label: "Reload Interface", category: "Developer" },
+    );
+    registerCommand("kernel.restart", () => restartKernel(false), {
+      label: "Restart Kernel",
+      category: "Developer",
+      aliases: ["restart"],
+    });
+    registerCommand("kernel.restartAndRun", () => restartKernel(true), {
+      label: "Restart Kernel and Run All",
+      category: "Developer",
+      aliases: ["restart-run"],
+    });
+    registerCommand("help.shortcuts", () => showShortcuts(), {
+      label: "Keyboard Shortcuts",
+      category: "Help",
+      keybinding: "?",
+      aliases: ["shortcuts"],
+    });
+    registerCommand("help.about", () => showAbout(), {
+      label: "About Vix Note",
+      category: "Help",
+      aliases: ["about"],
+    });
   }
 
   /* ==========================================================
@@ -4381,97 +5200,635 @@
   }
 
   /* ==========================================================
-   * Context menu (custom, not the browser's)
+   * Command palette, Quick Open, Find
+   * ======================================================== */
+  function fuzzyScore(query, text) {
+    const q = String(query || "")
+      .trim()
+      .toLowerCase();
+    const t = String(text || "").toLowerCase();
+    if (!q) return 1;
+    const words = q.split(/\s+/).filter(Boolean);
+    let score = 0;
+    for (const word of words) {
+      const idx = t.indexOf(word);
+      if (idx < 0) return 0;
+      score += idx === 0 ? 5 : 2;
+    }
+    return score;
+  }
+
+  function availableCommands() {
+    return Array.from(commands.values())
+      .filter((cmd) => !cmd.when || cmd.when(state, {}))
+      .sort((a, b) =>
+        `${a.category}:${a.label}`.localeCompare(`${b.category}:${b.label}`),
+      );
+  }
+
+  function commandMatches(query) {
+    return availableCommands()
+      .map((cmd) => ({
+        cmd,
+        score: fuzzyScore(query, `${cmd.category} ${cmd.label} ${cmd.id}`),
+      }))
+      .filter((item) => item.score > 0)
+      .sort(
+        (a, b) => b.score - a.score || a.cmd.label.localeCompare(b.cmd.label),
+      );
+  }
+
+  function ensurePickerRoot(kind) {
+    let root = document.querySelector(`[data-${kind}]`);
+    if (!root) {
+      root = document.createElement("div");
+      root.className =
+        kind === "command-palette"
+          ? "vn-CommandPalette"
+          : kind === "quick-open"
+            ? "vn-QuickOpen"
+            : "vn-FindBox";
+      root.setAttribute(`data-${kind}`, "");
+      document.body.appendChild(root);
+    }
+    return root;
+  }
+
+  function closePicker(kind) {
+    const root = document.querySelector(`[data-${kind}]`);
+    if (root) root.remove();
+    if (kind === "command-palette") state.commandPalette.open = false;
+    if (kind === "quick-open") state.quickOpen.open = false;
+    if (kind === "find-box") state.find.open = false;
+    restoreFocus();
+  }
+
+  function renderCommandPalette() {
+    const root = ensurePickerRoot("command-palette");
+    const matches = commandMatches(state.commandPalette.query);
+    state.commandPalette.selected = Math.min(
+      state.commandPalette.selected,
+      Math.max(0, matches.length - 1),
+    );
+    root.innerHTML = `
+      <div class="vn-PickerOverlay" data-picker-close></div>
+      <section class="vn-Picker" role="dialog" aria-modal="true" aria-label="Command Palette">
+        <input class="vn-Picker__input" data-command-palette-input aria-label="Search commands" placeholder="Type a command…" value="${escapeHtml(state.commandPalette.query)}" />
+        <div class="vn-Picker__list" role="listbox">
+          ${
+            matches.length
+              ? matches
+                  .map(
+                    (item, index) => `
+            <button type="button" class="vn-Picker__item${index === state.commandPalette.selected ? " is-selected" : ""}" role="option" aria-selected="${index === state.commandPalette.selected ? "true" : "false"}" data-palette-command="${escapeHtml(item.cmd.id)}" data-index="${index}">
+              <span class="vn-Picker__label"><small>${escapeHtml(item.cmd.category || "Command")}</small>${escapeHtml(item.cmd.label)}</span>
+              <code>${escapeHtml(item.cmd.keybinding || "")}</code>
+            </button>`,
+                  )
+                  .join("")
+              : `<p class="vn-Picker__empty">No commands match.</p>`
+          }
+        </div>
+      </section>`;
+    const input = root.querySelector("[data-command-palette-input]");
+    input?.focus({ preventScroll: true });
+    input?.setSelectionRange(input.value.length, input.value.length);
+  }
+
+  function openCommandPalette() {
+    rememberFocus("commandPalette");
+    closeContextMenu();
+    state.commandPalette.open = true;
+    state.commandPalette.query = "";
+    state.commandPalette.selected = 0;
+    renderCommandPalette();
+  }
+
+  function quickOpenFiles() {
+    const recent = new Map(
+      state.tabs.map((tab, i) => [
+        normalizeExplorerPath(tab.path),
+        {
+          path: normalizeExplorerPath(tab.path),
+          title: tab.title || baseName(tab.path),
+          recentRank: i,
+        },
+      ]),
+    );
+    for (const entry of state.explorer.entries.values()) {
+      if (
+        entry.type === "file" &&
+        (entry.openable || String(entry.path || "").endsWith(".vixnote"))
+      ) {
+        const path = normalizeExplorerPath(entry.path);
+        if (!recent.has(path))
+          recent.set(path, { path, title: baseName(path), recentRank: 9999 });
+      }
+    }
+    return Array.from(recent.values());
+  }
+
+  function quickOpenMatches(query) {
+    return quickOpenFiles()
+      .map((file) => ({
+        file,
+        score: fuzzyScore(query, `${file.title} ${file.path}`),
+      }))
+      .filter((item) => !query || item.score > 0)
+      .sort((a, b) =>
+        query ? b.score - a.score : a.file.recentRank - b.file.recentRank,
+      );
+  }
+
+  function renderQuickOpen() {
+    const root = ensurePickerRoot("quick-open");
+    const matches = quickOpenMatches(state.quickOpen.query);
+    state.quickOpen.selected = Math.min(
+      state.quickOpen.selected,
+      Math.max(0, matches.length - 1),
+    );
+    root.innerHTML = `
+      <div class="vn-PickerOverlay" data-picker-close></div>
+      <section class="vn-Picker" role="dialog" aria-modal="true" aria-label="Quick Open">
+        <input class="vn-Picker__input" data-quick-open-input aria-label="Search files" placeholder="Go to file…" value="${escapeHtml(state.quickOpen.query)}" />
+        <div class="vn-Picker__list" role="listbox">
+          ${
+            matches.length
+              ? matches
+                  .map(
+                    (item, index) => `
+            <button type="button" class="vn-Picker__item${index === state.quickOpen.selected ? " is-selected" : ""}" role="option" aria-selected="${index === state.quickOpen.selected ? "true" : "false"}" data-quick-open-path="${escapeHtml(item.file.path)}" data-index="${index}">
+              <span class="vn-Picker__label"><small>${escapeHtml(item.file.path)}</small>${escapeHtml(item.file.title || baseName(item.file.path))}</span>
+            </button>`,
+                  )
+                  .join("")
+              : `<p class="vn-Picker__empty">No known .vixnote files.</p>`
+          }
+        </div>
+      </section>`;
+    const input = root.querySelector("[data-quick-open-input]");
+    input?.focus({ preventScroll: true });
+    input?.setSelectionRange(input.value.length, input.value.length);
+  }
+
+  function openQuickOpen() {
+    rememberFocus("quickOpen");
+    closeContextMenu();
+    state.quickOpen.open = true;
+    state.quickOpen.query = "";
+    state.quickOpen.selected = 0;
+    renderQuickOpen();
+  }
+
+  function currentPickerMatches(kind) {
+    return kind === "command-palette"
+      ? commandMatches(state.commandPalette.query)
+      : quickOpenMatches(state.quickOpen.query);
+  }
+
+  async function activatePickerSelection(kind) {
+    if (kind === "command-palette") {
+      const item = currentPickerMatches(kind)[state.commandPalette.selected];
+      if (!item) return;
+      closePicker(kind);
+      await executeCommand(item.cmd.id);
+      return;
+    }
+    const item = currentPickerMatches(kind)[state.quickOpen.selected];
+    if (!item) return;
+    closePicker(kind);
+    await openNotePath(item.file.path, { silent: true });
+  }
+
+  function bindPickers() {
+    document.addEventListener("input", (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement)) return;
+      if (input.matches("[data-command-palette-input]")) {
+        state.commandPalette.query = input.value;
+        state.commandPalette.selected = 0;
+        renderCommandPalette();
+      } else if (input.matches("[data-quick-open-input]")) {
+        state.quickOpen.query = input.value;
+        state.quickOpen.selected = 0;
+        renderQuickOpen();
+      } else if (input.matches("[data-cell-type-filter]")) {
+        renderCellTypePicker(input.value);
+      } else if (input.matches("[data-find-input]")) {
+        state.find.query = input.value;
+        updateFindMatches();
+        renderFindBox();
+      }
+    });
+
+    document.addEventListener("click", async (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      if (target.closest("[data-picker-close]")) {
+        closePicker("command-palette");
+        closePicker("quick-open");
+        closePicker("find-box");
+        return;
+      }
+      const cmd = target.closest("[data-palette-command]");
+      if (cmd) {
+        const id = cmd.getAttribute("data-palette-command");
+        closePicker("command-palette");
+        await executeCommand(id);
+      }
+      const file = target.closest("[data-quick-open-path]");
+      if (file) {
+        const path = file.getAttribute("data-quick-open-path");
+        closePicker("quick-open");
+        await openNotePath(path, { silent: true });
+      }
+      const changeCellType = target.closest("[data-change-cell-type]");
+      if (changeCellType) {
+        const type = changeCellType.getAttribute("data-change-cell-type");
+        closePicker("command-palette");
+        if (targetId() && type) await changeKind(targetId(), type);
+      }
+      const findAction = target.closest("[data-find-action]");
+      if (findAction) {
+        const action = findAction.getAttribute("data-find-action");
+        if (action === "next") gotoFindMatch(1);
+        if (action === "prev") gotoFindMatch(-1);
+        if (action === "case") {
+          state.find.caseSensitive = !state.find.caseSensitive;
+          updateFindMatches();
+          renderFindBox();
+        }
+        if (action === "close") closePicker("find-box");
+      }
+    });
+
+    document.addEventListener("keydown", async (event) => {
+      const inCommand = !!document.querySelector("[data-command-palette]");
+      const inQuick = !!document.querySelector("[data-quick-open]");
+      if (!inCommand && !inQuick && !state.find.open) return;
+      const kind = inCommand
+        ? "command-palette"
+        : inQuick
+          ? "quick-open"
+          : "find-box";
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePicker(kind);
+        return;
+      }
+      if (kind === "find-box") {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          gotoFindMatch(event.shiftKey ? -1 : 1);
+        }
+        return;
+      }
+      const selected =
+        kind === "command-palette" ? state.commandPalette : state.quickOpen;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        selected.selected = Math.min(
+          selected.selected + 1,
+          Math.max(0, currentPickerMatches(kind).length - 1),
+        );
+        kind === "command-palette" ? renderCommandPalette() : renderQuickOpen();
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        selected.selected = Math.max(0, selected.selected - 1);
+        kind === "command-palette" ? renderCommandPalette() : renderQuickOpen();
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        await activatePickerSelection(kind);
+      }
+    });
+  }
+
+  function updateFindMatches() {
+    const query = state.find.query || "";
+    state.find.matches = [];
+    if (!query) {
+      state.find.index = 0;
+      return;
+    }
+    const needle = state.find.caseSensitive ? query : query.toLowerCase();
+    for (const cell of cells()) {
+      const source = String(cell.source || "");
+      const haystack = state.find.caseSensitive ? source : source.toLowerCase();
+      let at = haystack.indexOf(needle);
+      while (at >= 0) {
+        state.find.matches.push({
+          cellId: cell.id,
+          start: at,
+          end: at + query.length,
+        });
+        at = haystack.indexOf(needle, at + Math.max(1, query.length));
+      }
+    }
+    state.find.index = Math.min(
+      state.find.index,
+      Math.max(0, state.find.matches.length - 1),
+    );
+  }
+
+  function renderFindBox() {
+    const root = ensurePickerRoot("find-box");
+    root.innerHTML = `
+      <div class="vn-FindBox__panel" role="dialog" aria-modal="false" aria-label="Find in document">
+        <input class="vn-FindBox__input" data-find-input aria-label="Find" placeholder="Find in cells" value="${escapeHtml(state.find.query)}" />
+        <span class="vn-FindBox__count">${state.find.matches.length ? `${state.find.index + 1}/${state.find.matches.length}` : "0/0"}</span>
+        <button type="button" data-find-action="prev" aria-label="Previous match">↑</button>
+        <button type="button" data-find-action="next" aria-label="Next match">↓</button>
+        <button type="button" data-find-action="case" class="${state.find.caseSensitive ? "is-active" : ""}" aria-label="Toggle case sensitive">Aa</button>
+        <button type="button" data-find-action="close" aria-label="Close find">×</button>
+      </div>`;
+    root.querySelector("input")?.focus({ preventScroll: true });
+  }
+
+  function openFindBox() {
+    rememberFocus("editor");
+    state.find.open = true;
+    state.find.query = "";
+    state.find.index = 0;
+    updateFindMatches();
+    renderFindBox();
+  }
+
+  function gotoFindMatch(delta) {
+    updateFindMatches();
+    if (!state.find.matches.length) return;
+    state.find.index =
+      (state.find.index + delta + state.find.matches.length) %
+      state.find.matches.length;
+    const match = state.find.matches[state.find.index];
+    selectCell(match.cellId, { edit: true, focus: true });
+    requestAnimationFrame(() => {
+      const cell = cellElById(match.cellId);
+      const ta = cell
+        ? cell.querySelector('textarea[data-action="edit-source"]')
+        : null;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(match.start, match.end);
+        updateCursorStatus(ta);
+      }
+      renderFindBox();
+    });
+  }
+
+  function renderCellTypePicker(query = "") {
+    const current = targetId()
+      ? cellTypeOf(findCell(targetId()))
+      : currentToolbarKind();
+    const q = String(query || "")
+      .trim()
+      .toLowerCase();
+    const list = normalizedCellTypes()
+      .map((type) => ({
+        type,
+        score: fuzzyScore(
+          q,
+          `${type.label} ${type.id} ${type.extension || ""} ${type.language || ""}`,
+        ),
+      }))
+      .filter((item) => !q || item.score > 0)
+      .sort(
+        (a, b) => b.score - a.score || a.type.label.localeCompare(b.type.label),
+      );
+    const root = ensurePickerRoot("command-palette");
+    root.innerHTML = `
+      <div class="vn-PickerOverlay" data-picker-close></div>
+      <section class="vn-Picker" role="dialog" aria-modal="true" aria-label="Change Cell Type">
+        <input class="vn-Picker__input" data-cell-type-filter aria-label="Search cell types" placeholder="Change cell type…" value="${escapeHtml(query)}" />
+        <div class="vn-Picker__list" role="listbox">
+          ${
+            list.length
+              ? list
+                  .map(
+                    ({ type }) => `
+            <button type="button" class="vn-Picker__item${type.id === current ? " is-selected" : ""}" data-change-cell-type="${escapeHtml(type.id)}" role="option" aria-selected="${type.id === current ? "true" : "false"}">
+              <span class="vn-Picker__label"><small>${escapeHtml(type.id)}${type.extension ? ` · ${escapeHtml(type.extension)}` : ""}</small>${escapeHtml(type.label || type.id)}</span>
+              <code>${type.executable ? "executable" : "text"}${type.builtin ? " · builtin" : ""}</code>
+            </button>`,
+                  )
+                  .join("")
+              : `<p class="vn-Picker__empty">No cell types match.</p>`
+          }
+        </div>
+      </section>`;
+    const input = root.querySelector("[data-cell-type-filter]");
+    input?.focus({ preventScroll: true });
+    input?.setSelectionRange(input.value.length, input.value.length);
+  }
+
+  function openCellTypePicker() {
+    rememberFocus("commandPalette");
+    state.commandPalette.open = true;
+    renderCellTypePicker("");
+  }
+
+  /* ==========================================================
+   * Context menu (shared)
    * ======================================================== */
   let contextMenuEl = null;
+  let contextMenuItems = [];
+  let contextMenuIndex = 0;
+
   function closeContextMenu() {
     if (contextMenuEl) {
       contextMenuEl.remove();
       contextMenuEl = null;
+      contextMenuItems = [];
+      restoreFocus();
     }
   }
-  function showContextMenu(x, y, items) {
+
+  function enabledContextIndexes() {
+    return contextMenuItems
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => !item.separator && item.enabled !== false);
+  }
+
+  function renderContextSelection() {
+    if (!contextMenuEl) return;
+    for (const btn of contextMenuEl.querySelectorAll("[data-ctx-index]")) {
+      btn.classList.toggle(
+        "is-selected",
+        Number(btn.getAttribute("data-ctx-index")) === contextMenuIndex,
+      );
+    }
+  }
+
+  function openContextMenu(items, position, context = {}) {
     closeContextMenu();
+    rememberFocus("contextMenu");
+    contextMenuItems = items.map((item) => ({
+      ...item,
+      context: { ...context, ...item },
+    }));
     const menu = document.createElement("div");
     menu.className = "vn-Context";
-    menu.innerHTML = items
-      .map((it) =>
-        it.sep
-          ? `<div class="vn-Context__sep"></div>`
-          : `<button type="button" class="vn-Context__item${it.danger ? " is-danger" : ""}${it.disabled ? " is-disabled" : ""}" data-ctx="${escapeHtml(it.id)}">${escapeHtml(it.label)}</button>`,
+    menu.setAttribute("role", "menu");
+    menu.tabIndex = -1;
+    menu.innerHTML = contextMenuItems
+      .map((it, index) =>
+        it.separator
+          ? `<div class="vn-Context__sep" role="separator"></div>`
+          : `<button type="button" role="menuitem" class="vn-Context__item${it.danger ? " is-danger" : ""}${it.enabled === false ? " is-disabled" : ""}" data-ctx-index="${index}" ${it.enabled === false ? "disabled" : ""}>
+              <span>${escapeHtml(it.label)}</span><code>${escapeHtml(it.keybinding || "")}</code>
+            </button>`,
       )
       .join("");
     document.body.appendChild(menu);
     contextMenuEl = menu;
-
+    const first = enabledContextIndexes()[0];
+    contextMenuIndex = first ? first.index : 0;
     const rect = menu.getBoundingClientRect();
-    const px = Math.min(x, window.innerWidth - rect.width - 8);
-    const py = Math.min(y, window.innerHeight - rect.height - 8);
-    menu.style.left = `${Math.max(8, px)}px`;
-    menu.style.top = `${Math.max(8, py)}px`;
-
+    const x = Math.min(position.x, window.innerWidth - rect.width - 8);
+    const y = Math.min(position.y, window.innerHeight - rect.height - 8);
+    menu.style.left = `${Math.max(8, x)}px`;
+    menu.style.top = `${Math.max(8, y)}px`;
+    renderContextSelection();
+    menu.focus({ preventScroll: true });
     menu.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-ctx]");
-      if (!btn || btn.classList.contains("is-disabled")) return;
-      const id = btn.getAttribute("data-ctx");
-      closeContextMenu();
-      const found = items.find((i) => i.id === id);
-      if (found && found.run) found.run();
+      const btn = e.target.closest("[data-ctx-index]");
+      if (!btn || btn.disabled) return;
+      contextMenuIndex = Number(btn.getAttribute("data-ctx-index"));
+      activateContextMenuItem();
     });
+  }
+
+  function showContextMenu(x, y, items, context = {}) {
+    openContextMenu(items, { x, y }, context);
+  }
+
+  async function activateContextMenuItem() {
+    const item = contextMenuItems[contextMenuIndex];
+    if (!item || item.separator || item.enabled === false) return;
+    closeContextMenu();
+    if (item.command) await executeCommand(item.command, item.context || item);
+    else if (item.run) await item.run();
+  }
+
+  function moveContextMenu(delta) {
+    const enabled = enabledContextIndexes();
+    if (!enabled.length) return;
+    const current = enabled.findIndex(
+      ({ index }) => index === contextMenuIndex,
+    );
+    const next = enabled[(current + delta + enabled.length) % enabled.length];
+    contextMenuIndex = next.index;
+    renderContextSelection();
+  }
+
+  function copyText(value) {
+    const text = String(value || "");
+    if (navigator.clipboard?.writeText)
+      navigator.clipboard.writeText(text).catch(() => {});
+    showNotification({ type: "info", message: "Path copied" });
   }
 
   function fileContextItems(path) {
     return [
+      { label: "Open", command: "explorer.open", path },
       {
-        id: "open",
-        label: "Open",
-        run: () => openNotePath(path, { silent: true }),
+        label: "Open to the Side",
+        command: "explorer.open",
+        path,
+        enabled: false,
       },
-      { sep: true },
+      { separator: true },
       {
-        id: "rename",
-        label: "Rename…",
-        run: () => startInlineRename(path, "file"),
+        label: "Rename",
+        command: "explorer.rename",
+        path,
+        type: "file",
+        keybinding: "F2",
       },
       {
-        id: "delete",
         label: "Delete",
+        command: "explorer.delete",
+        path,
+        type: "file",
         danger: true,
-        run: async () => {
-          if (await confirmDelete(baseName(path), "file")) {
-            await deletePath(path);
-          }
-        },
+        keybinding: "Del",
       },
+      { separator: true },
+      { label: "Copy Path", run: () => copyText(path) },
+      { label: "Copy Relative Path", run: () => copyText(path) },
+      { label: "Reveal in Explorer", command: "explorer.revealActiveFile" },
     ];
   }
+
   function dirContextItems(path) {
     return [
-      { id: "new-note", label: "New note", run: () => newNote(path) },
-      { id: "new-folder", label: "New folder", run: () => newFolder(path) },
-      { sep: true },
+      { label: "New Note", command: "explorer.newFile", path },
+      { label: "New Folder", command: "explorer.newFolder", path },
+      { label: "Refresh", command: "explorer.refresh", path },
+      { separator: true },
       {
-        id: "rename",
-        label: "Rename…",
-        run: () => startInlineRename(path, "dir"),
+        label: "Rename",
+        command: "explorer.rename",
+        path,
+        type: "dir",
+        enabled: path !== ".",
       },
       {
-        id: "delete",
         label: "Delete",
+        command: "explorer.delete",
+        path,
+        type: "dir",
         danger: true,
-        run: async () => {
-          const ok = await showModalConfirm({
-            title: "Delete folder",
-            body: `Delete folder “${escapeHtml(baseName(path))}” and everything inside it from disk? This cannot be undone from Vix Note.`,
-            confirm: "Delete",
-            danger: true,
-          });
-
-          if (ok) {
-            await deletePath(path, { recursive: true });
-          }
-        },
+        enabled: path !== ".",
       },
+      { separator: true },
+      { label: "Copy Path", run: () => copyText(path) },
+    ];
+  }
+
+  function emptyExplorerContextItems() {
+    return [
+      { label: "New Note", command: "explorer.newFile" },
+      { label: "New Folder", command: "explorer.newFolder" },
+      { label: "Refresh", command: "explorer.refresh" },
+    ];
+  }
+
+  function tabContextItems(path) {
+    return [
+      { label: "Close", command: "note.close", path, keybinding: "Ctrl+W" },
+      { label: "Close Others", run: () => closeOtherTabs(path) },
+      { label: "Close to the Right", run: () => closeTabsToRight(path) },
+      { label: "Close All", command: "note.closeAll" },
+      { separator: true },
+      { label: "Copy Path", run: () => copyText(path) },
+      { label: "Reveal in Explorer", command: "explorer.revealActiveFile" },
+    ];
+  }
+
+  function cellContextItems(id) {
+    return [
+      { label: "Run Cell", command: "cell.run", enabled: !!id },
+      { label: "Run All Cells", command: "cell.runAll" },
+      { separator: true },
+      { label: "Insert Above", command: "cell.insertAbove" },
+      { label: "Insert Below", command: "cell.insertBelow" },
+      { label: "Change Cell Type", command: "cell.changeType" },
+      { separator: true },
+      { label: "Copy Cell", command: "cell.copy" },
+      { label: "Cut Cell", command: "cell.cut" },
+      {
+        label: "Paste Above",
+        command: "cell.pasteAbove",
+        enabled: !!state.cellClipboard.cell,
+      },
+      {
+        label: "Paste Below",
+        command: "cell.pasteBelow",
+        enabled: !!state.cellClipboard.cell,
+      },
+      { separator: true },
+      { label: "Duplicate", command: "cell.duplicate" },
+      { label: "Delete", command: "cell.delete", danger: true },
     ];
   }
 
@@ -4510,12 +5867,44 @@
         closeToolbarKindMenu();
       }
 
+      const menuCommand = target ? target.closest("[data-command]") : null;
+      if (menuCommand) {
+        event.preventDefault();
+        closeAllMenus();
+        executeCommand(menuCommand.getAttribute("data-command"));
+        return;
+      }
+
       const t =
         event.target instanceof Element
           ? event.target.closest("[data-action]")
           : null;
       if (!t) return;
       const action = t.getAttribute("data-action");
+      const actionCommand =
+        legacyCommandAliases.get(action) ||
+        {
+          "toggle-sidebar": "view.toggleSidebar",
+          save: "note.save",
+          "run-cell": "cell.run",
+          "run-all": "cell.runAll",
+          restart: "kernel.restart",
+          "insert-below": "cell.insertBelow",
+          "cut-cell": "cell.delete",
+          duplicate: "cell.duplicate",
+          "move-up": "cell.moveUp",
+          "move-down": "cell.moveDown",
+          "new-note": "note.new",
+          "open-note": "note.open",
+          "new-folder": "explorer.newFolder",
+          refresh: "explorer.refresh",
+          shortcuts: "help.shortcuts",
+        }[action];
+      if (actionCommand) {
+        event.preventDefault();
+        executeCommand(actionCommand);
+        return;
+      }
 
       switch (action) {
         case "toggle-sidebar":
@@ -4629,19 +6018,89 @@
           return;
         }
 
-        const path = row.getAttribute("data-tree-path");
+        const path = normalizeExplorerPath(row.getAttribute("data-tree-path"));
         const type = row.getAttribute("data-tree-type");
+        const rows = $all("[data-tree-path]", listEl).filter(
+          (el) => el.offsetParent !== null,
+        );
+        const rowIndex = rows.indexOf(row);
+        const focusRow = (next) => {
+          if (!next) return;
+          state.explorer.currentPath = normalizeExplorerPath(
+            next.getAttribute("data-tree-path"),
+          );
+          const nextType = next.getAttribute("data-tree-type");
+          state.explorer.selectedDirPath =
+            nextType === "dir"
+              ? state.explorer.currentPath
+              : parentPath(state.explorer.currentPath);
+          renderExplorer();
+          requestAnimationFrame(() => {
+            const focused = $(
+              `[data-tree-path="${cssEscape(state.explorer.currentPath)}"]`,
+              listEl,
+            );
+            focused?.focus({ preventScroll: true });
+          });
+        };
 
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          focusRow(rows[Math.min(rows.length - 1, rowIndex + 1)]);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          focusRow(rows[Math.max(0, rowIndex - 1)]);
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          if (type === "dir") {
+            if (!state.explorer.expandedDirs.has(path)) {
+              toggleDirectory(path);
+            } else {
+              focusRow(rows[rowIndex + 1]);
+            }
+          }
+          return;
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          if (
+            type === "dir" &&
+            state.explorer.expandedDirs.has(path) &&
+            path !== "."
+          ) {
+            state.explorer.expandedDirs.delete(path);
+            renderExplorer();
+            requestAnimationFrame(() =>
+              $(`[data-tree-path="${cssEscape(path)}"]`, listEl)?.focus({
+                preventScroll: true,
+              }),
+            );
+          } else {
+            const parent = parentPath(path);
+            focusRow($(`[data-tree-path="${cssEscape(parent)}"]`, listEl));
+          }
+          return;
+        }
         if (e.key === "F2") {
           e.preventDefault();
           startInlineRename(path, type === "dir" ? "dir" : "file");
           return;
         }
-        if (e.key === "Enter") {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          executeCommand("explorer.delete", { path, type });
+          return;
+        }
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
           if (type === "dir") {
             toggleDirectory(path);
           } else if (type === "file") {
-            openFileRowIfAllowed(path);
+            openFileRowIfAllowed(path, { preview: false, permanent: true });
           }
         }
       });
@@ -4688,18 +6147,28 @@
         }
         const row = e.target.closest("[data-tree-path]");
         if (!row) return;
-        const path = row.getAttribute("data-tree-path");
+        const path = normalizeExplorerPath(row.getAttribute("data-tree-path"));
         const type = row.getAttribute("data-tree-type");
+        state.explorer.currentPath = path;
 
         if (type === "dir") {
-          state.explorer.selectedDirPath = normalizeExplorerPath(path);
+          state.explorer.selectedDirPath = path;
           toggleDirectory(path);
           return;
         }
         if (type === "file") {
           state.explorer.selectedDirPath = parentPath(path);
-          openFileRowIfAllowed(path);
+          openFileRowIfAllowed(path, { preview: true });
         }
+      });
+
+      listEl.addEventListener("dblclick", (e) => {
+        const row = e.target.closest("[data-tree-path]");
+        if (!row) return;
+        const path = row.getAttribute("data-tree-path");
+        const type = row.getAttribute("data-tree-type");
+        if (type === "file")
+          openFileRowIfAllowed(path, { preview: false, permanent: true });
       });
 
       listEl.addEventListener("contextmenu", (e) => {
@@ -4707,14 +6176,25 @@
           return;
         }
         const row = e.target.closest("[data-tree-path]");
-        if (!row) return;
+        if (!row) {
+          e.preventDefault();
+          showContextMenu(e.clientX, e.clientY, emptyExplorerContextItems(), {
+            path: state.explorer.selectedDirPath || ".",
+            type: "dir",
+          });
+          return;
+        }
         e.preventDefault();
-        const path = row.getAttribute("data-tree-path");
+        const path = normalizeExplorerPath(row.getAttribute("data-tree-path"));
         const type = row.getAttribute("data-tree-type");
+        state.explorer.currentPath = path;
+        state.explorer.selectedDirPath =
+          type === "dir" ? path : parentPath(path);
         showContextMenu(
           e.clientX,
           e.clientY,
           type === "dir" ? dirContextItems(path) : fileContextItems(path),
+          { path, type },
         );
       });
 
@@ -4807,6 +6287,22 @@
     const search = $(sel.explorerSearch);
     if (search) search.addEventListener("input", renderExplorer);
 
+    const problemsFilter = $(sel.problemsFilter);
+    if (problemsFilter) {
+      problemsFilter.addEventListener("input", () => {
+        state.diagnostics.filter = problemsFilter.value;
+        renderProblems();
+      });
+    }
+
+    const problemsSeverity = $(sel.problemsSeverity);
+    if (problemsSeverity) {
+      problemsSeverity.addEventListener("change", () => {
+        state.diagnostics.severity = problemsSeverity.value || "all";
+        renderProblems();
+      });
+    }
+
     const problemsList = $(sel.problemsList);
     if (problemsList) {
       problemsList.addEventListener("click", (e) => {
@@ -4839,6 +6335,47 @@
   function bindTabsBar() {
     const tabsBar = $(sel.tabsBar);
     if (!tabsBar) return;
+
+    tabsBar.addEventListener("auxclick", (e) => {
+      if (e.button !== 1) return;
+      const tab = e.target.closest("[data-tab-path]");
+      if (tab) {
+        e.preventDefault();
+        closeTab(tab.getAttribute("data-tab-path"));
+      }
+    });
+
+    tabsBar.addEventListener("dblclick", (e) => {
+      const tab = e.target.closest("[data-tab-path]");
+      if (!tab) return;
+      const path = normalizeExplorerPath(tab.getAttribute("data-tab-path"));
+      const found = state.tabs.find(
+        (t) => normalizeExplorerPath(t.path) === path,
+      );
+      if (found) {
+        found.preview = false;
+        persistTabs();
+        renderTabsBar();
+      }
+    });
+
+    tabsBar.addEventListener("contextmenu", (e) => {
+      const tab = e.target.closest("[data-tab-path]");
+      if (!tab) return;
+      e.preventDefault();
+      const path = normalizeExplorerPath(tab.getAttribute("data-tab-path"));
+      switchTab(path);
+      openContextMenu(tabContextItems(path), { x: e.clientX, y: e.clientY });
+    });
+
+    tabsBar.addEventListener("keydown", (e) => {
+      const tab = e.target.closest("[data-tab-path]");
+      if (!tab) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        switchTab(tab.getAttribute("data-tab-path"));
+      }
+    });
 
     tabsBar.addEventListener("click", (e) => {
       const close = e.target.closest("[data-tab-close]");
@@ -4927,13 +6464,17 @@
     });
   }
 
-  function openFileRowIfAllowed(path) {
+  function openFileRowIfAllowed(path, options = {}) {
     const entry = state.explorer.entries.get(path);
     if (entry && entry.openable === false && !path.endsWith(".vixnote")) {
       setMessage("Only .vixnote files can be opened in Vix Note.", "warning");
       return;
     }
-    openNotePath(path, { silent: true });
+    openNotePath(path, {
+      silent: true,
+      preview: !!options.preview,
+      permanent: !!options.permanent,
+    });
   }
 
   /* ==========================================================
@@ -5020,6 +6561,52 @@
       true,
     );
 
+    container.addEventListener("keydown", (event) => {
+      const ta = event.target;
+      if (!(ta instanceof HTMLTextAreaElement)) return;
+      if (ta.getAttribute("data-action") !== "edit-source") return;
+      if (
+        event.key === "Enter" &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        insertAutoIndent(ta);
+        return;
+      }
+      if (
+        PAIRS[event.key] &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        handlePairInsertion(ta, event.key);
+        return;
+      }
+      if (
+        [")", "]", "}", '"', "'"].includes(event.key) &&
+        handleClosingPair(ta, event.key)
+      ) {
+        event.preventDefault();
+      }
+    });
+
+    container.addEventListener("contextmenu", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const cellEl = target.closest(".vn-Cell");
+      if (!cellEl) return;
+      event.preventDefault();
+      selectCell(cellEl.dataset.cellId, { edit: false, focus: true });
+      openContextMenu(cellContextItems(cellEl.dataset.cellId), {
+        x: event.clientX,
+        y: event.clientY,
+      });
+    });
+
     container.addEventListener(
       "focusout",
       async (event) => {
@@ -5039,12 +6626,85 @@
   /* ==========================================================
    * Keyboard
    * ======================================================== */
+  const keybindings = [
+    { key: "Ctrl+S", mac: "Meta+S", command: "note.save", allowTyping: false },
+    { key: "Ctrl+N", mac: "Meta+N", command: "note.new", allowTyping: false },
+    { key: "Ctrl+O", mac: "Meta+O", command: "note.open", allowTyping: false },
+    { key: "Ctrl+W", mac: "Meta+W", command: "note.close", allowTyping: false },
+    {
+      key: "Ctrl+Shift+T",
+      mac: "Meta+Shift+T",
+      command: "note.reopenClosed",
+      allowTyping: false,
+    },
+    {
+      key: "Ctrl+P",
+      mac: "Meta+P",
+      command: "view.quickOpen",
+      allowTyping: false,
+    },
+    {
+      key: "Ctrl+Shift+P",
+      mac: "Meta+Shift+P",
+      command: "view.commandPalette",
+      allowTyping: true,
+    },
+    { key: "F1", command: "view.commandPalette", allowTyping: true },
+    {
+      key: "Ctrl+B",
+      mac: "Meta+B",
+      command: "view.toggleSidebar",
+      allowTyping: false,
+    },
+    {
+      key: "Ctrl+J",
+      mac: "Meta+J",
+      command: "view.showProblems",
+      allowTyping: false,
+    },
+    {
+      key: "Ctrl+Enter",
+      mac: "Meta+Enter",
+      command: "cell.run",
+      allowTyping: true,
+    },
+    { key: "Shift+Enter", command: "cell.runAndAdvance", allowTyping: true },
+    { key: "Alt+Enter", command: "cell.runAndInsertBelow", allowTyping: true },
+    {
+      key: "Ctrl+Shift+Enter",
+      mac: "Meta+Shift+Enter",
+      command: "cell.runAll",
+      allowTyping: true,
+    },
+    { key: "Ctrl+F", mac: "Meta+F", command: "view.find", allowTyping: false },
+  ];
+
+  function eventKeybinding(event) {
+    const parts = [];
+    if (event.ctrlKey) parts.push("Ctrl");
+    if (event.metaKey) parts.push("Meta");
+    if (event.altKey) parts.push("Alt");
+    if (event.shiftKey) parts.push("Shift");
+    let key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+    parts.push(key);
+    return parts.join("+");
+  }
+
+  function matchingKeybinding(event) {
+    const actual = eventKeybinding(event);
+    return (
+      keybindings.find(
+        (binding) => binding.key === actual || binding.mac === actual,
+      ) || null
+    );
+  }
+
   let lastDTime = 0;
   function handleDoubleD() {
     const now = Date.now();
     if (now - lastDTime < 500) {
       lastDTime = 0;
-      if (state.selectedId) deleteCellById(state.selectedId);
+      executeCommand("cell.delete");
     } else lastDTime = now;
   }
   async function insertAbove(id) {
@@ -5059,54 +6719,56 @@
 
   function bindKeyboard() {
     document.addEventListener("keydown", async (event) => {
-      const inField =
-        event.target instanceof HTMLTextAreaElement ||
-        event.target instanceof HTMLInputElement;
-      const inTextarea = event.target instanceof HTMLTextAreaElement;
-      const meta = event.ctrlKey || event.metaKey;
-
-      if (meta && event.key.toLowerCase() === "n") {
-        if (!inTextarea) {
+      if (contextMenuEl) {
+        if (event.key === "Escape") {
           event.preventDefault();
-          if (event.shiftKey) newFolder();
-          else newNote();
+          closeContextMenu();
+          return;
+        }
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          moveContextMenu(1);
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveContextMenu(-1);
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          await activateContextMenuItem();
           return;
         }
       }
 
-      if (inlineInputActive() && inField) {
+      const inField = isTypingTarget(event.target);
+      const inTextarea = event.target instanceof HTMLTextAreaElement;
+      const binding = matchingKeybinding(event);
+      if (binding && (!inField || binding.allowTyping)) {
+        if (
+          binding.command === "cell.runAndAdvance" &&
+          inTextarea &&
+          !event.shiftKey
+        )
+          return;
+        event.preventDefault();
+        await executeCommand(binding.command);
+        if (
+          state.editing &&
+          inTextarea &&
+          ["cell.run", "cell.runAndAdvance", "cell.runAndInsertBelow"].includes(
+            binding.command,
+          )
+        )
+          enterCommandMode();
         return;
       }
 
-      if (meta && event.key === "Enter") {
-        event.preventDefault();
-        if (state.selectedId) await runCellById(state.selectedId);
-        if (inTextarea) enterCommandMode();
-        return;
-      }
-      if (event.shiftKey && event.key === "Enter") {
-        if (inField && !inTextarea) return;
-        event.preventDefault();
-        if (state.selectedId) {
-          await runCellById(state.selectedId);
-          selectAdjacent(1);
-        }
-        return;
-      }
-      if (meta && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        await saveNote();
-        return;
-      }
-      if (meta && event.key.toLowerCase() === "b") {
-        event.preventDefault();
-        toggleSidebar();
-        return;
-      }
+      if (inlineInputActive() && inField) return;
 
       if (state.editing && inTextarea) {
         const ta = event.target;
-
         if (event.key === "Escape") {
           event.preventDefault();
           if (state.selectedId) {
@@ -5122,7 +6784,7 @@
           else indentTextarea(ta);
           return;
         }
-        if (meta && event.key === "/") {
+        if ((event.ctrlKey || event.metaKey) && event.key === "/") {
           event.preventDefault();
           toggleCommentTextarea(ta);
           return;
@@ -5137,66 +6799,97 @@
           moveCurrentLine(ta, 1);
           return;
         }
-        if (meta && event.key.toLowerCase() === "s") {
-          event.preventDefault();
-          await saveNote();
-          return;
-        }
         updateLineFocus(ta);
         updateCursorStatus(ta);
         return;
       }
 
       if (inField) return;
-
+      if (event.key === "Escape") {
+        exitEditMode({ focusCell: true });
+        return;
+      }
       if (event.key === "?") {
         event.preventDefault();
-        showShortcuts();
+        await executeCommand("help.shortcuts");
+        return;
+      }
+
+      if (event.altKey && /^[1-9]$/.test(event.key)) {
+        event.preventDefault();
+        await activateTabByIndex(Number(event.key) - 1);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === "Tab") {
+        event.preventDefault();
+        await activateRelativeTab(event.shiftKey ? -1 : 1);
         return;
       }
 
       if (!state.selectedId) return;
-
-      switch (event.key) {
-        case "Enter":
+      switch (event.key.toLowerCase()) {
+        case "enter":
           event.preventDefault();
-          enterEditMode();
+          await executeCommand("cell.focusEditor");
           break;
-        case "ArrowUp":
+        case "arrowup":
         case "k":
           event.preventDefault();
           selectAdjacent(-1);
           break;
-        case "ArrowDown":
+        case "arrowdown":
         case "j":
           event.preventDefault();
           selectAdjacent(1);
           break;
         case "a":
           event.preventDefault();
-          insertAbove(state.selectedId);
+          await executeCommand("cell.insertAbove");
           break;
         case "b":
           event.preventDefault();
-          addCell(currentToolbarKind(), { afterId: state.selectedId });
+          await executeCommand("cell.insertBelow");
           break;
         case "d":
           handleDoubleD();
           break;
+        case "c":
+          event.preventDefault();
+          await executeCommand("cell.copy");
+          break;
+        case "x":
+          event.preventDefault();
+          await executeCommand("cell.cut");
+          break;
+        case "v":
+          event.preventDefault();
+          await executeCommand("cell.pasteBelow");
+          break;
         case "m":
           event.preventDefault();
-          changeKind(state.selectedId, "markdown");
+          await executeCommand("cell.toMarkdown");
           break;
         case "y":
           event.preventDefault();
-          changeKind(state.selectedId, "cpp");
+          await executeCommand("cell.toCpp");
           break;
         case "r":
           event.preventDefault();
-          changeKind(state.selectedId, "reply");
+          await executeCommand("cell.toReply");
+          break;
+        case "h":
+          event.preventDefault();
+          await executeCommand("cell.toHtml");
           break;
         default:
           break;
+      }
+    });
+
+    window.addEventListener("beforeunload", (event) => {
+      if (state.tabs.some((tab) => tab.dirty)) {
+        event.preventDefault();
+        event.returnValue = "You have unsaved Vix Note changes.";
       }
     });
   }
@@ -5205,8 +6898,17 @@
    * Init
    * ======================================================== */
   function init() {
-    applySidebarWidth(DEFAULT_SIDEBAR_WIDTH);
-    if (window.matchMedia("(max-width: 900px)").matches) toggleSidebar(true);
+    registerCoreCommands();
+    restoreUiState();
+    restorePersistedTabs();
+    restoreSession();
+    applySidebarWidth(state.sidebarWidth || DEFAULT_SIDEBAR_WIDTH);
+    app.classList.toggle(
+      "is-sidebar-collapsed",
+      !!state.sidebarCollapsed ||
+        window.matchMedia("(max-width: 900px)").matches,
+    );
+    app.classList.toggle("is-focus", !!state.focusMode);
 
     bindActions();
     bindActivityBar();
@@ -5214,6 +6916,7 @@
     bindSidebarResize();
     bindCellInteractions();
     bindExplorer();
+    bindPickers();
     bindKeyboard();
 
     const statusProblems = $(sel.statusProblems);
@@ -5224,7 +6927,8 @@
     for (const c of $all("[data-modal-close]"))
       c.addEventListener("click", () => closeModal());
 
-    setPanel("explorer");
+    setPanel(state.activePanel || "explorer");
+    if (state.sidebarCollapsed) app.classList.add("is-sidebar-collapsed");
     setKernel("idle");
     renderExplorer();
     renderOpenTabs();

@@ -37,7 +37,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="new-note"
+                data-command="note.new"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -71,7 +71,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="open-note"
+                data-command="note.open"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -98,7 +98,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="new-folder"
+                data-command="explorer.newFolder"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -123,7 +123,11 @@
                 New folder <span class="vn-Menu__hint">⌘⇧N</span>
               </button>
               <div class="vn-Menu__sep"></div>
-              <button type="button" class="vn-Menu__item" data-command="save">
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="note.save"
+              >
                 <svg
                   class="vn-Menu__icon"
                   viewBox="0 0 24 24"
@@ -146,7 +150,11 @@
                 </svg>
                 Save note <span class="vn-Menu__hint">⌘S</span>
               </button>
-              <button type="button" class="vn-Menu__item" data-command="reload">
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="note.reload"
+              >
                 <svg
                   class="vn-Menu__icon"
                   viewBox="0 0 24 24"
@@ -182,7 +190,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="insert-below"
+                data-command="cell.insertBelow"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -212,7 +220,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="cut-cell"
+                data-command="cell.delete"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -240,7 +248,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="duplicate"
+                data-command="cell.duplicate"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -271,7 +279,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="move-up"
+                data-command="cell.moveUp"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -292,7 +300,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="move-down"
+                data-command="cell.moveDown"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -311,7 +319,11 @@
                 Move cell down
               </button>
               <div class="vn-Menu__sep"></div>
-              <button type="button" class="vn-Menu__item" data-command="to-cpp">
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="cell.toCpp"
+              >
                 <svg
                   class="vn-Menu__icon"
                   viewBox="0 0 24 24"
@@ -331,7 +343,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="to-markdown"
+                data-command="cell.toMarkdown"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -362,7 +374,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="to-reply"
+                data-command="cell.toReply"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -393,7 +405,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="to-html"
+                data-command="cell.toHtml"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -432,7 +444,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="show-explorer"
+                data-command="view.showExplorer"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -459,7 +471,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="show-problems"
+                data-command="view.showProblems"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -488,7 +500,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="toggle-sidebar"
+                data-command="view.toggleSidebar"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -517,7 +529,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="toggle-focus"
+                data-command="view.toggleFocusMode"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -553,7 +565,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="run-cell"
+                data-command="cell.run"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -573,7 +585,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="run-advance"
+                data-command="cell.runAndAdvance"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -601,7 +613,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="run-all"
+                data-command="cell.runAll"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -629,7 +641,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="clear-cell"
+                data-command="cell.clearOutput"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -657,7 +669,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="clear-all"
+                data-command="cell.clearAllOutputs"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -686,7 +698,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="restart"
+                data-command="kernel.restart"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -715,7 +727,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="restart-run"
+                data-command="kernel.restartAndRun"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -759,7 +771,7 @@
               <button
                 type="button"
                 class="vn-Menu__item"
-                data-command="shortcuts"
+                data-command="help.shortcuts"
               >
                 <svg
                   class="vn-Menu__icon"
@@ -787,7 +799,11 @@
                 Keyboard shortcuts <span class="vn-Menu__hint">?</span>
               </button>
               <div class="vn-Menu__sep"></div>
-              <button type="button" class="vn-Menu__item" data-command="about">
+              <button
+                type="button"
+                class="vn-Menu__item"
+                data-command="help.about"
+              >
                 <svg
                   class="vn-Menu__icon"
                   viewBox="0 0 24 24"
@@ -1130,7 +1146,28 @@
                 >
               </div>
 
-              <div class="vn-Problems" data-problems-list aria-label="Problems">
+              <div class="vn-Problems__filters" aria-label="Problem filters">
+                <input
+                  type="text"
+                  data-problems-filter
+                  placeholder="Filter problems…"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <select data-problems-severity aria-label="Problem severity">
+                  <option value="all">All</option>
+                  <option value="error">Errors</option>
+                  <option value="warning">Warnings</option>
+                  <option value="hint">Info</option>
+                </select>
+              </div>
+
+              <div
+                class="vn-Problems"
+                data-problems-list
+                aria-label="Problems"
+                role="list"
+              >
                 <p class="vn-Tree__empty">
                   No problems detected. Run a C++ or Reply cell to see compiler
                   and runtime diagnostics here.
