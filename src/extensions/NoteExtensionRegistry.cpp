@@ -568,10 +568,42 @@ namespace vix::note
       return;
     for (const auto &pkg : root["packages"])
     {
-      if (!pkg.is_object() || !pkg.contains("extensions") || !pkg["extensions"].contains("note"))
+      if (!pkg.is_object())
         continue;
       const std::string id = pkg.value("id", "");
-      auto d = descriptor_from_note_json(pkg["extensions"]["note"], id, pkg.value("version", ""), NoteExtensionSource::Global, pkg.value("installed_path", ""), prefix / "bin", nullptr);
+      if (id.empty())
+        continue;
+
+      const std::filesystem::path rootPath = pkg.value("installed_path", "");
+      json packageRoot;
+      const json *note = nullptr;
+      if (pkg.contains("extensions") && pkg["extensions"].contains("note"))
+      {
+        note = &pkg["extensions"]["note"];
+      }
+      else if (!rootPath.empty())
+      {
+        std::ifstream packageManifest(rootPath / "vix.json");
+        if (packageManifest)
+        {
+          try
+          {
+            packageManifest >> packageRoot;
+          }
+          catch (...)
+          {
+            packageRoot = json{};
+          }
+          if (packageRoot.contains("extensions") && packageRoot["extensions"].contains("note"))
+          {
+            note = &packageRoot["extensions"]["note"];
+          }
+        }
+      }
+      if (note == nullptr)
+        continue;
+
+      auto d = descriptor_from_note_json(*note, id, pkg.value("version", ""), NoteExtensionSource::Global, rootPath, prefix / "bin", nullptr);
       if (!d)
         continue;
       d->enabled = !is_disabled_package_id(disabled, d->id);

@@ -1082,18 +1082,27 @@ int main()
         "    {\n"
         "      \"id\": \"softadastra/pyrelune\",\n"
         "      \"version\": \"0.1.0\",\n"
-        "      \"installed_path\": \".\",\n"
-        "      \"extensions\": {\n"
-        "        \"note\": {\n"
-        "          \"api\": \"1\",\n"
-        "          \"capabilities\": [\"cell-type\"],\n"
-        "          \"cellTypes\": [\n"
-        "            {\"id\": \"python\", \"label\": \"Python\", \"language\": \"python\", \"executable\": false}\n"
-        "          ]\n"
-        "        }\n"
-        "      }\n"
+        "      \"installed_path\": \"" + pkgRoot.generic_string() + "\",\n"
+        "      \"type\": \"executable\"\n"
         "    }\n"
         "  ]\n"
+        "}\n");
+
+    write_file(
+        pkgRoot / "vix.json",
+        "{\n"
+        "  \"namespace\": \"softadastra\",\n"
+        "  \"name\": \"pyrelune\",\n"
+        "  \"version\": \"0.1.0\",\n"
+        "  \"extensions\": {\n"
+        "    \"note\": {\n"
+        "      \"api\": \"1\",\n"
+        "      \"capabilities\": [\"cell-type\"],\n"
+        "      \"cellTypes\": [\n"
+        "        {\"id\": \"python\", \"label\": \"Python\", \"language\": \"python\", \"executable\": false}\n"
+        "      ]\n"
+        "    }\n"
+        "  }\n"
         "}\n");
 
 
