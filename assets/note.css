@@ -2494,3 +2494,141 @@ input {
   outline: 2px solid var(--vn-accent);
   outline-offset: 1px;
 }
+
+/* Extensions workbench */
+.vn-Extensions__tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.vn-Extensions__tabs button {
+  border: 1px solid var(--vn-border-subtle);
+  border-radius: 8px;
+  background: var(--vn-surface-muted);
+  color: var(--vn-text-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.vn-Extensions__tabs button.is-active {
+  border-color: var(--vn-accent);
+  color: var(--vn-text);
+  background: color-mix(in srgb, var(--vn-accent) 14%, transparent);
+}
+
+.vn-Extensions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 16px;
+  overflow: auto;
+}
+
+.vn-ExtensionCard {
+  border: 1px solid var(--vn-border-subtle);
+  border-radius: 12px;
+  background: var(--vn-surface);
+  padding: 10px;
+}
+
+.vn-ExtensionCard.is-selected {
+  border-color: var(--vn-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vn-accent) 35%, transparent);
+}
+
+.vn-ExtensionCard__main {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vn-ExtensionCard__title {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.vn-ExtensionCard__id,
+.vn-ExtensionCard__desc,
+.vn-ExtensionCard__cells,
+.vn-ExtensionCard__meta {
+  color: var(--vn-text-muted);
+  font-size: 12px;
+}
+
+.vn-ExtensionCard__cells {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--vn-surface-muted);
+  color: var(--vn-text);
+}
+
+.vn-ExtensionCard__meta,
+.vn-ExtensionCard__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.vn-ExtensionCard__status {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--vn-surface-muted);
+}
+
+.vn-ExtensionCard__status[data-state="broken"] {
+  color: var(--vn-danger);
+}
+
+.vn-ExtensionCard__error {
+  margin: 8px 0 0;
+  color: var(--vn-danger);
+  font-size: 12px;
+}
+
+.vn-ExtensionCard__actions button {
+  border: 1px solid var(--vn-border-subtle);
+  border-radius: 8px;
+  background: var(--vn-surface-muted);
+  color: var(--vn-text);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.vn-ExtensionDetails {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vn-border-subtle);
+}
+
+.vn-ExtensionDetails dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.vn-ExtensionDetails dt {
+  color: var(--vn-text-muted);
+}
+
+.vn-ExtensionDetails dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

@@ -997,6 +997,31 @@ namespace vix::note
     }
 
     if (request.method == NoteRouteMethod::Get &&
+        (request.path == "/api/extensions/marketplace" ||
+         request.path == "/api/extensions/details"))
+    {
+      return NoteRouteResponse::json(200, extensions_json());
+    }
+
+    if (request.method == NoteRouteMethod::Post &&
+        (request.path == "/api/extensions/install" ||
+         request.path == "/api/extensions/uninstall" ||
+         request.path == "/api/extensions/update" ||
+         request.path == "/api/extensions/enable" ||
+         request.path == "/api/extensions/disable" ||
+         request.path == "/api/extensions/reload"))
+    {
+      if (request.path == "/api/extensions/reload")
+      {
+        return NoteRouteResponse::json(200, extensions_json());
+      }
+
+      return json_error(
+          501,
+          "Extension package mutations are not enabled in this build. Use vix install -g or vix uninstall -g from the CLI.");
+    }
+
+    if (request.method == NoteRouteMethod::Get &&
         request.path == "/api/document")
     {
       if (is_startup_scratch_document(kernel_.document()))
@@ -2199,16 +2224,42 @@ namespace vix::note
     };
 
     out << "{";
+    out << "\"ok\":true,";
     out << "\"extensions\":[";
     for (std::size_t i = 0; i < extensions.size(); ++i)
     {
       const auto &ext = extensions[i];
       if (i > 0) out << ",";
+      const std::string source = sourceToString(ext.source);
+      const bool builtin = ext.source == NoteExtensionSource::Builtin;
+      const bool installed = ext.source == NoteExtensionSource::Global || ext.source == NoteExtensionSource::Project;
+      std::string ns;
+      std::string name = ext.id;
+      const std::size_t slash = ext.id.find('/');
+      if (slash != std::string::npos)
+      {
+        ns = ext.id.substr(0, slash);
+        name = ext.id.substr(slash + 1);
+      }
       out << "{";
       out << "\"id\":\"" << json_escape(ext.id) << "\",";
+      out << "\"namespace\":\"" << json_escape(ns) << "\",";
+      out << "\"name\":\"" << json_escape(name) << "\",";
       out << "\"version\":\"" << json_escape(ext.version) << "\",";
-      out << "\"source\":\"" << sourceToString(ext.source) << "\",";
+      out << "\"source\":\"" << source << "\",";
+      out << "\"builtin\":" << (builtin ? "true" : "false") << ",";
+      out << "\"installed\":" << (installed ? "true" : "false") << ",";
+      out << "\"enabled\":true,";
       out << "\"available\":" << (ext.available ? "true" : "false") << ",";
+      out << "\"runtime\":{";
+      out << "\"protocol\":\"" << json_escape(ext.runtimeProtocol) << "\",";
+      out << "\"mode\":\"" << json_escape(ext.runtimeMode) << "\",";
+      out << "\"command\":\"" << json_escape(std::filesystem::path(ext.runtimeCommand).filename().string()) << "\",";
+      out << "\"resolvedCommand\":\"" << json_escape(ext.runtimeCommand) << "\",";
+      out << "\"healthy\":" << (ext.available ? "true" : "false") << ",";
+      out << "\"error\":\"";
+      if (!ext.available && !ext.diagnostics.empty()) out << json_escape(ext.diagnostics.front());
+      out << "\"},";
       out << "\"capabilities\":[";
       for (std::size_t c = 0; c < ext.capabilities.size(); ++c)
       { if (c > 0) out << ","; out << "\"" << json_escape(ext.capabilities[c]) << "\""; }
@@ -2217,7 +2268,10 @@ namespace vix::note
       {
         const auto &cell = ext.cellTypes[c];
         if (c > 0) out << ",";
-        out << "{\"id\":\"" << json_escape(cell.id) << "\",\"label\":\"" << json_escape(cell.label) << "\",\"language\":\"" << json_escape(cell.language) << "\",\"executable\":" << (cell.executable ? "true" : "false") << "}";
+        out << "{\"id\":\"" << json_escape(cell.id) << "\",\"label\":\"" << json_escape(cell.label) << "\",\"language\":\"" << json_escape(cell.language) << "\",\"executable\":" << (cell.executable ? "true" : "false") << ",\"extension\":\"" << json_escape(ext.id) << "\",\"aliases\":[";
+        for (std::size_t a = 0; a < cell.aliases.size(); ++a)
+        { if (a > 0) out << ","; out << "\"" << json_escape(cell.aliases[a]) << "\""; }
+        out << "]}";
       }
       out << "],\"diagnostics\":[";
       for (std::size_t d = 0; d < ext.diagnostics.size(); ++d)

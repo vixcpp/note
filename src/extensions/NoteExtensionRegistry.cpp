@@ -485,11 +485,15 @@ namespace vix::note
 
     json request = {
         {"protocol", "vix-note-extension-1"},
-        {"action", "execute"},
-        {"extension", {{"id", descriptor_.id}, {"version", descriptor_.version}}},
-        {"document", {{"id", context.documentId}, {"path", context.documentPath.string()}}},
-        {"cell", {{"id", cell.id()}, {"type", cell.type_id()}, {"source", cell.source()}, {"executionCount", cell.execution_count()}, {"metadata", json::object()}}},
-        {"project", {{"root", context.projectContext.projectRoot.string()}}}};
+        {"requestId", context.documentId + ":" + cell.id()},
+        {"cellId", cell.id()},
+        {"cellType", cell.type_id()},
+        {"source", cell.source()},
+        {"executionCount", cell.execution_count()},
+        {"workingDirectory", context.projectContext.effective_working_directory().string()},
+        {"documentPath", context.documentPath.string()},
+        {"extensionId", descriptor_.id},
+        {"extensionVersion", descriptor_.version}};
 
 #ifdef _WIN32
     (void)request;
@@ -602,7 +606,8 @@ namespace vix::note
     {
       return NoteResult::failure("extension returned invalid JSON", 1).add_error(ex.what()).add_stderr(stderrText);
     }
-    if (response.value("protocol", "") != "vix-note-extension-1")
+    const std::string protocol = response.value("protocol", "");
+    if (!protocol.empty() && protocol != "vix-note-extension-1")
       return NoteResult::failure("extension returned invalid protocol", 1).add_error("invalid protocol");
     if (!response.contains("ok") || !response["ok"].is_boolean())
       return NoteResult::failure("extension response missing boolean ok", 1).add_error("missing ok");
@@ -614,6 +619,18 @@ namespace vix::note
     }
 
     NoteResult result = NoteResult::success("extension cell executed");
+    if (response.contains("stdout") && response["stdout"].is_string())
+    {
+      const std::string data = response["stdout"].get<std::string>();
+      if (!data.empty())
+        result.add_stdout(data);
+    }
+    if (response.contains("stderr") && response["stderr"].is_string())
+    {
+      const std::string data = response["stderr"].get<std::string>();
+      if (!data.empty())
+        result.add_stderr(data);
+    }
     if (response.contains("outputs") && response["outputs"].is_array())
     {
       for (const auto &out : response["outputs"])

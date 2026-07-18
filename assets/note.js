@@ -30,7 +30,18 @@
    * ======================================================== */
   const state = {
     document: null,
-    extensions: { cellTypes: [] },
+    extensions: { ok: true, extensions: [], cellTypes: [] },
+    extensionWorkbench: {
+      activeView: "installed",
+      query: "",
+      loading: false,
+      error: "",
+      selectedId: null,
+      marketplace: [],
+      installed: [],
+      builtins: [],
+      updates: [],
+    },
     selectedId: null,
     editing: false,
     kernel: "idle",
@@ -128,6 +139,9 @@
     problemsFilter: "[data-problems-filter]",
     problemsSeverity: "[data-problems-severity]",
     problemsBadge: "[data-activity-problems-badge]",
+    extensionsList: "[data-extensions-list]",
+    extensionsCount: "[data-extensions-count]",
+    extensionsSearch: "[data-extensions-search]",
     statusProblems: "[data-status-problems]",
     statusProblemsCount: "[data-status-problems-count]",
   };
@@ -241,6 +255,206 @@
   function cellTypeDescriptor(kind) {
     const k = normalizeKind(kind);
     return normalizedCellTypes().find((c) => normalizeKind(c.id) === k) || null;
+  }
+
+  function extensionStatus(ext) {
+    if (!ext) return "Unknown";
+    if (ext.builtin) return "Built-in";
+    if (ext.enabled === false) return "Disabled";
+    if (
+      ext.available === false ||
+      (ext.runtime && ext.runtime.healthy === false)
+    ) {
+      return "Broken";
+    }
+    if (ext.installed) return "Installed";
+    return "Available";
+  }
+
+  function refreshExtensionWorkbenchFromRegistry() {
+    const list = Array.isArray(state.extensions.extensions)
+      ? state.extensions.extensions
+      : [];
+    state.extensionWorkbench.installed = list.filter(
+      (ext) => ext && !ext.builtin && ext.installed !== false,
+    );
+    state.extensionWorkbench.builtins = list.filter(
+      (ext) => ext && ext.builtin,
+    );
+    state.extensionWorkbench.updates = list.filter(
+      (ext) => ext && ext.updateAvailable,
+    );
+    if (!state.extensionWorkbench.marketplace.length) {
+      state.extensionWorkbench.marketplace = state.extensionWorkbench.installed;
+    }
+  }
+
+  function extensionCellLabels(ext) {
+    const cells = Array.isArray(ext && ext.cellTypes) ? ext.cellTypes : [];
+    return cells
+      .map((cell) => cell.label || cell.id)
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  function renderExtensionsPanel() {
+    const root = $(sel.extensionsList);
+    if (!root) return;
+
+    const view = state.extensionWorkbench.activeView || "installed";
+    for (const tab of $all("[data-extension-view]")) {
+      const active = tab.dataset.extensionView === view;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    }
+
+    let items = [];
+    if (view === "marketplace") items = state.extensionWorkbench.marketplace;
+    else if (view === "builtin") items = state.extensionWorkbench.builtins;
+    else if (view === "updates") items = state.extensionWorkbench.updates;
+    else items = state.extensionWorkbench.installed;
+
+    const query = state.extensionWorkbench.query.trim().toLowerCase();
+    if (query) {
+      items = items.filter((ext) => {
+        const text = [
+          ext.id,
+          ext.name,
+          ext.namespace,
+          ext.description,
+          extensionCellLabels(ext),
+          Array.isArray(ext.capabilities) ? ext.capabilities.join(" ") : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return query.split(/\s+/).every((word) => text.includes(word));
+      });
+    }
+
+    const count = $(sel.extensionsCount);
+    if (count) count.textContent = String(items.length);
+
+    if (state.extensionWorkbench.loading) {
+      root.innerHTML = '<p class="vn-Tree__empty">Searching extensions…</p>';
+      return;
+    }
+
+    if (state.extensionWorkbench.error) {
+      root.innerHTML = `<p class="vn-Tree__empty">${escapeHtml(state.extensionWorkbench.error)}</p>`;
+      return;
+    }
+
+    if (!items.length) {
+      const label =
+        view === "marketplace"
+          ? "No marketplace results."
+          : "No extensions in this view.";
+      root.innerHTML = `<p class="vn-Tree__empty">${label}</p>`;
+      return;
+    }
+
+    root.innerHTML = items
+      .map((ext) => {
+        const id = ext.id || `${ext.namespace || ""}/${ext.name || ""}`;
+        const name = ext.name || id.split("/").pop() || id;
+        const status = extensionStatus(ext);
+        const cells = extensionCellLabels(ext);
+        const runtimeError =
+          ext.runtime && ext.runtime.error ? ext.runtime.error : "";
+        const selected = state.extensionWorkbench.selectedId === id;
+        return `
+          <article class="vn-ExtensionCard${selected ? " is-selected" : ""}" data-extension-id="${escapeHtml(id)}" role="listitem">
+            <button type="button" class="vn-ExtensionCard__main" data-extension-details="${escapeHtml(id)}">
+              <span class="vn-ExtensionCard__title">${escapeHtml(name)}</span>
+              <span class="vn-ExtensionCard__id">${escapeHtml(id)}</span>
+              <span class="vn-ExtensionCard__desc">${escapeHtml(ext.description || (cells ? `${cells} cells for Vix Note.` : "Vix Note extension"))}</span>
+              ${cells ? `<span class="vn-ExtensionCard__cells">${escapeHtml(cells)}</span>` : ""}
+            </button>
+            <div class="vn-ExtensionCard__meta">
+              <span>${escapeHtml(ext.version || "")}</span>
+              <span class="vn-ExtensionCard__status" data-state="${safeClass(status)}">${escapeHtml(status)}</span>
+            </div>
+            ${runtimeError ? `<p class="vn-ExtensionCard__error">${escapeHtml(runtimeError)}</p>` : ""}
+            <div class="vn-ExtensionCard__actions">
+              ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.installed ? "uninstall" : "install"}" data-extension-id="${escapeHtml(id)}">${ext.installed ? "Uninstall" : "Install"}</button>`}
+              ${ext.builtin ? "" : `<button type="button" data-extension-action="${ext.enabled === false ? "enable" : "disable"}" data-extension-id="${escapeHtml(id)}">${ext.enabled === false ? "Enable" : "Disable"}</button>`}
+            </div>
+            ${selected ? extensionDetailsHtml(ext) : ""}
+          </article>`;
+      })
+      .join("");
+  }
+
+  function extensionDetailsHtml(ext) {
+    const caps = Array.isArray(ext.capabilities)
+      ? ext.capabilities.join(", ")
+      : "";
+    const cells = Array.isArray(ext.cellTypes)
+      ? ext.cellTypes
+          .map((cell) => `${cell.label || cell.id} (${cell.id})`)
+          .join(", ")
+      : "";
+    const runtime = ext.runtime || {};
+    return `
+      <div class="vn-ExtensionDetails">
+        <dl>
+          <dt>Source</dt><dd>${escapeHtml(ext.source || "unknown")}</dd>
+          <dt>Cell types</dt><dd>${escapeHtml(cells || "none")}</dd>
+          <dt>Capabilities</dt><dd>${escapeHtml(caps || "none")}</dd>
+          <dt>Runtime</dt><dd>${escapeHtml([runtime.protocol, runtime.mode, runtime.resolvedCommand || runtime.command].filter(Boolean).join(" · ") || "none")}</dd>
+          <dt>Health</dt><dd>${runtime.healthy === false ? "Broken" : "Healthy"}</dd>
+        </dl>
+      </div>`;
+  }
+
+  async function refreshExtensionsView() {
+    state.extensionWorkbench.loading = true;
+    state.extensionWorkbench.error = "";
+    renderExtensionsPanel();
+    try {
+      await loadExtensions();
+      showNotification({ type: "success", message: "Extensions refreshed" });
+    } catch (error) {
+      reportError(error, { label: "Refresh extensions" });
+    } finally {
+      state.extensionWorkbench.loading = false;
+      renderExtensionsPanel();
+    }
+  }
+
+  async function extensionAction(action, packageId) {
+    const id = packageId || state.extensionWorkbench.selectedId;
+    if (!id) {
+      showNotification({ type: "warning", message: "No extension selected" });
+      return;
+    }
+
+    if (
+      (action === "uninstall" || action === "disable") &&
+      !confirm(
+        `${action} ${id}? Existing cells keep their source but may become unavailable.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const payload = await api(`/api/extensions/${action}`, {
+        method: "POST",
+        body: JSON.stringify({ package: id, scope: "global" }),
+      });
+      if (payload && payload.ok === false) {
+        throw new Error(payload.error || `Extension ${action} failed`);
+      }
+      showNotification({
+        type: "success",
+        message: `${id}: ${action} complete`,
+      });
+      await loadExtensions();
+    } catch (error) {
+      reportError(error, { label: `${action} ${id}` });
+    }
   }
 
   function safeClass(value) {
@@ -1957,6 +2171,38 @@
     if (el) el.scrollIntoView({ block: "nearest" });
   }
 
+  function renderToolbarKindOptions() {
+    const menu = $("[data-toolbar-kind-menu]");
+    if (!menu) return;
+
+    const current = normalizeKind(
+      $(sel.toolbarKind)?.dataset.kind || state.document?.defaultKind || "cpp",
+    );
+    const types = normalizedCellTypes();
+    menu.innerHTML = types
+      .map((type) => {
+        const id = normalizeKind(type.id);
+        const active = id === current;
+        const hint = type.builtin
+          ? type.executable
+            ? "Built-in executable cell"
+            : "Built-in text cell"
+          : `${type.extension || "Extension"}${type.executable ? " · executable" : ""}`;
+        return `
+          <button
+            type="button"
+            class="vn-CellTypeSelect__option${active ? " is-active" : ""}"
+            data-kind-option="${escapeHtml(id)}"
+            role="option"
+            aria-selected="${active ? "true" : "false"}"
+          >
+            <span class="vn-CellTypeSelect__optionMain">${escapeHtml(type.label || id)}</span>
+            <span class="vn-CellTypeSelect__optionHint">${escapeHtml(hint)}</span>
+          </button>`;
+      })
+      .join("");
+  }
+
   function toolbarKindLabel(kind) {
     const desc = cellTypeDescriptor(kind);
     if (desc) return desc.label || desc.id;
@@ -3248,10 +3494,28 @@
    * ======================================================== */
   async function loadExtensions() {
     try {
-      state.extensions = await api("/api/extensions");
-    } catch (_) {
-      state.extensions = { cellTypes: [] };
+      const payload = await api("/api/extensions");
+      state.extensions = {
+        ok: payload && payload.ok !== false,
+        extensions: Array.isArray(payload && payload.extensions)
+          ? payload.extensions
+          : [],
+        cellTypes: Array.isArray(payload && payload.cellTypes)
+          ? payload.cellTypes
+          : [],
+      };
+      state.extensionWorkbench.error = "";
+    } catch (error) {
+      console.error("Failed to load Vix Note extensions", error);
+      state.extensions = { ok: false, extensions: [], cellTypes: [] };
+      state.extensionWorkbench.error =
+        error && error.message ? error.message : "Extension discovery failed";
+      reportError(error, { label: "Failed to load Vix Note extensions" });
     }
+
+    refreshExtensionWorkbenchFromRegistry();
+    renderToolbarKindOptions();
+    renderExtensionsPanel();
   }
 
   async function loadDocument() {
@@ -4901,6 +5165,80 @@
       keybinding: "Ctrl+J",
       aliases: ["show-problems"],
     });
+    registerCommand("view.showExtensions", () => setPanel("extensions"), {
+      label: "Extensions",
+      category: "View",
+      keybinding: "Ctrl/Cmd+Shift+X",
+      aliases: ["show-extensions"],
+    });
+    registerCommand("extensions.show", () => setPanel("extensions"), {
+      label: "Show Extensions",
+      category: "Extensions",
+      keybinding: "Ctrl/Cmd+Shift+X",
+    });
+    registerCommand("extensions.refresh", () => refreshExtensionsView(), {
+      label: "Refresh",
+      category: "Extensions",
+    });
+    registerCommand("extensions.reload", () => refreshExtensionsView(), {
+      label: "Reload Extensions",
+      category: "Extensions",
+    });
+    registerCommand(
+      "extensions.search",
+      () => {
+        setPanel("extensions");
+        $(sel.extensionsSearch)?.focus();
+      },
+      {
+        label: "Search Marketplace",
+        category: "Extensions",
+      },
+    );
+    registerCommand(
+      "extensions.install",
+      ({ packageId } = {}) => extensionAction("install", packageId),
+      {
+        label: "Install Extension",
+        category: "Extensions",
+      },
+    );
+    registerCommand(
+      "extensions.uninstall",
+      ({ packageId } = {}) => extensionAction("uninstall", packageId),
+      {
+        label: "Uninstall Extension",
+        category: "Extensions",
+      },
+    );
+    registerCommand(
+      "extensions.enable",
+      ({ packageId } = {}) => extensionAction("enable", packageId),
+      {
+        label: "Enable Extension",
+        category: "Extensions",
+      },
+    );
+    registerCommand(
+      "extensions.disable",
+      ({ packageId } = {}) => extensionAction("disable", packageId),
+      {
+        label: "Disable Extension",
+        category: "Extensions",
+      },
+    );
+    registerCommand(
+      "extensions.showDetails",
+      ({ packageId } = {}) => {
+        if (packageId) state.extensionWorkbench.selectedId = packageId;
+        setPanel("extensions");
+        renderExtensionsPanel();
+      },
+      {
+        label: "Show Extension Details",
+        category: "Extensions",
+      },
+    );
     registerCommand("view.toggleFocusMode", () => toggleFocus(), {
       label: "Toggle Focus Mode",
       category: "View",
@@ -5867,6 +6205,41 @@
         closeToolbarKindMenu();
       }
 
+      const extensionView = target
+        ? target.closest("[data-extension-view]")
+        : null;
+      if (extensionView) {
+        event.preventDefault();
+        state.extensionWorkbench.activeView =
+          extensionView.dataset.extensionView || "installed";
+        renderExtensionsPanel();
+        return;
+      }
+
+      const extensionDetails = target
+        ? target.closest("[data-extension-details]")
+        : null;
+      if (extensionDetails) {
+        event.preventDefault();
+        state.extensionWorkbench.selectedId =
+          extensionDetails.dataset.extensionDetails || "";
+        renderExtensionsPanel();
+        return;
+      }
+
+      const extensionActionButton = target
+        ? target.closest("[data-extension-action]")
+        : null;
+      if (extensionActionButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        extensionAction(
+          extensionActionButton.dataset.extensionAction || "",
+          extensionActionButton.dataset.extensionId || "",
+        );
+        return;
+      }
+
       const menuCommand = target ? target.closest("[data-command]") : null;
       if (menuCommand) {
         event.preventDefault();
@@ -6462,6 +6835,13 @@
       }
       clearTabDropMarkers();
     });
+
+    $(sel.extensionsSearch)?.addEventListener("input", (event) => {
+      const input =
+        event.target instanceof HTMLInputElement ? event.target : null;
+      state.extensionWorkbench.query = input ? input.value : "";
+      renderExtensionsPanel();
+    });
   }
 
   function openFileRowIfAllowed(path, options = {}) {
@@ -6660,6 +7040,12 @@
       key: "Ctrl+J",
       mac: "Meta+J",
       command: "view.showProblems",
+      allowTyping: false,
+    },
+    {
+      key: "Ctrl+Shift+X",
+      mac: "Meta+Shift+X",
+      command: "view.showExtensions",
       allowTyping: false,
     },
     {
