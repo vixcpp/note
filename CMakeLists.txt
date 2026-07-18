@@ -259,11 +259,51 @@ endif()
 
 message(STATUS "Vix Note version: ${_VIX_NOTE_VERSION}")
 
+set(VIX_NOTE_ASSET_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+set(VIX_NOTE_BUILD_ASSET_DIR "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/vix/note")
+set(VIX_NOTE_INSTALLED_ASSET_DIR "${CMAKE_INSTALL_FULL_DATADIR}/vix/note")
+
 target_compile_definitions(vix_note
   PRIVATE
     VIX_NOTE_VERSION="${_VIX_NOTE_VERSION}"
-    VIX_NOTE_INSTALLED_ASSET_DIR="${CMAKE_INSTALL_FULL_DATADIR}/vix/note/assets"
+    VIX_NOTE_SOURCE_ASSET_DIR="${VIX_NOTE_ASSET_SOURCE_DIR}"
+    VIX_NOTE_BUILD_ASSET_DIR="${VIX_NOTE_BUILD_ASSET_DIR}"
+    VIX_NOTE_INSTALLED_ASSET_DIR="${VIX_NOTE_INSTALLED_ASSET_DIR}"
 )
+
+add_custom_command(
+  TARGET vix_note POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${VIX_NOTE_BUILD_ASSET_DIR}/assets"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${VIX_NOTE_ASSET_SOURCE_DIR}/index.html"
+          "${VIX_NOTE_BUILD_ASSET_DIR}/index.html"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${VIX_NOTE_ASSET_SOURCE_DIR}/note.css"
+          "${VIX_NOTE_BUILD_ASSET_DIR}/assets/note.css"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${VIX_NOTE_ASSET_SOURCE_DIR}/note.js"
+          "${VIX_NOTE_BUILD_ASSET_DIR}/assets/note.js"
+  VERBATIM
+)
+
+function(vix_note_install_assets)
+  install(
+    FILES
+      assets/index.html
+    DESTINATION
+      ${CMAKE_INSTALL_DATADIR}/vix/note
+    COMPONENT Runtime
+  )
+
+  install(
+    FILES
+      assets/note.css
+      assets/note.js
+    DESTINATION
+      ${CMAKE_INSTALL_DATADIR}/vix/note/assets
+    COMPONENT Runtime
+  )
+endfunction()
 
 # ============================================================================
 # LTO
@@ -331,12 +371,7 @@ if(DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   )
 
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
-    install(
-      DIRECTORY assets/
-      DESTINATION ${CMAKE_INSTALL_DATADIR}/vix/note/assets
-    )
-  endif()
+  vix_note_install_assets()
 endif()
 
 # ============================================================================
@@ -365,12 +400,7 @@ if(VIX_NOTE_INSTALL AND NOT (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD))
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   )
 
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
-    install(
-      DIRECTORY assets/
-      DESTINATION ${CMAKE_INSTALL_DATADIR}/vix/note/assets
-    )
-  endif()
+  vix_note_install_assets()
 
   install(
     EXPORT vix_noteTargets

@@ -279,11 +279,11 @@ int main()
         "<!doctype html><html><body>Routes Custom UI</body></html>");
 
     write_file(
-        assetDir / "css" / "note.css",
+        assetDir / "assets" / "note.css",
         ".routes-custom-ui { color: red; }");
 
     write_file(
-        assetDir / "js" / "note.js",
+        assetDir / "assets" / "note.js",
         "console.log('routes custom ui');");
 
     vix::note::NoteRoutesOptions options;

@@ -379,8 +379,9 @@ namespace vix::note
     options_.sessionOptions.stopOnFirstFailure = options_.stopOnFirstFailure;
     options_.cppOptions.projectContext = options_.projectContext;
 
-    if (options_.extensionRegistry == nullptr && defaultExtensionManager_.registry().list_cell_types().empty())
+    if (options_.extensionRegistry == nullptr)
     {
+      defaultExtensionManager_ = NoteExtensionManager{};
       defaultExtensionManager_.register_builtins(options_.cppOptions, options_.replyOptions);
     }
 

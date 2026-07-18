@@ -787,6 +787,7 @@ namespace vix::note
     response.status = 200;
     response.contentType = asset.contentType;
     response.body = asset.content;
+    response.headers.push_back({"X-Content-Type-Options", "nosniff"});
     return response;
   }
 

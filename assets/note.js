@@ -30,6 +30,7 @@
    * ======================================================== */
   const state = {
     document: null,
+    extensions: { cellTypes: [] },
     selectedId: null,
     editing: false,
     kernel: "idle",
@@ -117,6 +118,16 @@
     return String(kind || "unknown").toLowerCase();
   }
 
+  function cellTypeOf(cell) {
+    return normalizeKind(cell && (cell.type || cell.kind));
+  }
+
+  function cellTypeDescriptor(kind) {
+    const k = normalizeKind(kind);
+    const list = Array.isArray(state.extensions.cellTypes) ? state.extensions.cellTypes : [];
+    return list.find((c) => normalizeKind(c.id) === k) || null;
+  }
+
   function safeClass(value) {
     return String(value || "unknown")
       .toLowerCase()
@@ -125,7 +136,8 @@
 
   function isCodeKind(kind) {
     const k = normalizeKind(kind);
-    return k === "cpp" || k === "reply";
+    const desc = cellTypeDescriptor(k);
+    return desc ? !!desc.executable : k === "cpp" || k === "reply";
   }
 
   function pad2(n) {
@@ -229,6 +241,7 @@
       await api(`/api/cells/${encodeURIComponent(first.id)}`, {
         method: "PUT",
         body: JSON.stringify({
+          type: first.type || first.kind,
           kind: first.kind,
           source: first.source,
         }),
@@ -266,8 +279,10 @@
         return "C++";
       case "html":
         return "HTML";
-      default:
-        return "Code";
+      default: {
+        const desc = cellTypeDescriptor(kind);
+        return desc && desc.label ? desc.label : String(kind || "Code");
+      }
     }
   }
 
@@ -1033,9 +1048,15 @@
     return list
       .map((o) => {
         const kind = normalizeKind(o.kind);
-        const content = String(o.content ?? "");
-        if (kind === "html") {
+        const content = String(o.data ?? o.content ?? "");
+        const mime = String(o.mime || "text/plain").toLowerCase();
+        if (kind === "html" && mime === "text/html") {
           return `<div class="vn-Output vn-Output--html">${content}</div>`;
+        }
+        if (mime === "application/json") {
+          try {
+            return `<div class="vn-Output vn-Output--json"><pre>${escapeHtml(JSON.stringify(JSON.parse(content), null, 2))}</pre></div>`;
+          } catch (_) {}
         }
         const label =
           kind === "stdout"
@@ -1066,7 +1087,7 @@
    * Cell rendering pieces
    * ======================================================== */
   function inPrompt(cell) {
-    if (!isCodeKind(cell.kind))
+    if (!isCodeKind(cellTypeOf(cell)))
       return `<div class="vn-InputPrompt vn-InputPrompt--empty"></div>`;
     const n = Number(cell.executionCount || 0);
     const label = n > 0 ? `In&nbsp;[${n}]:` : `In&nbsp;[&nbsp;]:`;
@@ -1075,7 +1096,7 @@
     return `<div class="${cls}">${label}</div>`;
   }
   function outPrompt(cell) {
-    if (!isCodeKind(cell.kind)) return "";
+    if (!isCodeKind(cellTypeOf(cell))) return "";
     const n = Number(cell.executionCount || 0);
     const outs = Array.isArray(cell.outputs) ? cell.outputs : [];
     if (!outs.length) return `<div class="vn-OutputPrompt"></div>`;
@@ -1084,7 +1105,7 @@
   }
 
   function editorBlock(cell) {
-    const kind = normalizeKind(cell.kind);
+    const kind = cellTypeOf(cell);
     const source = String(cell.source ?? "");
     const code = isCodeKind(kind);
     const editorCls = code ? "vn-Editor" : "vn-Editor vn-Editor--plain";
@@ -1103,7 +1124,7 @@
   }
 
   function cellBody(cell) {
-    const kind = normalizeKind(cell.kind);
+    const kind = cellTypeOf(cell);
     if (kind === "markdown") {
       return `
         <div class="vn-MarkdownCell">
@@ -1142,7 +1163,7 @@
   }
 
   function cellToolbar(cell) {
-    const firstBtn = isCodeKind(cell.kind)
+    const firstBtn = isCodeKind(cellTypeOf(cell))
       ? `<button type="button" data-cell-action="run" title="Run">${ICONS.run}</button>`
       : `<button type="button" data-cell-action="edit" title="Edit source">${ICONS.edit}</button>`;
     return `
@@ -1156,7 +1177,7 @@
   }
 
   function renderCell(cell) {
-    const kind = normalizeKind(cell.kind);
+    const kind = cellTypeOf(cell);
     const id = String(cell.id || "");
     const selected = state.selectedId === id;
     const editing = selected && state.editing;
@@ -1925,7 +1946,7 @@
     const cell = findCell(id);
     if (!cellEl || !cell) return;
 
-    if (!isCodeKind(cell.kind)) {
+    if (!isCodeKind(cellTypeOf(cell))) {
       localUpdateFromDom(cellEl);
       try {
         await pushCell(cellEl);
@@ -2950,8 +2971,17 @@
   /* ==========================================================
    * Load
    * ======================================================== */
+  async function loadExtensions() {
+    try {
+      state.extensions = await api("/api/extensions");
+    } catch (_) {
+      state.extensions = { cellTypes: [] };
+    }
+  }
+
   async function loadDocument() {
     setMessage("");
+    await loadExtensions();
     const restored = restorePersistedTabs();
 
     if (restored) {

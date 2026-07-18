@@ -30,6 +30,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace vix::note
@@ -111,6 +112,11 @@ namespace vix::note
     std::string body;
 
     /**
+     * @brief Additional HTTP headers returned by the route.
+     */
+    std::vector<std::pair<std::string, std::string>> headers;
+
+    /**
      * @brief Creates a plain text response.
      *
      * @param status Response status code.
@@ -179,8 +185,8 @@ namespace vix::note
     /**
      * @brief Optional UI asset directory.
      *
-     * When empty, Vix Note tries the environment and installed asset
-     * directories before falling back to embedded assets.
+     * When empty, Vix Note tries the environment, build-tree, executable-relative,
+     * installed, and global asset directories.
      */
     std::filesystem::path assetDirectory;
 
@@ -190,9 +196,9 @@ namespace vix::note
     bool loadInstalledAssets = true;
 
     /**
-     * @brief Keeps embedded UI assets as fallback.
+     * @brief Keeps a minimal error page as fallback.
      */
-    bool keepEmbeddedAssetFallback = true;
+    bool keepEmbeddedAssetFallback = false;
 
     /**
      * @brief Kernel options used by route execution.

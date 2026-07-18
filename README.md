@@ -585,8 +585,8 @@ The expected asset directory layout is:
 
 ```txt
 index.html
-css/note.css
-js/note.js
+assets/note.css
+assets/note.js
 ```
 
 The default installed asset directory is configured at build/install time.
@@ -609,7 +609,7 @@ int main()
 }
 ```
 
-The environment variable `VIX_NOTE_ASSET_DIR` can also be used to point to a UI asset directory.
+The environment variable `VIX_NOTE_ASSETS_DIR` can also be used to point to a UI asset directory.
 
 Embedded assets remain available as fallback.
 
@@ -728,8 +728,8 @@ src/
 
 assets/
   index.html
-  css/note.css
-  js/note.js
+  assets/note.css
+  assets/note.js
 
 examples/
   cpp_basics.vixnote

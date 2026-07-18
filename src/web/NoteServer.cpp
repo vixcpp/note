@@ -404,6 +404,11 @@ namespace vix::note
           << response.body.size()
           << "\r\n";
 
+      for (const auto &header : response.headers)
+      {
+        out << header.first << ": " << header.second << "\r\n";
+      }
+
       out << "Connection: close\r\n";
       out << "Cache-Control: no-store\r\n";
       out << "\r\n";

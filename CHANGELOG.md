@@ -122,8 +122,8 @@ The format follows a simple versioned changelog style.
 
 - Improved the external browser UI assets:
   - `assets/index.html`
-  - `assets/css/note.css`
-  - `assets/js/note.js`
+  - `assets/note.css`
+  - `assets/note.js`
 
 - Improved mobile layout for the local UI.
 
@@ -284,8 +284,8 @@ vix note examples/hello.vixnote
 
 - Added browser UI assets:
   - `assets/index.html`
-  - `assets/css/note.css`
-  - `assets/js/note.js`
+  - `assets/note.css`
+  - `assets/note.js`
 
 - Added example note documents:
   - `examples/hello.vixnote`

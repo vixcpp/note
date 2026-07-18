@@ -233,7 +233,7 @@ Completed:
 - load assets from installed data directory;
 - fallback to embedded assets;
 - allow custom UI asset directory;
-- support `VIX_NOTE_ASSET_DIR`;
+- support `VIX_NOTE_ASSETS_DIR`;
 - add asset search path resolver;
 - add best-available asset loading;
 - improve CSS structure;
