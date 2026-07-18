@@ -1195,12 +1195,15 @@ int main()
     vix::note::NoteRouteResponse marketplace =
         routes.get("/api/extensions/marketplace?q=python");
     assert(marketplace.ok());
-    assert(contains(marketplace.body, "softadastra/pyrelune"));
-    assert(contains(marketplace.body, "https://raw.githubusercontent.com/softadastra/pyrelune/v0.1.1/assets/icon.svg"));
-    assert(contains(marketplace.body, "\"iconPath\":\"assets/icon.svg\""));
-    assert(contains(marketplace.body, "\"installed\":true"));
-    assert(contains(marketplace.body, "\"updateAvailable\":true"));
+    assert(!contains(marketplace.body, "softadastra/pyrelune"));
+    assert(!contains(marketplace.body, "\"installed\":true"));
     assert(!contains(marketplace.body, "example/json"));
+
+    vix::note::NoteRouteResponse marketplaceAvailable =
+        routes.get("/api/extensions/marketplace?q=rust");
+    assert(marketplaceAvailable.ok());
+    assert(contains(marketplaceAvailable.body, "example/note-rust"));
+    assert(contains(marketplaceAvailable.body, "\"installed\":false"));
 
     vix::note::NoteRoutes noMutationRoutes;
     vix::note::NoteRouteResponse forbiddenSync =

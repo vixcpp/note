@@ -778,7 +778,10 @@
       "",
     );
 
-    return String(ext.id || fallback || "extension");
+    const explicit = String(ext.id || "").trim();
+    if (explicit.includes("/")) return explicit;
+
+    return String(fallback || explicit || "extension");
   }
 
   function uniqueExtensions(items) {
@@ -841,6 +844,12 @@
     refreshExtensionWorkbenchFromRegistry();
     renderToolbarKindOptions();
     renderExtensionsPanel();
+  }
+
+  async function reloadLocalExtensions() {
+    const payload = await api("/api/extensions");
+    applyExtensionsPayload(payload);
+    return payload;
   }
 
   function applyCatalogPayload(payload, target = "recommended") {
@@ -2071,6 +2080,7 @@
 
       updateExtensionActionStage(id, "refreshing");
       applyExtensionsPayload(payload);
+      await reloadLocalExtensions();
       if (state.extensionWorkbench.query.trim()) {
         await searchMarketplace(state.extensionWorkbench.query.trim());
       } else {
