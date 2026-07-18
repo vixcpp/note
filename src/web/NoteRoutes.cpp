@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 #include <filesystem>
+#include <fstream>
 #include <system_error>
 #include <algorithm>
 #include <chrono>
@@ -80,6 +81,71 @@ namespace vix::note
       }
 
       return true;
+    }
+
+    std::string url_encode(std::string_view value)
+    {
+      static constexpr char hex[] = "0123456789ABCDEF";
+      std::string out;
+      out.reserve(value.size() * 3);
+      for (char raw : value)
+      {
+        const auto c = static_cast<unsigned char>(raw);
+        const bool keep = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                          (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+                          c == '.' || c == '~';
+        if (keep)
+          out.push_back(static_cast<char>(c));
+        else
+        {
+          out.push_back('%');
+          out.push_back(hex[(c >> 4) & 0x0f]);
+          out.push_back(hex[c & 0x0f]);
+        }
+      }
+      return out;
+    }
+
+    std::string note_extension_icon_data_uri(const NoteExtensionDescriptor &ext)
+    {
+      if (ext.iconPath.empty() || ext.rootPath.empty())
+        return {};
+      const std::filesystem::path relative(ext.iconPath);
+      if (relative.is_absolute())
+        return {};
+      const auto normalized = relative.lexically_normal();
+      for (const auto &part : normalized)
+      {
+        const std::string text = part.string();
+        if (text == ".." || text.empty())
+          return {};
+      }
+      const std::filesystem::path path = (ext.rootPath / normalized).lexically_normal();
+      std::error_code ec;
+      if (!std::filesystem::is_regular_file(path, ec))
+        return {};
+      const auto size = std::filesystem::file_size(path, ec);
+      if (ec || size > 256 * 1024)
+        return {};
+      std::ifstream in(path, std::ios::binary);
+      if (!in)
+        return {};
+      std::ostringstream buffer;
+      buffer << in.rdbuf();
+      const std::string content = buffer.str();
+      const std::string extension = lower_copy(path.extension().string());
+      if (extension == ".svg")
+      {
+        const std::string lowered = lower_copy(content);
+        if (lowered.find("<script") != std::string::npos ||
+            lowered.find("<foreignobject") != std::string::npos ||
+            lowered.find("javascript:") != std::string::npos ||
+            lowered.find(" onload=") != std::string::npos ||
+            lowered.find(" onclick=") != std::string::npos)
+          return {};
+        return "data:image/svg+xml;charset=UTF-8," + url_encode(content);
+      }
+      return {};
     }
 
     std::optional<std::size_t> parse_size_value(std::string_view value)
@@ -2444,6 +2510,9 @@ namespace vix::note
       out << "\"installed\":" << (installed ? "true" : "false") << ",";
       out << "\"enabled\":" << (ext.enabled ? "true" : "false") << ",";
       out << "\"available\":" << (ext.available ? "true" : "false") << ",";
+      const std::string icon = note_extension_icon_data_uri(ext);
+      if (!icon.empty())
+        out << "\"icon\":\"" << json_escape(icon) << "\",";
       out << "\"runtime\":{";
       out << "\"protocol\":\"" << json_escape(ext.runtimeProtocol) << "\",";
       out << "\"mode\":\"" << json_escape(ext.runtimeMode) << "\",";

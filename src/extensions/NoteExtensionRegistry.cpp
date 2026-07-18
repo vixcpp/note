@@ -59,6 +59,25 @@ namespace vix::note
       return true;
     }
 
+
+    bool is_safe_extension_icon_path(const std::string &value)
+    {
+      if (value.empty() || value.find('\0') != std::string::npos || value.find('\\') != std::string::npos)
+        return false;
+      std::filesystem::path path(value);
+      if (path.is_absolute())
+        return false;
+      const auto normalized = path.lexically_normal();
+      for (const auto &part : normalized)
+      {
+        const std::string text = part.string();
+        if (text == ".." || text.empty())
+          return false;
+      }
+      const std::string ext = normalized.extension().string();
+      return ext == ".svg" || ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp";
+    }
+
     std::filesystem::path home_dir()
     {
 #ifdef _WIN32
@@ -232,6 +251,13 @@ namespace vix::note
       d.apiVersion = api;
       d.source = source;
       d.rootPath = rootPath;
+      if (note.contains("icon"))
+      {
+        if (!note.at("icon").is_string() || !is_safe_extension_icon_path(note.value("icon", "")))
+          d.diagnostics.push_back("invalid extension icon path");
+        else
+          d.iconPath = std::filesystem::path(note.value("icon", "")).lexically_normal().generic_string();
+      }
       d.capabilities = string_array(note, "capabilities");
       d.permissions = string_array(note, "permissions");
 

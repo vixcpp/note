@@ -81,6 +81,7 @@ namespace vix::note
     std::string apiVersion;
     NoteExtensionSource source{NoteExtensionSource::Builtin};
     std::filesystem::path rootPath;
+    std::string iconPath;
     std::vector<std::string> capabilities;
     std::vector<std::string> permissions;
     std::vector<NoteCellTypeDescriptor> cellTypes;
