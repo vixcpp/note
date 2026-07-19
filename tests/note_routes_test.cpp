@@ -1060,7 +1060,6 @@ int main()
     assert(routes.kernel().can_execute_cell(0));
   }
 
-
   {
     const std::filesystem::path home = root / "home-extensions";
     const std::filesystem::path global = home / ".vix" / "global";
@@ -1082,11 +1081,12 @@ int main()
         "    {\n"
         "      \"id\": \"softadastra/pyrelune\",\n"
         "      \"version\": \"0.1.0\",\n"
-        "      \"installed_path\": \"" + pkgRoot.generic_string() + "\",\n"
-        "      \"type\": \"executable\"\n"
-        "    }\n"
-        "  ]\n"
-        "}\n");
+        "      \"installed_path\": \"" +
+            pkgRoot.generic_string() + "\",\n"
+                                       "      \"type\": \"executable\"\n"
+                                       "    }\n"
+                                       "  ]\n"
+                                       "}\n");
 
     write_file(
         pkgRoot / "vix.json",
@@ -1104,7 +1104,6 @@ int main()
         "    }\n"
         "  }\n"
         "}\n");
-
 
     const std::filesystem::path registryIndex = home / ".vix" / "registry" / "index" / "index";
     write_file(
@@ -1171,17 +1170,112 @@ int main()
     vix::note::NoteRoutesOptions options;
     options.allowPackageMutations = true;
     options.kernelOptions.extensionRegistry = &manager.registry();
-    options.reloadExtensions = [&manager]() {
+    options.reloadExtensions = [&manager]()
+    {
       manager.reload({}, true);
       return vix::note::NoteResult::success("extensions reloaded");
     };
-    options.setExtensionEnabled = [&manager](const std::string &packageId, bool enabled) {
+    options.setExtensionEnabled = [&manager](const std::string &packageId, bool enabled)
+    {
       std::string message;
       if (!manager.set_extension_enabled(packageId, enabled, message))
       {
         return vix::note::NoteResult::failure(message, 1).add_error(message);
       }
       return vix::note::NoteResult::success("extension state updated");
+    };
+
+    options.registryRecommended =
+        [](const vix::note::NoteExtensionRegistry &)
+    {
+      return vix::note::NoteRouteResponse::json(
+          200,
+          "{"
+          "\"ok\":true,"
+          "\"source\":\"cache\","
+          "\"syncedAt\":null,"
+          "\"stale\":false,"
+          "\"syncing\":false,"
+          "\"error\":\"\","
+          "\"registry\":{\"source\":\"cache\"},"
+          "\"total\":1,"
+          "\"extensions\":["
+          "{"
+          "\"id\":\"example/note-rust\","
+          "\"installed\":false,"
+          "\"enabled\":false,"
+          "\"available\":false,"
+          "\"updateAvailable\":false"
+          "}"
+          "],"
+          "\"count\":1"
+          "}");
+    };
+
+    options.registryMarketplace =
+        [](std::string_view path,
+           const vix::note::NoteExtensionRegistry &)
+    {
+      if (contains(std::string(path), "q=rust"))
+      {
+        return vix::note::NoteRouteResponse::json(
+            200,
+            "{"
+            "\"ok\":true,"
+            "\"source\":\"cache\","
+            "\"total\":1,"
+            "\"extensions\":["
+            "{"
+            "\"id\":\"example/note-rust\","
+            "\"installed\":false,"
+            "\"enabled\":false,"
+            "\"available\":false"
+            "}"
+            "],"
+            "\"count\":1,"
+            "\"query\":\"rust\""
+            "}");
+      }
+
+      return vix::note::NoteRouteResponse::json(
+          200,
+          "{"
+          "\"ok\":true,"
+          "\"source\":\"cache\","
+          "\"total\":0,"
+          "\"extensions\":[],"
+          "\"count\":0,"
+          "\"query\":\"python\""
+          "}");
+    };
+
+    options.registrySync =
+        [&manager](const vix::note::NoteExtensionRegistry &)
+    {
+      manager.reload({}, true);
+
+      return vix::note::NoteRouteResponse::json(
+          200,
+          "{"
+          "\"ok\":true,"
+          "\"synced\":true,"
+          "\"source\":\"cache\","
+          "\"registry\":{\"source\":\"cache\"},"
+          "\"extensions\":[]"
+          "}");
+    };
+
+    options.registryMetadataJson =
+        []()
+    {
+      return std::string(
+          "{"
+          "\"source\":\"cache\","
+          "\"syncedAt\":null,"
+          "\"stale\":false,"
+          "\"syncing\":false,"
+          "\"error\":\"\""
+          "}");
     };
 
     vix::note::NoteRoutes routes(options);
@@ -1191,7 +1285,6 @@ int main()
     assert(contains(before.body, "softadastra/pyrelune"));
     assert(contains(before.body, "\"enabled\":true"));
     assert(contains(before.body, "\"id\":\"python\""));
-
 
     vix::note::NoteRouteResponse recommended =
         routes.get("/api/extensions/recommended");
