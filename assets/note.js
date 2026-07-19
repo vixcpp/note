@@ -161,22 +161,31 @@
   };
 
   const VIX_LOGO_SVG = `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="60" cy="60" r="58" fill="#07110c"/>
-  <circle cx="60" cy="60" r="57" stroke="#22c55e" stroke-opacity="0.22" stroke-width="2"/>
+  <circle cx="60" cy="60" r="58" fill="#140b05"/>
+  <circle cx="60" cy="60" r="57" stroke="#f37726" stroke-opacity="0.28" stroke-width="2"/>
   <defs>
     <linearGradient id="left" x1="28" y1="24" x2="58" y2="96" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#d4fcd4"/>
-      <stop offset="55%" stop-color="#4ade80"/>
-      <stop offset="100%" stop-color="#22c55e"/>
+      <stop offset="0%" stop-color="#ffe0c2"/>
+      <stop offset="55%" stop-color="#ff9a4d"/>
+      <stop offset="100%" stop-color="#f37726"/>
     </linearGradient>
     <linearGradient id="right" x1="92" y1="24" x2="62" y2="96" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#22c55e"/>
-      <stop offset="100%" stop-color="#15803d"/>
+      <stop offset="0%" stop-color="#f37726"/>
+      <stop offset="100%" stop-color="#a94300"/>
     </linearGradient>
   </defs>
   <polygon points="28,24 45,24 60,96 50,96" fill="url(#left)"/>
   <polygon points="92,24 75,24 60,96 70,96" fill="url(#right)"/>
-  <line x1="38" y1="50" x2="51" y2="96" stroke="#bbf7d0" stroke-width="3" stroke-linecap="round" opacity="0.65"/>
+  <line
+    x1="38"
+    y1="50"
+    x2="51"
+    y2="96"
+    stroke="#ffd1ad"
+    stroke-width="3"
+    stroke-linecap="round"
+    opacity="0.65"
+  />
 </svg>`;
 
   function svgToDataUri(svg) {

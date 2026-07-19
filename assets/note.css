@@ -271,15 +271,11 @@ input {
   padding: 0 12px 0 4px;
 }
 .vn-AppBar__logo {
-  display: grid;
-  place-items: center;
-  width: 19px;
-  height: 19px;
-  border-radius: 5px;
-  background: var(--vn-brand1);
-  color: #fff;
-  font-weight: 800;
-  font-size: 11px;
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 .vn-AppBar__title {
   font-weight: 650;
@@ -1742,18 +1738,22 @@ input {
   word-break: break-word;
 }
 .vn-Output--svg {
-  padding: 8px 10px 12px;
-  overflow: auto;
+  width: 100%;
+  padding: 0;
+  overflow-x: auto;
+  border: 1px solid var(--vn-border1);
+  border-radius: 10px;
+  background: #0f1215;
 }
 
 .vn-Output__svg {
   display: block;
-  width: 420px;
+  width: 560px;
   max-width: 100%;
   height: auto;
-  border: 1px solid var(--vn-border1);
+  border: 0;
   border-radius: 10px;
-  background: #0f1215;
+  background: transparent;
 }
 .vn-Output--stdout {
   color: var(--vn-content1);
