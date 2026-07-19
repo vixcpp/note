@@ -16,9 +16,6 @@
 
 #include <vix/note/web/NoteRoutes.hpp>
 
-#include <vix/cli/registry/RegistryCatalog.hpp>
-#include <vix/cli/util/Semver.hpp>
-
 #include <cstddef>
 #include <optional>
 #include <sstream>
@@ -845,204 +842,26 @@ namespace vix::note
     bool is_safe_package_id(std::string_view value)
     {
       const std::size_t slash = value.find('/');
-      if (slash == std::string_view::npos || slash == 0 || slash + 1 >= value.size()) return false;
-      if (value.find('/', slash + 1) != std::string_view::npos) return false;
-      if (value.find("--") != std::string_view::npos) return false;
+      if (slash == std::string_view::npos || slash == 0 || slash + 1 >= value.size())
+        return false;
+      if (value.find('/', slash + 1) != std::string_view::npos)
+        return false;
+      if (value.find("--") != std::string_view::npos)
+        return false;
       for (char c : value)
       {
         const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                         (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '/';
-        if (!ok) return false;
+        if (!ok)
+          return false;
       }
       return true;
     }
-
 
     std::string path_without_query(std::string_view path)
     {
       const std::size_t q = path.find('?');
       return std::string(q == std::string_view::npos ? path : path.substr(0, q));
-    }
-
-    std::string url_decode(std::string_view value)
-    {
-      std::string out;
-      out.reserve(value.size());
-      for (std::size_t i = 0; i < value.size(); ++i)
-      {
-        if (value[i] == '+')
-        {
-          out.push_back(' ');
-          continue;
-        }
-        if (value[i] == '%' && i + 2 < value.size())
-        {
-          const auto hex = [](char c) -> int {
-            if (c >= '0' && c <= '9') return c - '0';
-            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-            return -1;
-          };
-          const int hi = hex(value[i + 1]);
-          const int lo = hex(value[i + 2]);
-          if (hi >= 0 && lo >= 0)
-          {
-            out.push_back(static_cast<char>((hi << 4) | lo));
-            i += 2;
-            continue;
-          }
-        }
-        out.push_back(value[i]);
-      }
-      return out;
-    }
-
-    std::map<std::string, std::string> query_params(std::string_view path)
-    {
-      std::map<std::string, std::string> out;
-      const std::size_t q = path.find('?');
-      if (q == std::string_view::npos || q + 1 >= path.size())
-        return out;
-      std::string_view rest = path.substr(q + 1);
-      while (!rest.empty())
-      {
-        const std::size_t amp = rest.find('&');
-        const std::string_view part = amp == std::string_view::npos ? rest : rest.substr(0, amp);
-        const std::size_t eq = part.find('=');
-        const std::string key = url_decode(eq == std::string_view::npos ? part : part.substr(0, eq));
-        const std::string value = eq == std::string_view::npos ? std::string() : url_decode(part.substr(eq + 1));
-        if (!key.empty())
-          out[key] = value;
-        if (amp == std::string_view::npos)
-          break;
-        rest.remove_prefix(amp + 1);
-      }
-      return out;
-    }
-
-    std::string source_to_string(NoteExtensionSource source)
-    {
-      switch (source)
-      {
-      case NoteExtensionSource::Builtin:
-        return "builtin";
-      case NoteExtensionSource::Global:
-        return "global";
-      case NoteExtensionSource::Project:
-        return "project";
-      }
-      return "unknown";
-    }
-
-    struct LocalExtensionState
-    {
-      bool installed{false};
-      bool enabled{false};
-      bool available{false};
-      bool builtin{false};
-      std::string version;
-      std::string source;
-    };
-
-    std::unordered_map<std::string, LocalExtensionState> local_extension_states(const NoteExtensionRegistry &registry)
-    {
-      std::unordered_map<std::string, LocalExtensionState> out;
-      for (const auto &ext : registry.list_extensions())
-      {
-        LocalExtensionState state;
-        state.installed = ext.source == NoteExtensionSource::Global || ext.source == NoteExtensionSource::Project;
-        state.enabled = ext.enabled;
-        state.available = ext.available;
-        state.builtin = ext.source == NoteExtensionSource::Builtin;
-        state.version = ext.version;
-        state.source = source_to_string(ext.source);
-        out[ext.id] = state;
-      }
-      return out;
-    }
-
-    std::string marketplace_icon_for(const vix::cli::registry::PackageSummary &package)
-    {
-      if (!package.iconData.empty())
-        return package.iconData;
-      if (!package.iconUrl.empty())
-        return package.iconUrl;
-      const std::string lower = lower_copy(package.icon);
-      if (starts_with(lower, "data:image/") || starts_with(lower, "https://"))
-        return package.icon;
-      return {};
-    }
-
-    nlohmann::json registry_package_json(
-        const vix::cli::registry::PackageSummary &package,
-        const std::unordered_map<std::string, LocalExtensionState> &locals)
-    {
-      nlohmann::json item = vix::cli::registry::package_summary_json(package);
-      item["iconPath"] = package.icon;
-      item["iconUrl"] = package.iconUrl;
-      item["iconData"] = package.iconData;
-      item["icon"] = marketplace_icon_for(package);
-      const auto found = locals.find(package.id);
-      const bool installed = found != locals.end() && found->second.installed;
-      const bool enabled = found != locals.end() ? found->second.enabled : false;
-      const bool available = found != locals.end() ? found->second.available : false;
-      bool updateAvailable = false;
-      if (installed && !package.version.empty() && !found->second.version.empty())
-      {
-        updateAvailable = vix::cli::util::semver::compare(package.version, found->second.version) > 0;
-      }
-
-      nlohmann::json cells = nlohmann::json::array();
-      for (const auto &cell : package.cellTypes)
-      {
-        cells.push_back({{"id", cell}, {"label", cell}, {"extension", package.id}});
-      }
-
-      item["cellTypes"] = std::move(cells);
-      item["installed"] = installed;
-      item["enabled"] = enabled;
-      item["available"] = available;
-      item["builtin"] = false;
-      item["updateAvailable"] = updateAvailable;
-      if (found != locals.end())
-      {
-        item["installedVersion"] = found->second.version;
-        item["installedSource"] = found->second.source;
-      }
-      return item;
-    }
-
-    nlohmann::json registry_payload_json(
-        const vix::cli::registry::SearchResult &result,
-        const NoteExtensionRegistry &registry,
-        bool excludeInstalled,
-        std::size_t limit)
-    {
-      nlohmann::json payload;
-      payload["ok"] = result.ok;
-      payload["source"] = result.metadata.source;
-      payload["syncedAt"] = result.metadata.syncedAt.empty() ? nlohmann::json(nullptr) : nlohmann::json(result.metadata.syncedAt);
-      payload["stale"] = result.metadata.stale;
-      payload["syncing"] = result.metadata.syncing;
-      payload["error"] = result.error.empty() ? result.metadata.error : result.error;
-      payload["registry"] = vix::cli::registry::catalog_metadata_json(result.metadata);
-      payload["total"] = result.total;
-      payload["extensions"] = nlohmann::json::array();
-
-      const auto locals = local_extension_states(registry);
-      std::size_t added = 0;
-      for (const auto &package : result.items)
-      {
-        const auto found = locals.find(package.id);
-        if (excludeInstalled && found != locals.end() && found->second.installed)
-          continue;
-        payload["extensions"].push_back(registry_package_json(package, locals));
-        ++added;
-        if (limit > 0 && added >= limit)
-          break;
-      }
-      payload["count"] = added;
-      return payload;
     }
 
     std::mutex &registry_sync_mutex()
@@ -1059,7 +878,8 @@ namespace vix::note
       for (;;)
       {
         const ssize_t size = ::readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
-        if (size < 0) break;
+        if (size < 0)
+          break;
         if (static_cast<std::size_t>(size) < buffer.size() - 1)
         {
           buffer[static_cast<std::size_t>(size)] = '\0';
@@ -1138,7 +958,6 @@ namespace vix::note
       return NoteResult::success("extension package mutation completed");
 #endif
     }
-
 
   }
 
@@ -1298,89 +1117,63 @@ namespace vix::note
     return reload_extensions_response(action, package);
   }
 
-
   NoteRouteResponse NoteRoutes::registry_recommended_response() const
   {
-    vix::cli::registry::RegistryCatalog catalog;
-    auto result = catalog.recommended_note_extensions(50);
-    nlohmann::json payload = registry_payload_json(
-        result,
-        kernel_.extension_registry(),
-        true,
-        8);
-    return NoteRouteResponse::json(result.ok ? 200 : 503, payload.dump());
+    if (!options_.registryRecommended)
+    {
+      return json_error(
+          503,
+          "registry catalog is unavailable");
+    }
+
+    return options_.registryRecommended(
+        kernel_.extension_registry());
   }
 
-  NoteRouteResponse NoteRoutes::registry_marketplace_response(std::string_view path) const
+  NoteRouteResponse NoteRoutes::registry_marketplace_response(
+      std::string_view path) const
   {
-    const auto params = query_params(path);
-    vix::cli::registry::SearchFilters filters;
-    filters.extensionHost = "note";
-    if (const auto it = params.find("q"); it != params.end())
-      filters.query = it->second;
-    if (filters.query.empty())
-      if (const auto it = params.find("id"); it != params.end())
-        filters.query = it->second;
-    if (const auto it = params.find("capability"); it != params.end())
-      filters.capability = it->second;
-    if (const auto it = params.find("type"); it != params.end())
-      filters.cellType = it->second;
-    filters.limit = 50;
-    if (const auto it = params.find("limit"); it != params.end() && is_digits(it->second))
-      filters.limit = std::clamp<std::size_t>(static_cast<std::size_t>(std::stoul(it->second)), 1, 100);
+    if (!options_.registryMarketplace)
+    {
+      return json_error(
+          503,
+          "registry marketplace is unavailable");
+    }
 
-    vix::cli::registry::RegistryCatalog catalog;
-    auto result = catalog.search_packages(filters);
-    nlohmann::json payload = registry_payload_json(
-        result,
-        kernel_.extension_registry(),
-        true,
-        filters.limit);
-    payload["query"] = filters.query;
-    return NoteRouteResponse::json(result.ok ? 200 : 503, payload.dump());
+    return options_.registryMarketplace(
+        path,
+        kernel_.extension_registry());
   }
 
   NoteRouteResponse NoteRoutes::registry_sync_response()
   {
     if (!options_.allowPackageMutations)
     {
-      return json_error(403, "registry sync is disabled because Vix Note is not listening on loopback");
+      return json_error(
+          403,
+          "registry sync is disabled because Vix Note is not listening on loopback");
     }
 
-    std::unique_lock<std::mutex> lock(registry_sync_mutex(), std::try_to_lock);
+    if (!options_.registrySync)
+    {
+      return json_error(
+          503,
+          "registry synchronization is unavailable");
+    }
+
+    std::unique_lock<std::mutex> lock(
+        registry_sync_mutex(),
+        std::try_to_lock);
+
     if (!lock.owns_lock())
     {
-      return json_error(409, "registry sync is already running");
+      return json_error(
+          409,
+          "registry sync is already running");
     }
 
-    vix::cli::registry::RegistryCatalog catalog;
-    auto sync = catalog.sync_catalog();
-    if (options_.reloadExtensions)
-    {
-      NoteResult reloaded = options_.reloadExtensions();
-      if (!reloaded.ok())
-      {
-        return json_error(500, reloaded.message().empty()
-                                   ? "extension reload failed"
-                                   : reloaded.message());
-      }
-    }
-
-    auto result = catalog.recommended_note_extensions(50);
-    nlohmann::json payload = registry_payload_json(
-        result,
-        kernel_.extension_registry(),
-        true,
-        8);
-    payload["ok"] = sync.ok || result.ok;
-    payload["synced"] = sync.ok;
-    payload["syncError"] = sync.error;
-    payload["registry"] = vix::cli::registry::catalog_metadata_json(sync.metadata);
-    payload["source"] = sync.metadata.source;
-    payload["syncedAt"] = sync.metadata.syncedAt.empty() ? nlohmann::json(nullptr) : nlohmann::json(sync.metadata.syncedAt);
-    payload["stale"] = sync.metadata.stale;
-    payload["error"] = sync.ok ? std::string() : sync.error;
-    return NoteRouteResponse::json(sync.ok ? 200 : 503, payload.dump());
+    return options_.registrySync(
+        kernel_.extension_registry());
   }
 
   const NoteAssets &NoteRoutes::assets() const noexcept
@@ -1573,11 +1366,16 @@ namespace vix::note
       {
         return json_error(403, "extension package mutations are disabled because Vix Note is not listening on loopback");
       }
-      if (apiPath == "/api/extensions/install") return package_mutation_response("install", request.body);
-      if (apiPath == "/api/extensions/uninstall") return package_mutation_response("uninstall", request.body);
-      if (apiPath == "/api/extensions/update") return package_mutation_response("update", request.body);
-      if (apiPath == "/api/extensions/enable") return package_mutation_response("enable", request.body);
-      if (apiPath == "/api/extensions/disable") return package_mutation_response("disable", request.body);
+      if (apiPath == "/api/extensions/install")
+        return package_mutation_response("install", request.body);
+      if (apiPath == "/api/extensions/uninstall")
+        return package_mutation_response("uninstall", request.body);
+      if (apiPath == "/api/extensions/update")
+        return package_mutation_response("update", request.body);
+      if (apiPath == "/api/extensions/enable")
+        return package_mutation_response("enable", request.body);
+      if (apiPath == "/api/extensions/disable")
+        return package_mutation_response("disable", request.body);
     }
 
     if (request.method == NoteRouteMethod::Get &&
@@ -2861,7 +2659,16 @@ namespace vix::note
       out << ",\"commentLine\":\"" << json_escape(cell.commentLine) << "\",\"commentBlock\":\"" << json_escape(cell.commentBlock) << "\",\"defaultSource\":\"" << json_escape(cell.defaultSource) << "\",\"placeholder\":\"" << json_escape(cell.placeholder) << "\"}";
     }
     out << "],\"registry\":";
-    out << vix::cli::registry::catalog_metadata_json(vix::cli::registry::RegistryCatalog().metadata()).dump();
+
+    if (options_.registryMetadataJson)
+    {
+      out << options_.registryMetadataJson();
+    }
+    else
+    {
+      out << "{}";
+    }
+
     out << "}";
     return out.str();
   }

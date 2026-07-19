@@ -668,7 +668,11 @@
     if (pending && typeof pending.has === "function") {
       for (const key of pending) {
         if (String(key).startsWith(`${id}:`)) {
-          return { action: String(key).slice(id.length + 1), stage: "working", startedAt: Date.now() };
+          return {
+            action: String(key).slice(id.length + 1),
+            stage: "working",
+            startedAt: Date.now(),
+          };
         }
       }
     }
@@ -747,7 +751,13 @@
     const installed = installedExtensionIds();
     return uniqueExtensions(items).filter((ext) => {
       const id = extensionIdentifier(ext);
-      return ext && id && !ext.builtin && ext.installed !== true && !installed.has(id);
+      return (
+        ext &&
+        id &&
+        !ext.builtin &&
+        ext.installed !== true &&
+        !installed.has(id)
+      );
     });
   }
 
@@ -808,7 +818,9 @@
       state.extensionWorkbench.builtins,
       state.extensionWorkbench.marketplace,
       state.extensionWorkbench.recommended,
-      Array.isArray(state.extensions.extensions) ? state.extensions.extensions : [],
+      Array.isArray(state.extensions.extensions)
+        ? state.extensions.extensions
+        : [],
     ];
 
     for (const group of groups) {
@@ -854,7 +866,9 @@
 
   function applyCatalogPayload(payload, target = "recommended") {
     if (!payload || payload.ok === false) {
-      const message = (payload && (payload.error || payload.syncError)) || "Registry catalog unavailable";
+      const message =
+        (payload && (payload.error || payload.syncError)) ||
+        "Registry catalog unavailable";
       state.extensionWorkbench.registry = {
         ...state.extensionWorkbench.registry,
         ...(payload && payload.registry ? payload.registry : {}),
@@ -865,7 +879,9 @@
       throw new Error(message);
     }
 
-    const items = filterCatalogExtensions(Array.isArray(payload.extensions) ? payload.extensions : []);
+    const items = filterCatalogExtensions(
+      Array.isArray(payload.extensions) ? payload.extensions : [],
+    );
     if (target === "marketplace") {
       state.extensionWorkbench.marketplace = items;
     } else {
@@ -875,8 +891,14 @@
     state.extensionWorkbench.registry = {
       ...state.extensionWorkbench.registry,
       ...(payload.registry || {}),
-      source: payload.source || (payload.registry && payload.registry.source) || state.extensionWorkbench.registry.source,
-      syncedAt: payload.syncedAt || (payload.registry && payload.registry.syncedAt) || state.extensionWorkbench.registry.syncedAt,
+      source:
+        payload.source ||
+        (payload.registry && payload.registry.source) ||
+        state.extensionWorkbench.registry.source,
+      syncedAt:
+        payload.syncedAt ||
+        (payload.registry && payload.registry.syncedAt) ||
+        state.extensionWorkbench.registry.syncedAt,
       stale: !!payload.stale,
       syncing: !!payload.syncing,
       error: payload.error || payload.syncError || "",
@@ -900,12 +922,15 @@
     state.extensionWorkbench.error = "";
     renderExtensionsPanel();
     try {
-      const payload = await api(`/api/extensions/marketplace?q=${encodeURIComponent(query)}`);
+      const payload = await api(
+        `/api/extensions/marketplace?q=${encodeURIComponent(query)}`,
+      );
       if (serial !== state.extensionWorkbench.searchSerial) return;
       applyCatalogPayload(payload, "marketplace");
     } catch (error) {
       if (serial !== state.extensionWorkbench.searchSerial) return;
-      state.extensionWorkbench.error = error && error.message ? error.message : "Registry catalog unavailable";
+      state.extensionWorkbench.error =
+        error && error.message ? error.message : "Registry catalog unavailable";
       state.extensionWorkbench.marketplace = [];
       reportError(error, { label: "Search extensions" });
     } finally {
@@ -1105,7 +1130,9 @@
     const installed = !ext.builtin && ext.installed === true;
     const pendingAction = extensionPendingAction(id);
     const pending = !!pendingAction;
-    const pendingLabel = pending ? extensionActionLabel(pendingAction.action) : "";
+    const pendingLabel = pending
+      ? extensionActionLabel(pendingAction.action)
+      : "";
 
     let actions = "";
 
@@ -1401,17 +1428,21 @@
     if (query) {
       const results = uniqueExtensions(state.extensionWorkbench.marketplace);
 
-      root.innerHTML = renderRegistryStatus() + renderExtensionGroup({
-        id: "search",
-        label: `Marketplace Results · ${results.length}`,
-        items: results,
-        emptyMessage: `No Note extensions match "${query}".`,
-      });
+      root.innerHTML =
+        renderRegistryStatus() +
+        renderExtensionGroup({
+          id: "search",
+          label: `Marketplace Results · ${results.length}`,
+          items: results,
+          emptyMessage: `No Note extensions match "${query}".`,
+        });
 
       return;
     }
 
-    root.innerHTML = renderRegistryStatus() + extensionGroups().map(renderExtensionGroup).join("");
+    root.innerHTML =
+      renderRegistryStatus() +
+      extensionGroups().map(renderExtensionGroup).join("");
   }
 
   function extensionDetailsHtml(ext) {
@@ -1481,7 +1512,9 @@
     const installed = !ext.builtin && ext.installed === true;
     const pendingAction = extensionPendingAction(id);
     const pending = !!pendingAction;
-    const pendingLabel = pending ? extensionActionLabel(pendingAction.action) : "";
+    const pendingLabel = pending
+      ? extensionActionLabel(pendingAction.action)
+      : "";
 
     const runtimeCommand = runtime.resolvedCommand || runtime.command || "";
 
@@ -1897,16 +1930,19 @@
       applyExtensionsPayload(payload);
 
       try {
-        const catalog = await api("/api/extensions/registry/sync", { method: "POST" });
+        const catalog = await api("/api/extensions/registry/sync", {
+          method: "POST",
+        });
         applyCatalogPayload(catalog, "recommended");
         if (state.extensionWorkbench.query.trim()) {
           await searchMarketplace(state.extensionWorkbench.query.trim());
         }
         showNotification({
           type: catalog.synced === false ? "warning" : "success",
-          message: catalog.synced === false
-            ? "Registry unavailable — showing cached results"
-            : "Registry updated",
+          message:
+            catalog.synced === false
+              ? "Registry unavailable — showing cached results"
+              : "Registry updated",
         });
       } catch (catalogError) {
         await loadRecommendedExtensions({ silent: true });
@@ -2067,7 +2103,10 @@
     }
 
     try {
-      updateExtensionActionStage(id, action === "install" ? "installing" : "working");
+      updateExtensionActionStage(
+        id,
+        action === "install" ? "installing" : "working",
+      );
       renderExtensionsPanel();
       if (state.activeEditorTabId === extensionTabId(id)) {
         renderExtensionDetailMain(findExtensionById(id) || ext);
@@ -3070,29 +3109,91 @@
    * ======================================================== */
   function renderOutputs(outputs) {
     const list = Array.isArray(outputs) ? outputs : [];
+
     if (!list.length) return "";
+
     return list
       .map((o) => {
         const kind = normalizeKind(o.kind);
         const content = String(o.data ?? o.content ?? "");
-        const mime = String(o.mime || "text/plain").toLowerCase();
-        if (kind === "html" && mime === "text/html") {
-          return `<div class="vn-Output vn-Output--html">${content}</div>`;
+
+        const mime = String(o.mime || "text/plain")
+          .split(";", 1)[0]
+          .trim()
+          .toLowerCase();
+
+        const trimmedContent = content.trimStart();
+
+        /*
+         * MIME must take priority over the generic NoteOutput kind.
+         *
+         * The SVG-content fallback also supports older backend versions
+         * that converted extension MIME outputs to kind "text".
+         */
+        const isSvg =
+          mime === "image/svg+xml" ||
+          (kind === "text" && trimmedContent.startsWith("<svg"));
+
+        if (isSvg) {
+          const source = svgToDataUri(content);
+
+          if (!source) {
+            return `
+            <div class="vn-Output vn-Output--error">
+              <span class="vn-Output__kind">SVG</span>
+              <pre>Invalid SVG output</pre>
+            </div>
+          `;
+          }
+
+          return `
+          <div class="vn-Output vn-Output--svg">
+            <img
+              class="vn-Output__svg"
+              src="${escapeHtml(source)}"
+              alt="Vix Note SVG output"
+              draggable="false"
+            />
+          </div>
+        `;
         }
+
+        if (kind === "html" && mime === "text/html") {
+          return `
+          <div class="vn-Output vn-Output--html">
+            ${content}
+          </div>
+        `;
+        }
+
         if (mime === "application/json") {
           try {
-            return `<div class="vn-Output vn-Output--json"><pre>${escapeHtml(JSON.stringify(JSON.parse(content), null, 2))}</pre></div>`;
-          } catch (_) {}
+            const formatted = JSON.stringify(JSON.parse(content), null, 2);
+
+            return `
+            <div class="vn-Output vn-Output--json">
+              <pre>${escapeHtml(formatted)}</pre>
+            </div>
+          `;
+          } catch (_) {
+            // Fall back to normal text rendering.
+          }
         }
+
         const label =
           kind === "stdout"
             ? ""
             : `<span class="vn-Output__kind">${escapeHtml(kind)}</span>`;
-        return `<div class="vn-Output vn-Output--${safeClass(kind)}">${label}<pre>${escapeHtml(content)}</pre></div>`;
+
+        return `
+        <div class="vn-Output vn-Output--${safeClass(kind)}">
+          ${label}
+          <pre>${escapeHtml(content)}</pre>
+        </div>
+      `;
       })
       .join("");
   }
-
   function runningOutputHtml(message) {
     return `<div class="vn-Output vn-Output--running"><pre>${escapeHtml(message)}</pre></div>`;
   }
@@ -3251,7 +3352,8 @@
       const button = root.querySelector("[data-cell-kind-menu]");
       const panel = root.querySelector("[data-cell-kind-menu-panel]");
       if (!button || !panel) continue;
-      if (exceptId && button.getAttribute("data-cell-kind-menu") === exceptId) continue;
+      if (exceptId && button.getAttribute("data-cell-kind-menu") === exceptId)
+        continue;
       button.setAttribute("aria-expanded", "false");
       panel.setAttribute("hidden", "");
       root.classList.remove("is-open");
@@ -3262,7 +3364,9 @@
     const safeId = String(id || "");
     const button = $(`[data-cell-kind-menu="${cssEscape(safeId)}"]`);
     const root = button ? button.closest("[data-cell-kind-select]") : null;
-    const panel = root ? root.querySelector("[data-cell-kind-menu-panel]") : null;
+    const panel = root
+      ? root.querySelector("[data-cell-kind-menu-panel]")
+      : null;
     if (!button || !root || !panel) return;
     const opening = panel.hasAttribute("hidden");
     closeCellKindMenus(safeId);
@@ -5882,7 +5986,9 @@
         state.activeTabPath = parsed.activeTabPath
           ? normalizeExplorerPath(parsed.activeTabPath)
           : state.tabs[0]?.path || null;
-        state.activeEditorTabId = state.activeTabPath ? documentTabId(state.activeTabPath) : null;
+        state.activeEditorTabId = state.activeTabPath
+          ? documentTabId(state.activeTabPath)
+          : null;
       }
       state.closedTabs = Array.isArray(parsed.closedTabs)
         ? parsed.closedTabs.slice(0, MAX_CLOSED_TABS)
@@ -5938,7 +6044,9 @@
             ? state.tabs[0].path
             : null;
 
-      state.activeEditorTabId = state.activeTabPath ? documentTabId(state.activeTabPath) : null;
+      state.activeEditorTabId = state.activeTabPath
+        ? documentTabId(state.activeTabPath)
+        : null;
       return true;
     } catch (_) {
       state.tabs = [];
@@ -5956,7 +6064,6 @@
       );
     } catch (_) {}
   }
-
 
   function documentTabId(path) {
     return `document:${normalizeExplorerPath(path || "")}`;
@@ -5976,7 +6083,9 @@
 
   function editorTabId(tab) {
     if (!tab) return "";
-    return isExtensionTab(tab) ? extensionTabId(tab.extensionId) : documentTabId(tab.path);
+    return isExtensionTab(tab)
+      ? extensionTabId(tab.extensionId)
+      : documentTabId(tab.path);
   }
 
   function setExtensionEditorActive(active) {
@@ -5987,12 +6096,18 @@
    * Tabs
    * ======================================================== */
   function activeTab() {
-    const wanted = state.activeEditorTabId || (state.activeTabPath ? documentTabId(state.activeTabPath) : "");
+    const wanted =
+      state.activeEditorTabId ||
+      (state.activeTabPath ? documentTabId(state.activeTabPath) : "");
     return state.tabs.find((t) => editorTabId(t) === wanted) || null;
   }
 
   function activeDocumentTab() {
-    return state.tabs.find((t) => isDocumentTab(t) && t.path === state.activeTabPath) || null;
+    return (
+      state.tabs.find(
+        (t) => isDocumentTab(t) && t.path === state.activeTabPath,
+      ) || null
+    );
   }
 
   function openTab(path, title, options = {}) {
@@ -6004,7 +6119,9 @@
     );
 
     if (!tab && preview) {
-      const existingPreview = state.tabs.find((t) => isDocumentTab(t) && t.preview && !t.dirty);
+      const existingPreview = state.tabs.find(
+        (t) => isDocumentTab(t) && t.preview && !t.dirty,
+      );
       if (existingPreview) {
         existingPreview.path = normalized;
         existingPreview.title = title || baseName(normalized);
@@ -6050,14 +6167,18 @@
   }
 
   async function openExtensionTab(extensionIdOrExtension) {
-    const input = typeof extensionIdOrExtension === "string"
-      ? extensionIdOrExtension
-      : extensionIdentifier(extensionIdOrExtension);
+    const input =
+      typeof extensionIdOrExtension === "string"
+        ? extensionIdOrExtension
+        : extensionIdentifier(extensionIdOrExtension);
     const id = input || "";
     if (!id) return;
     const ext = findExtensionById(id);
     if (!ext) {
-      showNotification({ type: "warning", message: "Extension details are unavailable" });
+      showNotification({
+        type: "warning",
+        message: "Extension details are unavailable",
+      });
       return;
     }
     const tabId = extensionTabId(id);
@@ -6087,8 +6208,13 @@
 
   async function switchTab(tabRef) {
     if (!tabRef) return;
-    const found = state.tabs.find((t) => editorTabId(t) === tabRef) ||
-      state.tabs.find((t) => isDocumentTab(t) && normalizeExplorerPath(t.path) === normalizeExplorerPath(tabRef));
+    const found =
+      state.tabs.find((t) => editorTabId(t) === tabRef) ||
+      state.tabs.find(
+        (t) =>
+          isDocumentTab(t) &&
+          normalizeExplorerPath(t.path) === normalizeExplorerPath(tabRef),
+      );
     if (!found) return;
     const nextId = editorTabId(found);
     if (nextId === state.activeEditorTabId) return;
@@ -6105,7 +6231,8 @@
     }
 
     const path = found.path;
-    if (path === state.activeTabPath && state.activeEditorTabId === nextId) return;
+    if (path === state.activeTabPath && state.activeEditorTabId === nextId)
+      return;
     const current = activeTab();
     if (current && isDocumentTab(current) && isDirty()) {
       const proceed = await showModalConfirm({
@@ -6124,9 +6251,14 @@
   }
 
   async function closeTab(tabRef) {
-    const foundIndex = state.tabs.findIndex((t) => editorTabId(t) === tabRef) >= 0
-      ? state.tabs.findIndex((t) => editorTabId(t) === tabRef)
-      : state.tabs.findIndex((t) => isDocumentTab(t) && normalizeExplorerPath(t.path) === normalizeExplorerPath(tabRef));
+    const foundIndex =
+      state.tabs.findIndex((t) => editorTabId(t) === tabRef) >= 0
+        ? state.tabs.findIndex((t) => editorTabId(t) === tabRef)
+        : state.tabs.findIndex(
+            (t) =>
+              isDocumentTab(t) &&
+              normalizeExplorerPath(t.path) === normalizeExplorerPath(tabRef),
+          );
     const idx = foundIndex;
     if (idx < 0) return;
 
@@ -6151,7 +6283,12 @@
       state.closedTabs = state.closedTabs.slice(0, MAX_CLOSED_TABS);
     }
 
-    if (state.activeEditorTabId === id || (!state.activeEditorTabId && isDocumentTab(tab) && state.activeTabPath === tab.path)) {
+    if (
+      state.activeEditorTabId === id ||
+      (!state.activeEditorTabId &&
+        isDocumentTab(tab) &&
+        state.activeTabPath === tab.path)
+    ) {
       const next = state.tabs[idx] || state.tabs[idx - 1] || null;
       if (next) {
         await switchTab(editorTabId(next));
@@ -6178,8 +6315,13 @@
   }
 
   async function closeOtherTabs(tabRef) {
-    const keepTab = state.tabs.find((tab) => editorTabId(tab) === tabRef) ||
-      state.tabs.find((tab) => isDocumentTab(tab) && normalizeExplorerPath(tab.path) === normalizeExplorerPath(tabRef));
+    const keepTab =
+      state.tabs.find((tab) => editorTabId(tab) === tabRef) ||
+      state.tabs.find(
+        (tab) =>
+          isDocumentTab(tab) &&
+          normalizeExplorerPath(tab.path) === normalizeExplorerPath(tabRef),
+      );
     if (!keepTab) return;
     const keep = editorTabId(keepTab);
     for (const tab of [...state.tabs]) {
@@ -6188,9 +6330,14 @@
   }
 
   async function closeTabsToRight(tabRef) {
-    const index = state.tabs.findIndex((tab) => editorTabId(tab) === tabRef) >= 0
-      ? state.tabs.findIndex((tab) => editorTabId(tab) === tabRef)
-      : state.tabs.findIndex((tab) => isDocumentTab(tab) && normalizeExplorerPath(tab.path) === normalizeExplorerPath(tabRef));
+    const index =
+      state.tabs.findIndex((tab) => editorTabId(tab) === tabRef) >= 0
+        ? state.tabs.findIndex((tab) => editorTabId(tab) === tabRef)
+        : state.tabs.findIndex(
+            (tab) =>
+              isDocumentTab(tab) &&
+              normalizeExplorerPath(tab.path) === normalizeExplorerPath(tabRef),
+          );
     if (index < 0) return;
     for (const tab of [...state.tabs.slice(index + 1)])
       await closeTab(editorTabId(tab));
@@ -6213,7 +6360,9 @@
   async function activateRelativeTab(delta) {
     if (!state.tabs.length) return;
     const activeId = state.activeEditorTabId || "";
-    const current = state.tabs.findIndex((tab) => editorTabId(tab) === activeId);
+    const current = state.tabs.findIndex(
+      (tab) => editorTabId(tab) === activeId,
+    );
     const next = (current + delta + state.tabs.length) % state.tabs.length;
     await switchTab(editorTabId(state.tabs[next]));
   }
@@ -6267,7 +6416,8 @@
         const preview = t.preview ? " is-preview" : "";
         if (isExtensionTab(t)) {
           const ext = findExtensionById(t.extensionId) || t;
-          const label = t.title || t.extensionId.split("/").pop() || t.extensionId;
+          const label =
+            t.title || t.extensionId.split("/").pop() || t.extensionId;
           return `<div class="vn-Tab vn-Tab--extension${active}" role="tab" aria-selected="${id === activeId ? "true" : "false"}" aria-label="Extension ${escapeHtml(label)}" data-tab-id="${escapeHtml(id)}" data-tab-kind="extension" title="${escapeHtml(t.extensionId)}" draggable="true" tabindex="0">
               <span class="vn-Tab__extensionIcon vn-ExtensionIcon" aria-hidden="true">${extensionIconHtml(ext, label)}</span>
               <span class="vn-Tab__label">${escapeHtml(label)}</span>
@@ -6934,7 +7084,13 @@
     );
     registerCommand(
       "cell.insertBelow",
-      () => addCell(targetId() ? cellTypeForInsertionAfter(targetId()) : currentToolbarKind(), { afterId: targetId() }),
+      () =>
+        addCell(
+          targetId()
+            ? cellTypeForInsertionAfter(targetId())
+            : currentToolbarKind(),
+          { afterId: targetId() },
+        ),
       {
         label: "Insert Cell Below",
         category: "Cell",
@@ -6995,7 +7151,7 @@
         const id = targetId();
         if (!id) return;
         await runCellById(id);
-        await addCell(cellTypeForInsertionAfter(id), { afterId: id });
+        await addCell(currentToolbarKind(), { afterId: id });
       },
       {
         label: "Run Cell and Insert Below",
@@ -8306,7 +8462,9 @@
           restartKernel(false);
           break;
         case "insert-below":
-          addCell(targetId() ? cellTypeForInsertionAfter(targetId()) : currentToolbarKind(), { afterId: targetId() });
+          addCell(currentToolbarKind(), {
+            afterId: targetId(),
+          });
           break;
         case "cut-cell":
           if (targetId()) deleteCellById(targetId());
@@ -8743,9 +8901,15 @@
       const found = state.tabs.find((t) => editorTabId(t) === id);
       switchTab(id);
       if (found && isExtensionTab(found)) {
-        openContextMenu([{ label: "Close", run: () => closeTab(id) }], { x: e.clientX, y: e.clientY });
+        openContextMenu([{ label: "Close", run: () => closeTab(id) }], {
+          x: e.clientX,
+          y: e.clientY,
+        });
       } else if (found) {
-        openContextMenu(tabContextItems(found.path), { x: e.clientX, y: e.clientY });
+        openContextMenu(tabContextItems(found.path), {
+          x: e.clientX,
+          y: e.clientY,
+        });
       }
     });
 
@@ -8901,9 +9065,11 @@
       const insertBtn = target.closest("[data-insert-after]");
       if (insertBtn) {
         const afterId = insertBtn.getAttribute("data-insert-after");
-        addCell(cellTypeForInsertionAfter(afterId), {
+
+        addCell(currentToolbarKind(), {
           afterId,
         });
+
         return;
       }
       const actionBtn = target.closest("[data-cell-action]");

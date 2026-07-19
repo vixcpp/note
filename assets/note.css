@@ -1741,6 +1741,20 @@ input {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.vn-Output--svg {
+  padding: 8px 10px 12px;
+  overflow: auto;
+}
+
+.vn-Output__svg {
+  display: block;
+  width: 420px;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--vn-border1);
+  border-radius: 10px;
+  background: #0f1215;
+}
 .vn-Output--stdout {
   color: var(--vn-content1);
 }
@@ -4507,7 +4521,11 @@ html[data-theme="softadastra"] .vn-Editor textarea::selection {
 }
 
 .vn-ExtensionsRegistryStatus.is-warning {
-  border-color: color-mix(in srgb, var(--vn-warning, #f59e0b) 45%, var(--vn-border1));
+  border-color: color-mix(
+    in srgb,
+    var(--vn-warning, #f59e0b) 45%,
+    var(--vn-border1)
+  );
   color: var(--vn-text1);
 }
 
@@ -4515,7 +4533,6 @@ html[data-theme="softadastra"] .vn-Editor textarea::selection {
   color: var(--vn-text0);
   font-size: 11px;
 }
-
 
 .vn-Tab--extension {
   gap: 7px;
@@ -4543,7 +4560,6 @@ html[data-theme="softadastra"] .vn-Editor textarea::selection {
   min-height: 100%;
 }
 
-
 /* ============================================================
    EXTENSION PENDING STATE
    ============================================================ */
@@ -4562,7 +4578,9 @@ html[data-theme="softadastra"] .vn-Editor textarea::selection {
 }
 
 @keyframes vn-extension-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4665,4 +4683,321 @@ html[data-theme="softadastra"] .vn-Editor textarea::selection {
   background: var(--vn-color1);
   color: var(--vn-text1);
   box-shadow: inset 0 -2px 0 var(--vn-brand1);
+}
+/* ============================================================
+   CELL TYPE MENU — compact two-line layout
+   ============================================================ */
+
+.vn-CellKindSelect {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.vn-Cell__toolbar .vn-CellKindSelect__button {
+  width: auto;
+  min-width: 104px;
+  max-width: 170px;
+  height: 28px;
+  padding: 0 9px;
+  gap: 6px;
+  justify-content: flex-start;
+  border: 1px solid var(--vn-border2);
+  border-radius: 7px;
+  background: var(--vn-color1);
+  color: var(--vn-text1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.vn-Cell__toolbar .vn-CellKindSelect__button:hover,
+.vn-CellKindSelect.is-open .vn-CellKindSelect__button {
+  border-color: var(--vn-brand1);
+  background: var(--vn-color3);
+}
+
+.vn-CellKindSelect__button span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vn-text1);
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vn-CellKindSelect__button small {
+  flex: 0 0 auto;
+  color: var(--vn-text3);
+  font-size: 8.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* Dropdown */
+
+.vn-CellKindSelect__menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+
+  width: 248px;
+  min-width: 248px;
+  max-width: min(280px, calc(100vw - 24px));
+  max-height: 310px;
+
+  padding: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  border: 1px solid var(--vn-border1);
+  border-radius: 9px;
+  background: var(--vn-color1);
+  color: var(--vn-text1);
+
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.3),
+    0 2px 7px rgba(0, 0, 0, 0.18);
+
+  z-index: 500;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vn-color4) transparent;
+}
+
+.vn-CellKindSelect__menu[hidden] {
+  display: none;
+}
+
+.vn-CellKindSelect__menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.vn-CellKindSelect__menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vn-CellKindSelect__menu::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--vn-color4);
+  background-clip: padding-box;
+}
+
+/* Each cell type is displayed on two clean lines */
+
+.vn-CellKindSelect__option {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  justify-content: stretch;
+  gap: 3px;
+
+  width: 100%;
+  min-height: 46px;
+  margin: 0;
+  padding: 7px 10px;
+
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--vn-text1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vn-CellKindSelect__option + .vn-CellKindSelect__option {
+  margin-top: 2px;
+}
+
+.vn-CellKindSelect__option > span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vn-text1);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vn-CellKindSelect__option > small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vn-text3);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* Hover and keyboard focus */
+
+.vn-CellKindSelect__option:hover,
+.vn-CellKindSelect__option:focus-visible {
+  border-color: var(--vn-border2);
+  background: var(--vn-color3);
+  outline: 0;
+}
+
+/* Current type */
+
+.vn-CellKindSelect__option.is-active {
+  border-color: color-mix(in srgb, var(--vn-brand1) 42%, var(--vn-border2));
+  background: color-mix(in srgb, var(--vn-brand1) 11%, var(--vn-color1));
+}
+
+.vn-CellKindSelect__option.is-active::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--vn-brand1);
+}
+
+.vn-CellKindSelect__option.is-active > span {
+  color: var(--vn-brand0);
+}
+
+/* Keep the menu readable in narrow windows */
+
+@media (max-width: 600px) {
+  .vn-CellKindSelect__menu {
+    right: 0;
+    width: 220px;
+    min-width: 220px;
+  }
+
+  .vn-Cell__toolbar .vn-CellKindSelect__button {
+    min-width: 82px;
+    max-width: 120px;
+  }
+
+  .vn-CellKindSelect__button small {
+    display: none;
+  }
+}
+/* ============================================================
+   FIX CELL TYPE MENU — override toolbar button dimensions
+   ============================================================ */
+
+.vn-Cell__toolbar .vn-CellKindSelect__menu {
+  right: 0 !important;
+  left: auto !important;
+
+  width: 260px !important;
+  min-width: 260px !important;
+  max-width: min(260px, calc(100vw - 24px)) !important;
+
+  padding: 6px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+/* Override .vn-Cell__toolbar button { width: 24px } */
+.vn-Cell__toolbar .vn-CellKindSelect__menu .vn-CellKindSelect__option {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  place-items: start stretch !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+
+  height: auto !important;
+  min-height: 48px !important;
+
+  margin: 0 !important;
+  padding: 8px 10px !important;
+
+  border: 1px solid transparent !important;
+  border-radius: 7px !important;
+
+  background: transparent;
+  color: var(--vn-text1);
+
+  text-align: left !important;
+  overflow: visible !important;
+}
+
+.vn-Cell__toolbar
+  .vn-CellKindSelect__menu
+  .vn-CellKindSelect__option
+  + .vn-CellKindSelect__option {
+  margin-top: 2px !important;
+}
+
+.vn-Cell__toolbar .vn-CellKindSelect__option > span {
+  display: block !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  overflow: hidden !important;
+  color: var(--vn-text1);
+
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  line-height: 1.3 !important;
+
+  text-align: left !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vn-Cell__toolbar .vn-CellKindSelect__option > small {
+  display: block !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  margin: 2px 0 0 !important;
+  padding: 0 !important;
+
+  overflow: hidden !important;
+  color: var(--vn-text3);
+
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  line-height: 1.3 !important;
+
+  text-align: left !important;
+  text-overflow: ellipsis;
+  text-transform: none !important;
+  white-space: nowrap;
+}
+
+.vn-Cell__toolbar .vn-CellKindSelect__menu .vn-CellKindSelect__option:hover,
+.vn-Cell__toolbar
+  .vn-CellKindSelect__menu
+  .vn-CellKindSelect__option:focus-visible {
+  border-color: var(--vn-border2) !important;
+  background: var(--vn-color3) !important;
+  outline: none;
+}
+
+.vn-Cell__toolbar
+  .vn-CellKindSelect__menu
+  .vn-CellKindSelect__option.is-active {
+  border-color: var(--vn-brand1) !important;
+  background: color-mix(
+    in srgb,
+    var(--vn-brand1) 12%,
+    var(--vn-color1)
+  ) !important;
+}
+
+.vn-Cell__toolbar .vn-CellKindSelect__option.is-active > span {
+  color: var(--vn-brand0) !important;
 }

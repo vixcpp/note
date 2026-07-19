@@ -151,68 +151,6 @@ else()
 endif()
 
 # ============================================================================
-# Dependency resolution helpers
-# ============================================================================
-
-function(vix_note_append_if_exists out_var path_value)
-  if(EXISTS "${path_value}")
-    set(${out_var} "${${out_var}};${path_value}" PARENT_SCOPE)
-  endif()
-endfunction()
-
-set(_VIX_NOTE_CLI_DIR "${_VIX_NOTE_MODULES_DIR}/cli")
-set(_VIX_NOTE_PROCESS_DIR "${_VIX_NOTE_MODULES_DIR}/process")
-
-if(EXISTS "${_VIX_NOTE_PROCESS_DIR}/CMakeLists.txt" AND NOT TARGET vix::process)
-  set(VIX_PROCESS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(VIX_PROCESS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  add_subdirectory("${_VIX_NOTE_PROCESS_DIR}" "${CMAKE_BINARY_DIR}/_vix_process_for_note")
-endif()
-
-if(NOT TARGET vix_registry_catalog AND EXISTS "${_VIX_NOTE_CLI_DIR}/src/registry/RegistryCatalog.cpp")
-  add_library(vix_registry_catalog OBJECT
-    "${_VIX_NOTE_CLI_DIR}/src/registry/RegistryCatalog.cpp"
-    "${_VIX_NOTE_CLI_DIR}/src/util/Semver.cpp"
-  )
-
-  if(NOT TARGET vix::registry_catalog)
-    add_library(vix::registry_catalog ALIAS vix_registry_catalog)
-  endif()
-
-  target_include_directories(vix_registry_catalog
-    PUBLIC
-      $<BUILD_INTERFACE:${_VIX_NOTE_CLI_DIR}/include>
-  )
-
-  target_compile_features(vix_registry_catalog PUBLIC cxx_std_20)
-
-  if(TARGET vix::process)
-    target_link_libraries(vix_registry_catalog PRIVATE vix::process)
-  endif()
-
-  find_package(nlohmann_json CONFIG QUIET)
-  if(nlohmann_json_FOUND)
-    target_link_libraries(vix_registry_catalog PUBLIC nlohmann_json::nlohmann_json)
-  else()
-    find_path(VIX_NOTE_REGISTRY_NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp)
-    if(VIX_NOTE_REGISTRY_NLOHMANN_JSON_INCLUDE_DIR)
-      target_include_directories(vix_registry_catalog
-        PUBLIC
-          "${VIX_NOTE_REGISTRY_NLOHMANN_JSON_INCLUDE_DIR}"
-      )
-    endif()
-  endif()
-endif()
-
-if(TARGET vix_registry_catalog)
-  target_sources(vix_note PRIVATE $<TARGET_OBJECTS:vix_registry_catalog>)
-  target_include_directories(vix_note PRIVATE "${_VIX_NOTE_CLI_DIR}/include")
-  if(TARGET vix::process)
-    target_link_libraries(vix_note PRIVATE vix::process)
-  endif()
-endif()
-
-# ============================================================================
 # Reply runtime implementation
 # - Reply is used internally by Note's ReplyCellRunner.
 # - It is not part of the Vix umbrella export.

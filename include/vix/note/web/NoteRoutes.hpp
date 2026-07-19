@@ -36,6 +36,8 @@
 
 namespace vix::note
 {
+  class NoteExtensionRegistry;
+
   /**
    * @brief HTTP-like method used by the local note UI router.
    *
@@ -220,6 +222,40 @@ namespace vix::note
      * @brief Callback used to persist enable/disable state for an extension.
      */
     std::function<NoteResult(const std::string &, bool)> setExtensionEnabled;
+
+    /**
+     * @brief Returns recommended Note extensions from an external registry.
+     *
+     * Note remains independent from the CLI registry implementation. The
+     * application embedding Note may provide this callback.
+     */
+    std::function<NoteRouteResponse(const NoteExtensionRegistry &)>
+        registryRecommended;
+
+    /**
+     * @brief Searches the external extension marketplace.
+     *
+     * The first argument contains the original request path, including its
+     * query string.
+     */
+    std::function<NoteRouteResponse(
+        std::string_view,
+        const NoteExtensionRegistry &)>
+        registryMarketplace;
+
+    /**
+     * @brief Synchronizes the external extension registry.
+     */
+    std::function<NoteRouteResponse(const NoteExtensionRegistry &)>
+        registrySync;
+
+    /**
+     * @brief Serializes external registry metadata as a JSON object.
+     *
+     * The callback must return valid JSON such as "{}" when no metadata is
+     * available.
+     */
+    std::function<std::string()> registryMetadataJson;
 
     /**
      * @brief Kernel options used by route execution.
